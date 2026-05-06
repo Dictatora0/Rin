@@ -1162,6 +1162,9 @@ importers:
       '@huggingface/transformers':
         specifier: ^3.8.1
         version: 3.8.1
+      '@mediapipe/tasks-vision':
+        specifier: ^0.10.34
+        version: 0.10.34(patch_hash=2014bd232d13f4bfac27f27d61105894bf54aca350379b2816fe05b6d3e27d66)
       '@intlify/core':
         specifier: 'catalog:'
         version: 11.3.2
