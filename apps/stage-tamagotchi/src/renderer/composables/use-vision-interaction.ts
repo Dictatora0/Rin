@@ -13,6 +13,8 @@ import {
   shallowRef,
 } from 'vue'
 
+import { useLocalFaceGate } from './use-local-face-gate'
+
 /**
  * Camera lifecycle states exposed to the Vision Island UI.
  */
@@ -41,8 +43,12 @@ export type VisionInteractionEventType
     | 'completion_celebration'
     | 'acknowledged'
     | 'nothing_to_confirm'
+    | 'detected_but_gated'
+    | 'face_gate_enrolled'
+    | 'face_gate_profile_deleted'
     | 'user_away'
     | 'welcome_back'
+    | 'subject_matched'
     | 'user_moved_left'
     | 'user_moved_right'
     | 'user_moved_up'
@@ -77,6 +83,8 @@ export interface VisionInteractionOptions {
   celebrationCooldownMs?: number
   /** Force an inference if frame-time appears stalled for too long. @default 1200 */
   maxInferenceStallMs?: number
+  /** Cooldown for matched welcome event when face gate is enabled. @default 8000 */
+  faceGateWelcomeCooldownMs?: number
 }
 
 interface EmitEventOptions {
@@ -88,6 +96,7 @@ interface EmitEventOptions {
   cooldownKey?: string
   isAutomatic?: boolean
   markAsPrompt?: boolean
+  skipQuietMute?: boolean
 }
 
 const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
@@ -98,6 +107,7 @@ const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
   welcomeBackCooldownMs: 8_000,
   celebrationCooldownMs: 4_000,
   maxInferenceStallMs: 1_200,
+  faceGateWelcomeCooldownMs: 8_000,
 }
 
 const DISPLAY_NAME_LOCAL_STORAGE_KEY = 'airi.vision-experiment.display-name'
@@ -158,6 +168,10 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   const stream = shallowRef<MediaStream | null>(null)
   const videoElement = shallowRef<HTMLVideoElement | null>(null)
+  const latestFaceResult = shallowRef<FaceLandmarkerResult | null>(null)
+  const localFaceGate = useLocalFaceGate({
+    stableFrames: runtimeOptions.stableFrames,
+  })
 
   let faceLandmarker: FaceLandmarker | null = null
   let gestureRecognizer: GestureRecognizer | null = null
@@ -186,6 +200,12 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   const cooldownByEventKey = new Map<string, number>()
 
+  const canTriggerInteractiveFeedback = computed(() => {
+    if (!localFaceGate.gateEnabled.value)
+      return true
+    return localFaceGate.gateState.value === 'enabled'
+  })
+
   function loadDisplayName() {
     if (typeof localStorage === 'undefined')
       return ''
@@ -201,6 +221,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   function setDisplayName(name: string) {
     const nextName = name.trim().slice(0, 48)
     displayName.value = nextName
+    localFaceGate.setDisplayName(nextName)
 
     if (typeof localStorage === 'undefined')
       return
@@ -299,9 +320,11 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     faceDirection.value = 'unknown'
     faceCenter.value = null
     lastInferenceAt.value = null
+    latestFaceResult.value = null
 
     lastProcessedVideoTimeSec = -1
     lastProcessedFrameTimestampMs = -1
+    localFaceGate.resetForCameraStop()
   }
 
   function resetPromptState() {
@@ -364,6 +387,10 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     return 'unknown'
   }
 
+  function shouldGateInteraction() {
+    return !canTriggerInteractiveFeedback.value
+  }
+
   function extractTopGesture(result: GestureRecognizerResult): VisionGesture {
     const topCategory = result.gestures?.[0]?.[0] as Category | undefined
     return normalizeGestureName(topCategory?.categoryName)
@@ -383,7 +410,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
     cooldownByEventKey.set(cooldownKey, options.nowMs)
 
-    const shouldMuteToast = options.isAutomatic && isVisionQuiet.value
+    const shouldMuteToast = options.isAutomatic && isVisionQuiet.value && !options.skipQuietMute
     const event: VisionInteractionEvent = {
       id: nextEventId++,
       type: options.type,
@@ -456,7 +483,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     return dy < 0 ? 'up' : 'down'
   }
 
-  function applyFaceDirection(center: { x: number, y: number } | null, nowMs: number) {
+  function applyFaceDirection(center: { x: number, y: number } | null, nowMs: number, allowInteractiveFeedback: boolean) {
     faceCenter.value = center
 
     const rawDirection = directionFromFaceCenter(center)
@@ -477,6 +504,11 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
     const previousDirection = faceDirection.value
     faceDirection.value = rawDirection
+
+    if (!allowInteractiveFeedback) {
+      lastStableFaceDirection.value = rawDirection
+      return
+    }
 
     if (rawDirection === 'left' && previousDirection !== 'left') {
       emitEvent({
@@ -515,10 +547,49 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   }
 
   function applyFacePresence(landmarkerResult: FaceLandmarkerResult, nowMs: number) {
-    const landmarks = landmarkerResult.faceLandmarks?.[0] ?? []
-    const hasFace = landmarks.length > 0
+    latestFaceResult.value = landmarkerResult
 
-    applyFaceDirection(computeFaceCenter(landmarks), nowMs)
+    const faceLandmarks = landmarkerResult.faceLandmarks ?? []
+    const primaryLandmarks = faceLandmarks[0] ?? []
+    const hasFace = faceLandmarks.length > 0 && primaryLandmarks.length > 0
+    const video = videoElement.value
+    localFaceGate.evaluateFrame({
+      faceResult: landmarkerResult,
+      video,
+      nowMs,
+    })
+
+    const allowInteractiveFeedback
+      = !localFaceGate.gateEnabled.value
+        || localFaceGate.gateState.value === 'enabled'
+
+    const hasSingleFace = faceLandmarks.length === 1
+    const center = hasSingleFace
+      ? computeFaceCenter(primaryLandmarks)
+      : null
+
+    applyFaceDirection(center, nowMs, allowInteractiveFeedback)
+
+    if (localFaceGate.gateEnabled.value) {
+      if (allowInteractiveFeedback && localFaceGate.consumeJustMatchedWelcome(nowMs, runtimeOptions.faceGateWelcomeCooldownMs)) {
+        const name = localFaceGate.profile.value?.displayName || displayName.value
+        const message = name
+          ? `Welcome back, ${name}.`
+          : 'Welcome back.'
+
+        emitEvent({
+          type: 'subject_matched',
+          message: 'Welcome back',
+          toastMessage: message,
+          nowMs,
+          cooldownMs: runtimeOptions.faceGateWelcomeCooldownMs,
+          cooldownKey: 'subject_matched_welcome',
+          isAutomatic: true,
+          skipQuietMute: true,
+          markAsPrompt: true,
+        })
+      }
+    }
 
     if (hasFace) {
       presentFrameStreak += 1
@@ -536,7 +607,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
         facePresence.value = 'present'
         lastPresenceTransitionAt.value = nowMs
 
-        if (previousStable === 'absent') {
+        if (previousStable === 'absent' && !localFaceGate.gateEnabled.value) {
           const message = displayName.value
             ? `Welcome back, ${displayName.value}.`
             : 'Welcome back.'
@@ -613,6 +684,18 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   function handleOpenPalm(nowMs: number) {
     lastGestureTriggeredAt.value.open_palm = nowMs
+
+    if (shouldGateInteraction()) {
+      emitEvent({
+        type: 'detected_but_gated',
+        message: 'Open palm detected but gated',
+        nowMs,
+        cooldownMs: Math.max(runtimeOptions.eventCooldownMs, 3_000),
+        cooldownKey: 'detected_but_gated:open_palm',
+      })
+      return
+    }
+
     const emittedEvent = emitEvent({
       type: 'quiet_mode_requested',
       message: 'Quiet mode requested',
@@ -629,6 +712,18 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   function handleVictory(nowMs: number) {
     lastGestureTriggeredAt.value.victory = nowMs
+
+    if (shouldGateInteraction()) {
+      emitEvent({
+        type: 'detected_but_gated',
+        message: 'Victory detected but gated',
+        nowMs,
+        cooldownMs: Math.max(runtimeOptions.celebrationCooldownMs, 3_000),
+        cooldownKey: 'detected_but_gated:victory',
+      })
+      return
+    }
+
     localCelebrationCount.value += 1
 
     emitEvent({
@@ -644,6 +739,18 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   function handleThumbsUp(nowMs: number) {
     lastGestureTriggeredAt.value.thumbs_up = nowMs
+
+    if (shouldGateInteraction()) {
+      emitEvent({
+        type: 'detected_but_gated',
+        message: 'Thumbs up detected but gated',
+        nowMs,
+        cooldownMs: Math.max(runtimeOptions.eventCooldownMs, 3_000),
+        cooldownKey: 'detected_but_gated:thumbs_up',
+      })
+      return
+    }
+
     acknowledgePrompt(nowMs)
   }
 
@@ -712,7 +819,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
       baseOptions: { modelAssetPath: FACE_MODEL_ASSET_URL },
       runningMode: 'VIDEO',
-      numFaces: 1,
+      numFaces: 2,
       minFaceDetectionConfidence: 0.5,
       minFacePresenceConfidence: 0.5,
       minTrackingConfidence: 0.5,
@@ -868,12 +975,66 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     stopTracks()
     clearVideoBinding()
     resetFrameState()
+    localFaceGate.clearRuntimeError()
     cameraState.value = 'off'
     syncQuietState(Date.now())
   }
 
   function attachVideoElement(element: HTMLVideoElement | null) {
     videoElement.value = element
+  }
+
+  async function enrollLocalFaceProfile() {
+    const result = await localFaceGate.enrollFromCurrentFrame({
+      displayName: displayName.value,
+      video: videoElement.value,
+      faceResult: latestFaceResult.value,
+    })
+
+    if (!result.ok) {
+      emitEvent({
+        type: 'detected_but_gated',
+        message: `Enrollment failed: ${result.reason}`,
+        nowMs: Date.now(),
+        cooldownMs: Math.max(runtimeOptions.eventCooldownMs, 2_000),
+        cooldownKey: `enrollment_failed:${result.reason}`,
+      })
+      return result
+    }
+
+    if (result.completed) {
+      emitEvent({
+        type: 'face_gate_enrolled',
+        message: 'Face profile enrolled locally.',
+        toastMessage: 'Face profile enrolled locally.',
+        nowMs: Date.now(),
+        cooldownMs: Math.max(runtimeOptions.eventCooldownMs, 1_000),
+        cooldownKey: 'face_gate_enrolled',
+      })
+    }
+    else {
+      emitEvent({
+        type: 'face_gate_enrolled',
+        message: `Captured sample ${result.captured}/${result.total}`,
+        nowMs: Date.now(),
+        cooldownMs: 0,
+        cooldownKey: 'face_gate_enroll_progress',
+      })
+    }
+
+    return result
+  }
+
+  function deleteLocalFaceProfile() {
+    localFaceGate.deleteProfile()
+    emitEvent({
+      type: 'face_gate_profile_deleted',
+      message: 'Local face profile deleted.',
+      toastMessage: 'Local face profile deleted.',
+      nowMs: Date.now(),
+      cooldownMs: Math.max(runtimeOptions.eventCooldownMs, 1_000),
+      cooldownKey: 'face_gate_profile_deleted',
+    })
   }
 
   // Keep quiet countdown alive even if camera is not enabled.
@@ -900,6 +1061,8 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     acknowledgedEventId,
     activePrompt,
     displayName,
+    localFaceGate,
+    canTriggerInteractiveFeedback,
     maxInferenceStallMs,
     lastPresenceTransitionAt,
     lastStableFaceDirection,
@@ -910,6 +1073,8 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     stop,
     setDisplayName,
     setMaxInferenceStallMs,
+    enrollLocalFaceProfile,
+    deleteLocalFaceProfile,
     acknowledgePrompt,
   }
 }
