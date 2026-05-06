@@ -111,6 +111,9 @@ catalogs:
     '@takumi-rs/image-response':
       specifier: 1.0.0-beta.20
       version: 1.0.0-beta.20
+    '@techstark/opencv-js':
+      specifier: 4.12.0-release.1
+      version: 4.12.0-release.1
     '@types/audioworklet':
       specifier: ^0.0.97
       version: 0.0.97
@@ -1222,6 +1225,9 @@ importers:
       '@shikijs/markdown-it':
         specifier: ^4.0.2
         version: 4.0.2
+      '@techstark/opencv-js':
+        specifier: 'catalog:'
+        version: 4.12.0-release.1
       '@tresjs/cientos':
         specifier: ^5.7.0
         version: 5.7.0(@tresjs/core@5.8.0(@types/three@0.184.0)(three@0.184.0)(vue@3.5.32(typescript@5.9.3)))(@types/three@0.184.0)(react@19.2.3)(three@0.184.0)(vue@3.5.32(typescript@5.9.3))
@@ -9369,6 +9375,9 @@ packages:
     resolution: {integrity: sha512-Cf2xIEE8nWAfsX0N5nihkPYMeQRT+pHt4NEkuP8rNCn6lVnLDiV8rC8IeIxbKmQC0yPnj4SIBLwXYVf86xxKTQ==}
     peerDependencies:
       vue: ^2.7.0 || ^3.0.0
+
+  '@techstark/opencv-js@4.12.0-release.1':
+    resolution: {integrity: sha512-LtTaph9v/HqLPXEg3m1xs2h7QJh10pUpuDT0nj8g77lelWnTwwQrehtd+fXElLOdrkqc4Fea6Z/sJBvEJLYPfw==}
 
   '@tokenizer/token@0.3.0':
     resolution: {integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==}
@@ -23044,6 +23053,8 @@ snapshots:
       '@shikijs/types': 4.0.2
       '@shikijs/vscode-textmate': 10.0.2
       '@types/hast': 3.0.4
+
+  '@techstark/opencv-js@4.12.0-release.1': {}
 
   '@shikijs/rehype@4.0.2':
     dependencies:
