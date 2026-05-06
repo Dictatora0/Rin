@@ -50,11 +50,46 @@ const latestQuality = computed(() => openCvFaceQuality.latestQuality.value)
 const openCvStatus = computed(() => openCvFaceQuality.status.value)
 const openCvErrorMessage = computed(() => openCvFaceQuality.errorMessage.value)
 const unlockedProfile = computed(() => encryptedProfile.unlockedProfile.value)
+const cameraStateText = computed(() => {
+  const map: Record<string, string> = {
+    off: '已关闭',
+    loading: '加载中',
+    active: '运行中',
+    error: '错误',
+  }
+  return map[cameraState.value] ?? cameraState.value
+})
+const openCvStatusText = computed(() => {
+  const map: Record<string, string> = {
+    loading: '加载中',
+    ready: '就绪',
+    failed: '失败',
+    fallback: '降级模式',
+  }
+  return map[openCvStatus.value] ?? openCvStatus.value
+})
+const profileStatusText = computed(() => {
+  const map: Record<string, string> = {
+    none: '未录入',
+    encrypted: '已加密（锁定）',
+    unlocked: '已解锁',
+  }
+  return map[profileStatus.value] ?? profileStatus.value
+})
+const gateStateText = computed(() => {
+  const map: Record<string, string> = {
+    disabled: '未启用',
+    enabled: '已启用',
+    gated: '门控中',
+    locked: '已锁定',
+  }
+  return map[localFaceGate.gateState.value] ?? localFaceGate.gateState.value
+})
 const qualityText = computed(() => {
   const q = latestQuality.value
   if (!q)
-    return 'none'
-  return `${q.qualityScore.toFixed(2)} (${q.accepted ? 'accepted' : q.reason ?? 'rejected'})`
+    return '暂无'
+  return `${q.qualityScore.toFixed(2)}（${q.accepted ? '通过' : mapQualityReason(q.reason)}）`
 })
 
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
@@ -124,14 +159,14 @@ async function runEnrollment() {
     })
 
     if (!result.ok) {
-      enrollmentMessage.value = `Enrollment failed: ${result.reason}`
+      enrollmentMessage.value = `录入失败：${mapEnrollmentFailureReason(result.reason)}`
       toast.error(enrollmentMessage.value)
       return
     }
 
     acceptedSamples.value = result.captured
-    enrollmentMessage.value = `Enrollment completed: ${result.captured}/${result.target} samples accepted.`
-    toast.success('Face profile enrolled locally.')
+    enrollmentMessage.value = `录入完成：已通过 ${result.captured}/${result.target} 个样本。`
+    toast.success('人脸档案已在本地加密保存。')
     setFaceGateEnabled(true)
   }
   finally {
@@ -144,11 +179,11 @@ async function runUnlock() {
   try {
     const result = await unlockFaceProfile(unlockPassphrase.value)
     if (!result.ok) {
-      toast.error('Unable to unlock local face profile.')
+      toast.error('无法解锁本地人脸档案。')
       return
     }
     unlockPassphrase.value = ''
-    toast.success('Face profile unlocked.')
+    toast.success('人脸档案已解锁。')
   }
   finally {
     unlocking.value = false
@@ -157,16 +192,45 @@ async function runUnlock() {
 
 function runLock() {
   lockFaceProfile()
-  toast.message('Face profile locked.')
+  toast.message('人脸档案已锁定。')
 }
 
 function runDelete() {
   deleteLocalFaceProfile()
-  toast.message('Local encrypted profile deleted.')
+  toast.message('本地加密人脸档案已删除。')
 }
 
 function backToStage() {
   void router.push('/')
+}
+
+function mapQualityReason(reason: string | undefined) {
+  const map: Record<string, string> = {
+    low_quality: '质量不达标',
+    face_too_small: '人脸过小',
+    opencv_not_ready: 'OpenCV 未就绪',
+    invalid_frame: '无效画面',
+  }
+  if (!reason)
+    return '已拒绝'
+  return map[reason] ?? reason
+}
+
+function mapEnrollmentFailureReason(reason: string | undefined) {
+  const map: Record<string, string> = {
+    'camera inactive': '摄像头未开启',
+    'displayName required': '请输入显示昵称',
+    'passphrase required': '请输入口令',
+    'passphrase mismatch': '两次口令不一致',
+    'no face': '未检测到人脸',
+    'multiple faces': '检测到多张人脸',
+    'low quality': '样本质量不足',
+    'descriptor failed': '人脸特征提取失败',
+    'save failed': '加密保存失败',
+  }
+  if (!reason)
+    return '未知错误'
+  return map[reason] ?? reason
 }
 </script>
 
@@ -175,29 +239,29 @@ function backToStage() {
     <div :class="['mb-4 flex items-center justify-between gap-2']">
       <div>
         <div :class="['text-2xl font-700']">
-          Face Enrollment
+          人脸录入
         </div>
         <div :class="['text-sm text-neutral-500 dark:text-neutral-400']">
-          Local encrypted face profile for Rin vision interaction gate.
+          为 Rin 视觉交互门控配置本地加密人脸档案。
         </div>
       </div>
       <Button size="sm" variant="ghost" @click="backToStage">
-        Back to Stage
+        返回主舞台
       </Button>
     </div>
 
     <div :class="['grid gap-3 md:grid-cols-2']">
       <div :class="['rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
         <div :class="['mb-2 text-sm font-700']">
-          Camera Control
+          摄像头控制
         </div>
         <div :class="['flex items-center gap-2']">
           <Button size="sm" :variant="isEnabled ? 'secondary' : 'primary'" @click="toggleCamera">
-            {{ isEnabled ? 'Stop Camera' : 'Start Camera' }}
+            {{ isEnabled ? '关闭摄像头' : '开启摄像头' }}
           </Button>
         </div>
         <div :class="['mt-2 text-xs']">
-          <div>cameraState: {{ cameraState }}</div>
+          <div>摄像头状态：{{ cameraStateText }}</div>
           <div v-if="errorMessage" :class="['text-rose-600 dark:text-rose-300']">
             {{ errorMessage }}
           </div>
@@ -206,15 +270,15 @@ function backToStage() {
 
       <div :class="['rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
         <div :class="['mb-2 text-sm font-700']">
-          OpenCV Status
+          OpenCV 状态
         </div>
         <div :class="['text-xs']">
-          <div>opencv: {{ openCvStatus }}</div>
-          <div>quality: {{ qualityText }}</div>
-          <div>brightness: {{ latestQuality?.brightness?.toFixed(1) ?? 'n/a' }}</div>
-          <div>sharpness: {{ latestQuality?.sharpness?.toFixed(1) ?? 'n/a' }}</div>
-          <div>contrast: {{ latestQuality?.contrast?.toFixed(1) ?? 'n/a' }}</div>
-          <div>faceSize: {{ latestQuality?.faceSize?.toFixed(2) ?? 'n/a' }}</div>
+          <div>OpenCV：{{ openCvStatusText }}</div>
+          <div>质量分：{{ qualityText }}</div>
+          <div>亮度：{{ latestQuality?.brightness?.toFixed(1) ?? '无' }}</div>
+          <div>清晰度：{{ latestQuality?.sharpness?.toFixed(1) ?? '无' }}</div>
+          <div>对比度：{{ latestQuality?.contrast?.toFixed(1) ?? '无' }}</div>
+          <div>人脸尺寸：{{ latestQuality?.faceSize?.toFixed(2) ?? '无' }}</div>
           <div v-if="openCvErrorMessage" :class="['text-amber-600 dark:text-amber-300']">
             {{ openCvErrorMessage }}
           </div>
@@ -224,11 +288,11 @@ function backToStage() {
 
     <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
       <div :class="['mb-2 text-sm font-700']">
-        User Profile
+        基础信息
       </div>
       <div :class="['grid gap-2 md:grid-cols-2']">
         <label :class="['flex flex-col gap-1 text-xs']">
-          <span>displayName</span>
+          <span>显示昵称</span>
           <input
             v-model="displayNameInput"
             :class="[
@@ -238,7 +302,7 @@ function backToStage() {
           >
         </label>
         <label :class="['flex flex-col gap-1 text-xs']">
-          <span>passphrase / PIN</span>
+          <span>加密口令 / PIN</span>
           <input
             v-model="passphrase"
             type="password"
@@ -249,7 +313,7 @@ function backToStage() {
           >
         </label>
         <label :class="['flex flex-col gap-1 text-xs']">
-          <span>confirm passphrase</span>
+          <span>确认口令</span>
           <input
             v-model="confirmPassphrase"
             type="password"
@@ -260,7 +324,7 @@ function backToStage() {
           >
         </label>
         <label :class="['flex flex-col gap-1 text-xs']">
-          <span>threshold</span>
+          <span>匹配阈值</span>
           <input
             v-model="thresholdInput"
             inputmode="decimal"
@@ -271,7 +335,7 @@ function backToStage() {
           >
         </label>
         <label :class="['flex flex-col gap-1 text-xs']">
-          <span>qualityThreshold</span>
+          <span>质量阈值</span>
           <input
             v-model="qualityThresholdInput"
             inputmode="decimal"
@@ -282,7 +346,7 @@ function backToStage() {
           >
         </label>
         <label :class="['flex flex-col gap-1 text-xs']">
-          <span>enrollSampleCount</span>
+          <span>目标采样数</span>
           <input
             v-model="enrollSampleCountInput"
             inputmode="numeric"
@@ -293,7 +357,7 @@ function backToStage() {
           >
         </label>
         <label :class="['flex flex-col gap-1 text-xs']">
-          <span>stableFrames</span>
+          <span>稳定判定帧数</span>
           <input
             v-model="stableFramesInput"
             inputmode="numeric"
@@ -308,16 +372,16 @@ function backToStage() {
 
     <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
       <div :class="['mb-2 text-sm font-700']">
-        Enrollment
+        采样录入
       </div>
       <div :class="['flex flex-wrap items-center gap-2']">
         <Button size="sm" variant="primary" :disabled="enrolling || !isEnabled" @click="runEnrollment">
-          {{ enrolling ? 'Enrolling...' : (hasEncryptedProfile ? 'Re-enroll Face' : 'Enroll Face') }}
+          {{ enrolling ? '录入中...' : (hasEncryptedProfile ? '重新录入' : '开始录入') }}
         </Button>
       </div>
       <div :class="['mt-2 text-xs']">
-        <div>accepted samples: {{ acceptedSamples }}</div>
-        <div>rejected samples: {{ rejectedSamples }}</div>
+        <div>通过样本数：{{ acceptedSamples }}</div>
+        <div>拒绝样本数：{{ rejectedSamples }}</div>
         <div v-if="enrollmentMessage">
           {{ enrollmentMessage }}
         </div>
@@ -326,25 +390,25 @@ function backToStage() {
 
     <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
       <div :class="['mb-2 text-sm font-700']">
-        Encrypted Profile
+        加密档案
       </div>
       <div :class="['text-xs']">
-        <div>profile status: {{ profileStatus }}</div>
-        <div>gate state: {{ localFaceGate.gateState }}</div>
-        <div>samples count: {{ localFaceGate.profileSampleCount }}</div>
+        <div>档案状态：{{ profileStatusText }}</div>
+        <div>门控状态：{{ gateStateText }}</div>
+        <div>样本数量：{{ localFaceGate.profileSampleCount }}</div>
         <div v-if="unlockedProfile">
-          displayName: {{ unlockedProfile.displayName }}
+          显示昵称：{{ unlockedProfile.displayName }}
         </div>
         <div v-if="unlockedProfile">
-          createdAt: {{ unlockedProfile.createdAt }}
+          创建时间：{{ unlockedProfile.createdAt }}
         </div>
         <div v-if="unlockedProfile">
-          updatedAt: {{ unlockedProfile.updatedAt }}
+          更新时间：{{ unlockedProfile.updatedAt }}
         </div>
       </div>
       <div :class="['mt-2 flex flex-wrap items-center gap-2']">
         <label :class="['flex items-center gap-1 text-xs']">
-          <span>Enable Face Gate</span>
+          <span>启用人脸门控</span>
           <input
             :checked="gateEnabled"
             type="checkbox"
@@ -355,7 +419,7 @@ function backToStage() {
           v-if="profileStatus !== 'unlocked'"
           v-model="unlockPassphrase"
           type="password"
-          placeholder="Unlock passphrase"
+          placeholder="输入解锁口令"
           :class="[
             'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
             'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
@@ -368,13 +432,13 @@ function backToStage() {
           :disabled="unlocking || !hasEncryptedProfile"
           @click="runUnlock"
         >
-          {{ unlocking ? 'Unlocking...' : 'Unlock Profile' }}
+          {{ unlocking ? '解锁中...' : '解锁档案' }}
         </Button>
         <Button v-if="profileStatus === 'unlocked'" size="sm" variant="secondary" @click="runLock">
-          Lock Profile
+          锁定档案
         </Button>
         <Button size="sm" variant="ghost" :disabled="!hasEncryptedProfile" @click="runDelete">
-          Delete Profile
+          删除档案
         </Button>
       </div>
       <div v-if="encryptedProfile.errorMessage" :class="['mt-2 text-xs text-rose-600 dark:text-rose-300']">
@@ -383,11 +447,11 @@ function backToStage() {
     </div>
 
     <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 text-xs shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-      <div>Face profile is encrypted locally.</div>
-      <div>No camera data is uploaded.</div>
-      <div>Passphrase is not stored.</div>
-      <div>Delete profile anytime.</div>
-      <div>This gate is used only for Rin vision interaction.</div>
+      <div>人脸档案仅在本地加密保存。</div>
+      <div>不会上传任何摄像头数据。</div>
+      <div>口令不会被持久化保存。</div>
+      <div>你可以随时删除本地档案。</div>
+      <div>该门控仅用于 Rin 视觉交互实验。</div>
     </div>
 
     <video
