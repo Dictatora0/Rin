@@ -10,6 +10,8 @@ const collapsed = ref(true)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const unlockPassphrase = ref('')
 const unlocking = ref(false)
+const rememberOnDevice = ref(false)
+const isDev = import.meta.env.DEV
 
 const router = useRouter()
 
@@ -31,15 +33,23 @@ const {
   hasEncryptedProfile,
   isProfileUnlocked,
   profileStatus,
+  rememberFaceProfileOnDevice,
+  secureStoreAvailable,
   localFaceGate,
   canTriggerInteractiveFeedback,
   maxInferenceStallMs,
   lastInferenceAt,
+  modelWarmupStatus,
+  modelSource,
+  modelProfile,
+  startTiming,
   attachVideoElement,
   start,
   stop,
+  prewarmVisionModels,
   setFaceGateEnabled,
   setMaxInferenceStallMs,
+  setRememberFaceProfileOnDevice,
   unlockFaceProfile,
 } = useVisionInteraction({
   stableFrames: 3,
@@ -48,6 +58,7 @@ const {
 })
 
 const maxInferenceStallInput = ref(String(maxInferenceStallMs.value))
+const prewarming = ref(false)
 const quietRemainingSeconds = computed(() => Math.ceil(quietRemainingMs.value / 1000))
 
 const faceCenterText = computed(() => {
@@ -131,6 +142,31 @@ const gateStateText = computed(() => {
   return map[localFaceGate.gateState.value] ?? localFaceGate.gateState.value
 })
 
+const modelWarmupStatusText = computed(() => {
+  const map: Record<string, string> = {
+    idle: '未预热',
+    warming: '预热中',
+    ready: '已就绪',
+    fallback_remote: '回退远程',
+  }
+  return map[modelWarmupStatus.value] ?? modelWarmupStatus.value
+})
+
+const modelSourceText = computed(() => {
+  const map: Record<string, string> = {
+    local: '本地',
+    remote: '远程',
+    unknown: '未知',
+  }
+  return map[modelSource.value] ?? modelSource.value
+})
+
+const permissionTimingText = computed(() => formatTiming(startTiming.value.permissionMs))
+const videoPlayTimingText = computed(() => formatTiming(startTiming.value.videoPlayMs))
+const recognizerInitTimingText = computed(() => formatTiming(startTiming.value.recognizerInitMs))
+const totalTimingText = computed(() => formatTiming(startTiming.value.totalMs))
+const readyForPreviewTimingText = computed(() => formatTiming(startTiming.value.readyForPreviewMs))
+
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
 
 watch(maxInferenceStallMs, (value) => {
@@ -174,13 +210,47 @@ async function unlockProfile() {
     return
   unlocking.value = true
   try {
-    const result = await unlockFaceProfile(unlockPassphrase.value)
+    const result = await unlockFaceProfile(unlockPassphrase.value, {
+      rememberOnDevice: rememberOnDevice.value,
+    })
     if (result.ok)
       unlockPassphrase.value = ''
   }
   finally {
     unlocking.value = false
   }
+}
+
+watch(rememberFaceProfileOnDevice, (value) => {
+  rememberOnDevice.value = value
+}, { immediate: true })
+
+async function toggleRememberOnDevice(event: Event) {
+  const nextValue = (event.target as HTMLInputElement).checked
+  const accepted = await setRememberFaceProfileOnDevice(nextValue)
+  rememberOnDevice.value = accepted && nextValue
+}
+
+async function handlePrewarmVision() {
+  if (prewarming.value)
+    return
+  prewarming.value = true
+  try {
+    await prewarmVisionModels()
+    toast.success('视觉模型预热完成。')
+  }
+  catch {
+    toast.error('视觉模型预热失败，请检查本地资源或网络回退。')
+  }
+  finally {
+    prewarming.value = false
+  }
+}
+
+function formatTiming(ms: number | null) {
+  if (ms === null || !Number.isFinite(ms))
+    return '无'
+  return `${ms.toFixed(1)} ms`
 }
 </script>
 
@@ -206,6 +276,9 @@ async function unlockProfile() {
           <Button size="sm" :variant="isEnabled ? 'secondary' : 'primary'" @click="toggleCamera">
             {{ isEnabled ? '关闭摄像头' : '开启摄像头' }}
           </Button>
+          <Button size="sm" variant="ghost" :disabled="prewarming" @click="handlePrewarmVision">
+            {{ prewarming ? '预热中...' : '预热视觉模型' }}
+          </Button>
           <Button size="sm" variant="ghost" @click="openEnrollmentPage">
             打开人脸录入页
           </Button>
@@ -218,6 +291,29 @@ async function unlockProfile() {
           <div>张开手掌：让 Rin 暂时安静</div>
           <div>胜利手势：庆祝一个完成时刻</div>
           <div>竖拇指：确认当前提示</div>
+        </div>
+
+        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            模型状态
+          </div>
+          <div>预热状态：{{ modelWarmupStatusText }}</div>
+          <div>当前来源：{{ modelSourceText }}</div>
+          <div>模型规格：{{ modelProfile }}</div>
+          <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+            默认仅使用构建期挂载的本地模型与 wasm。不会因为本地模式降级为弱模型。
+          </div>
+        </div>
+
+        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            启动耗时
+          </div>
+          <div>权限请求：{{ permissionTimingText }}</div>
+          <div>video.play：{{ videoPlayTimingText }}</div>
+          <div>识别器初始化：{{ recognizerInitTimingText }}</div>
+          <div>可见画面就绪：{{ readyForPreviewTimingText }}</div>
+          <div>总耗时：{{ totalTimingText }}</div>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
@@ -265,6 +361,21 @@ async function unlockProfile() {
             <Button size="sm" variant="primary" :disabled="unlocking" @click="unlockProfile">
               {{ unlocking ? '解锁中...' : '解锁档案' }}
             </Button>
+            <label :class="['mt-1 flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300']">
+              <input
+                :checked="rememberOnDevice"
+                type="checkbox"
+                :disabled="!secureStoreAvailable"
+                @change="toggleRememberOnDevice"
+              >
+              <span>在本机记住并自动解锁</span>
+            </label>
+            <div
+              v-if="!secureStoreAvailable && isDev"
+              :class="['text-xs text-amber-600 dark:text-amber-300']"
+            >
+              当前环境未启用安全存储，无法开启无感自动解锁。
+            </div>
           </div>
         </div>
 

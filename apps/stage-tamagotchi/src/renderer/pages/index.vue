@@ -419,9 +419,11 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  postModelSettingsRuntimeChannelEvent({
-    type: 'owner-gone',
-    ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+  tryCatch(() => {
+    postModelSettingsRuntimeChannelEvent({
+      type: 'owner-gone',
+      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+    })
   })
   stopAudioInteraction()
   chatSyncStore.dispose()

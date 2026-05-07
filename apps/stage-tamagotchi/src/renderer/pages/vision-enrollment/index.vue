@@ -8,6 +8,7 @@ import { useVisionInteraction } from '../../composables/use-vision-interaction'
 
 const router = useRouter()
 const videoRef = ref<HTMLVideoElement | null>(null)
+const isDev = import.meta.env.DEV
 
 const {
   isEnabled,
@@ -16,9 +17,12 @@ const {
   displayName,
   gateEnabled,
   hasEncryptedProfile,
+  rememberFaceProfileOnDevice,
+  secureStoreAvailable,
   localFaceGate,
   openCvFaceQuality,
   encryptedProfile,
+  cameraDiagnostics,
   attachVideoElement,
   start,
   stop,
@@ -28,6 +32,7 @@ const {
   unlockFaceProfile,
   lockFaceProfile,
   deleteLocalFaceProfile,
+  setRememberFaceProfileOnDevice,
 } = useVisionInteraction()
 
 const passphrase = ref('')
@@ -35,6 +40,7 @@ const confirmPassphrase = ref('')
 const unlockPassphrase = ref('')
 const enrolling = ref(false)
 const unlocking = ref(false)
+const rememberOnDevice = ref(false)
 const displayNameInput = ref(displayName.value)
 
 const thresholdInput = ref(localFaceGate.threshold.value.toFixed(2))
@@ -91,6 +97,16 @@ const qualityText = computed(() => {
     return '暂无'
   return `${q.qualityScore.toFixed(2)}（${q.accepted ? '通过' : mapQualityReason(q.reason)}）`
 })
+const lastTrackEndedAtText = computed(() => {
+  if (!cameraDiagnostics.value.lastTrackEndedAt)
+    return '无'
+  return new Date(cameraDiagnostics.value.lastTrackEndedAt).toLocaleTimeString()
+})
+const lastInferenceErrorAtText = computed(() => {
+  if (!cameraDiagnostics.value.lastInferenceErrorAt)
+    return '无'
+  return new Date(cameraDiagnostics.value.lastInferenceErrorAt).toLocaleTimeString()
+})
 
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
 
@@ -132,6 +148,9 @@ watch(stableFramesInput, (value) => {
     return
   localFaceGate.setStableFrames(parsed)
 })
+watch(rememberFaceProfileOnDevice, (value) => {
+  rememberOnDevice.value = value
+}, { immediate: true })
 
 function toggleCamera() {
   if (isEnabled.value) {
@@ -177,7 +196,9 @@ async function runEnrollment() {
 async function runUnlock() {
   unlocking.value = true
   try {
-    const result = await unlockFaceProfile(unlockPassphrase.value)
+    const result = await unlockFaceProfile(unlockPassphrase.value, {
+      rememberOnDevice: rememberOnDevice.value,
+    })
     if (!result.ok) {
       toast.error('无法解锁本地人脸档案。')
       return
@@ -188,6 +209,12 @@ async function runUnlock() {
   finally {
     unlocking.value = false
   }
+}
+
+async function toggleRememberOnDevice(event: Event) {
+  const nextValue = (event.target as HTMLInputElement).checked
+  const accepted = await setRememberFaceProfileOnDevice(nextValue)
+  rememberOnDevice.value = accepted && nextValue
 }
 
 function runLock() {
@@ -246,7 +273,7 @@ function mapEnrollmentFailureReason(reason: string | undefined) {
         </div>
       </div>
       <Button size="sm" variant="ghost" @click="backToStage">
-        返回主舞台
+        返回主界面
       </Button>
     </div>
 
@@ -441,17 +468,45 @@ function mapEnrollmentFailureReason(reason: string | undefined) {
           删除档案
         </Button>
       </div>
+      <div v-if="hasEncryptedProfile" :class="['mt-2 flex flex-col gap-1 text-xs']">
+        <label :class="['flex items-center gap-1 text-neutral-600 dark:text-neutral-300']">
+          <input
+            :checked="rememberOnDevice"
+            type="checkbox"
+            :disabled="!secureStoreAvailable"
+            @change="toggleRememberOnDevice"
+          >
+          <span>在本机记住并自动解锁</span>
+        </label>
+        <div v-if="!secureStoreAvailable && isDev" :class="['text-amber-600 dark:text-amber-300']">
+          当前环境未启用安全存储，无法开启无感自动解锁。
+        </div>
+      </div>
       <div v-if="encryptedProfile.errorMessage" :class="['mt-2 text-xs text-rose-600 dark:text-rose-300']">
         {{ encryptedProfile.errorMessage }}
       </div>
     </div>
 
+    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
+      <div :class="['mb-2 text-sm font-700']">
+        摄像头诊断日志
+      </div>
+      <div :class="['text-xs']">
+        <div>轨道结束次数：{{ cameraDiagnostics.trackEndedCount }}</div>
+        <div>意外轨道结束次数：{{ cameraDiagnostics.unexpectedTrackEndedCount }}</div>
+        <div>最近轨道结束时间：{{ lastTrackEndedAtText }}</div>
+        <div>最近轨道 ID：{{ cameraDiagnostics.lastTrackEndedTrackId ?? '无' }}</div>
+        <div>最近轨道标签：{{ cameraDiagnostics.lastTrackEndedTrackLabel ?? '无' }}</div>
+        <div>最近轨道结束是否主动：{{ cameraDiagnostics.lastTrackEndedIntentional === null ? '无' : (cameraDiagnostics.lastTrackEndedIntentional ? '是' : '否') }}</div>
+        <div>识别异常总数：{{ cameraDiagnostics.inferenceErrorCount }}</div>
+        <div>连续识别异常：{{ cameraDiagnostics.consecutiveInferenceErrorCount }}</div>
+        <div>最近识别异常时间：{{ lastInferenceErrorAtText }}</div>
+        <div>最近识别异常信息：{{ cameraDiagnostics.lastInferenceErrorMessage || '无' }}</div>
+      </div>
+    </div>
+
     <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 text-xs shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-      <div>人脸档案仅在本地加密保存。</div>
-      <div>不会上传任何摄像头数据。</div>
-      <div>口令不会被持久化保存。</div>
-      <div>你可以随时删除本地档案。</div>
-      <div>该门控仅用于 Rin 视觉交互实验。</div>
+      人脸档案仅在本地加密保存，不会上传任何摄像头数据；口令不会被持久化保存，本地档案可随时删除，本功能仅用于提升 Rin 视觉交互体验。
     </div>
 
     <video

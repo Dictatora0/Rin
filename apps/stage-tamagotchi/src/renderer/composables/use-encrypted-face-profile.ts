@@ -60,6 +60,17 @@ const STORAGE_KEY = 'airi.vision-experiment.encrypted-face-profile.v1'
 const DEFAULT_ITERATIONS = 150_000
 
 /**
+ * Shared encrypted profile state across all composable consumers in the same
+ * renderer session. Unlock state remains in-memory only and is never persisted.
+ */
+const sharedEncryptedBlob = ref<EncryptedFaceProfileBlobV1 | null>(loadBlob())
+const sharedUnlockedProfile = ref<VisionFaceProfilePayload | null>(null)
+const sharedErrorMessage = ref('')
+const sharedIsUnlocking = ref(false)
+const sharedIsSaving = ref(false)
+const sharedLastSuccessfulPassphrase = ref('')
+
+/**
  * Manages encrypted local face profile persistence and unlock lifecycle.
  *
  * Use when:
@@ -75,11 +86,12 @@ const DEFAULT_ITERATIONS = 150_000
  */
 export function useEncryptedFaceProfile(options?: EncryptedFaceProfileOptions) {
   const iterations = Math.max(100_000, Math.round(options?.pbkdf2Iterations ?? DEFAULT_ITERATIONS))
-  const encryptedBlob = ref<EncryptedFaceProfileBlobV1 | null>(loadBlob())
-  const unlockedProfile = ref<VisionFaceProfilePayload | null>(null)
-  const errorMessage = ref('')
-  const isUnlocking = ref(false)
-  const isSaving = ref(false)
+  const encryptedBlob = sharedEncryptedBlob
+  const unlockedProfile = sharedUnlockedProfile
+  const errorMessage = sharedErrorMessage
+  const isUnlocking = sharedIsUnlocking
+  const isSaving = sharedIsSaving
+  const lastSuccessfulPassphrase = sharedLastSuccessfulPassphrase
 
   const hasEncryptedProfile = computed(() => !!encryptedBlob.value)
   const isUnlocked = computed(() => !!unlockedProfile.value)
@@ -88,24 +100,6 @@ export function useEncryptedFaceProfile(options?: EncryptedFaceProfileOptions) {
       return 'none'
     return unlockedProfile.value ? 'unlocked' : 'encrypted'
   })
-
-  function loadBlob() {
-    if (typeof localStorage === 'undefined')
-      return null
-
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw)
-        return null
-      const parsed = JSON.parse(raw) as EncryptedFaceProfileBlobV1
-      if (!parsed?.encryptedData || !parsed?.salt || !parsed?.iv || !parsed?.kdf?.iterations)
-        return null
-      return parsed
-    }
-    catch {
-      return null
-    }
-  }
 
   function persistBlob(blob: EncryptedFaceProfileBlobV1 | null) {
     if (typeof localStorage === 'undefined')
@@ -170,6 +164,7 @@ export function useEncryptedFaceProfile(options?: EncryptedFaceProfileOptions) {
 
       encryptedBlob.value = nextBlob
       unlockedProfile.value = normalizedProfile
+      lastSuccessfulPassphrase.value = passphrase
       persistBlob(nextBlob)
       return { ok: true as const }
     }
@@ -206,6 +201,7 @@ export function useEncryptedFaceProfile(options?: EncryptedFaceProfileOptions) {
         throw new Error('Invalid profile payload')
 
       unlockedProfile.value = parsed
+      lastSuccessfulPassphrase.value = passphrase
       return { ok: true as const, profile: parsed }
     }
     catch {
@@ -220,11 +216,13 @@ export function useEncryptedFaceProfile(options?: EncryptedFaceProfileOptions) {
 
   function lockProfile() {
     unlockedProfile.value = null
+    lastSuccessfulPassphrase.value = ''
   }
 
   function deleteProfile() {
     encryptedBlob.value = null
     unlockedProfile.value = null
+    lastSuccessfulPassphrase.value = ''
     clearError()
     persistBlob(null)
   }
@@ -238,11 +236,30 @@ export function useEncryptedFaceProfile(options?: EncryptedFaceProfileOptions) {
     errorMessage,
     isUnlocking,
     isSaving,
+    lastSuccessfulPassphrase,
     saveEncryptedProfile,
     unlockProfile,
     lockProfile,
     deleteProfile,
     clearError,
+  }
+}
+
+function loadBlob() {
+  if (typeof localStorage === 'undefined')
+    return null
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw)
+      return null
+    const parsed = JSON.parse(raw) as EncryptedFaceProfileBlobV1
+    if (!parsed?.encryptedData || !parsed?.salt || !parsed?.iv || !parsed?.kdf?.iterations)
+      return null
+    return parsed
+  }
+  catch {
+    return null
   }
 }
 

@@ -47,6 +47,7 @@ export function useOpenCvFaceQuality(partialConfig?: OpenCvFaceQualityConfig) {
   const latestQuality = ref<OpenCvFaceQualityResult | null>(null)
   const cvInstance = shallowRef<OpenCvInstance | null>(null)
   const scratchCanvas = shallowRef<HTMLCanvasElement | null>(null)
+  let initializePromise: Promise<OpenCvInstance | null> | null = null
 
   const isReady = computed(() => status.value === 'ready')
   const usesFallback = computed(() => status.value === 'fallback')
@@ -54,59 +55,77 @@ export function useOpenCvFaceQuality(partialConfig?: OpenCvFaceQualityConfig) {
   async function initializeOpenCv() {
     if (cvInstance.value)
       return cvInstance.value
+    if (initializePromise)
+      return initializePromise
 
-    status.value = 'loading'
-    errorMessage.value = ''
+    initializePromise = (async () => {
+      status.value = 'loading'
+      errorMessage.value = ''
 
-    try {
-      const module = (await import('@techstark/opencv-js')) as OpenCvInstance | Promise<OpenCvInstance>
-      const cv = await normalizeOpenCvModule(module)
-      cvInstance.value = cv
-      status.value = 'ready'
-      return cv
-    }
-    catch (error) {
-      status.value = 'fallback'
-      errorMessage.value = `OpenCV initialization failed. ${String(error)}`
-      return null
-    }
+      try {
+        const module = (await import('@techstark/opencv-js')) as OpenCvInstance | Promise<OpenCvInstance>
+        const cv = await normalizeOpenCvModule(module)
+        cvInstance.value = cv
+        status.value = 'ready'
+        return cv
+      }
+      catch (error) {
+        status.value = 'fallback'
+        errorMessage.value = `OpenCV initialization failed. ${String(error)}`
+        return null
+      }
+      finally {
+        initializePromise = null
+      }
+    })()
+
+    return initializePromise
   }
 
   async function evaluateFaceQuality(video: HTMLVideoElement, landmarks: NormalizedLandmark[]) {
-    const bounds = extractFaceBounds(landmarks)
-    if (!bounds) {
+    try {
+      const bounds = extractFaceBounds(landmarks)
+      if (!bounds) {
+        const fallback = createRejectedResult('invalid_frame')
+        latestQuality.value = fallback
+        return fallback
+      }
+
+      const minSize = Math.min(bounds.width, bounds.height)
+      if (minSize < config.minFaceSizeNormalized) {
+        const rejected = createRejectedResult('face_too_small')
+        latestQuality.value = rejected
+        return rejected
+      }
+
+      const cv = cvInstance.value
+      if (!cv || status.value !== 'ready') {
+        if (!cv && status.value !== 'loading')
+          void initializeOpenCv()
+        const fallback = evaluateQualityWithCanvasFallback(video, bounds, config)
+        latestQuality.value = fallback
+        return fallback
+      }
+
+      const result = evaluateWithOpenCv({
+        cv,
+        video,
+        bounds,
+        outputSize: config.outputSize,
+        qualityThreshold: config.qualityThreshold,
+        brightnessRange: config.brightnessRange,
+        contrastMin: config.contrastMin,
+        sharpnessMin: config.sharpnessMin,
+        scratchCanvas,
+      })
+      latestQuality.value = result
+      return result
+    }
+    catch {
       const fallback = createRejectedResult('invalid_frame')
       latestQuality.value = fallback
       return fallback
     }
-
-    const minSize = Math.min(bounds.width, bounds.height)
-    if (minSize < config.minFaceSizeNormalized) {
-      const rejected = createRejectedResult('face_too_small')
-      latestQuality.value = rejected
-      return rejected
-    }
-
-    const cv = cvInstance.value ?? await initializeOpenCv()
-    if (!cv || status.value !== 'ready') {
-      const fallback = evaluateQualityWithCanvasFallback(video, bounds, config)
-      latestQuality.value = fallback
-      return fallback
-    }
-
-    const result = evaluateWithOpenCv({
-      cv,
-      video,
-      bounds,
-      outputSize: config.outputSize,
-      qualityThreshold: config.qualityThreshold,
-      brightnessRange: config.brightnessRange,
-      contrastMin: config.contrastMin,
-      sharpnessMin: config.sharpnessMin,
-      scratchCanvas,
-    })
-    latestQuality.value = result
-    return result
   }
 
   return {
@@ -213,7 +232,7 @@ function evaluateWithOpenCv(options: {
     cv.Laplacian(equalized, laplacian, cv.CV_64F)
 
     const brightness = cv.mean(gray)[0] as number
-    const contrast = (cv.meanStdDev(equalized, new cv.Mat(), new cv.Mat()), computeContrastFromGray(equalized))
+    const contrast = computeContrastFromGray(equalized)
     const sharpness = computeVariance(laplacian)
     const faceSize = Math.min(bounds.width, bounds.height)
 
@@ -232,7 +251,6 @@ function evaluateWithOpenCv(options: {
       sharpness,
       contrast,
       faceSize,
-      patchDataUrl: toDataUrlFromMat(cv, resized),
     }
   }
   catch {
@@ -296,28 +314,6 @@ function computeContrastFromGray(gray: any) {
   return Math.sqrt(Math.max(0, varianceSum / total))
 }
 
-function toDataUrlFromMat(cv: OpenCvInstance, mat: any) {
-  const rgba = new cv.Mat()
-  try {
-    cv.cvtColor(mat, rgba, cv.COLOR_RGB2RGBA)
-    const imageData = new ImageData(new Uint8ClampedArray(rgba.data), rgba.cols, rgba.rows)
-    const canvas = document.createElement('canvas')
-    canvas.width = rgba.cols
-    canvas.height = rgba.rows
-    const ctx = canvas.getContext('2d')
-    if (!ctx)
-      return undefined
-    ctx.putImageData(imageData, 0, 0)
-    return canvas.toDataURL('image/jpeg', 0.85)
-  }
-  catch {
-    return undefined
-  }
-  finally {
-    safeDelete(rgba)
-  }
-}
-
 function evaluateQualityWithCanvasFallback(
   video: HTMLVideoElement,
   bounds: NonNullable<ReturnType<typeof extractFaceBounds>>,
@@ -361,7 +357,6 @@ function evaluateQualityWithCanvasFallback(
     sharpness: metrics.sharpness,
     contrast: metrics.contrast,
     faceSize,
-    patchDataUrl: canvas.toDataURL('image/jpeg', 0.85),
   }
 }
 
