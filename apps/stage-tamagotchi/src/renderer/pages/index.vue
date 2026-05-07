@@ -35,10 +35,12 @@ import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 import StatusIsland from '../components/stage-islands/status-island/index.vue'
+import StudyIsland from '../components/stage-islands/study-island/index.vue'
 
 import { electronOpenOnboarding } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
 import { useChatSyncStore } from '../stores/chat-sync'
+import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { useWindowStore } from '../stores/window'
@@ -412,15 +414,24 @@ onMounted(() => {
   if (onboardingStore.needsOnboarding) {
     openOnboarding()
   }
-})
 
-onUnmounted(() => {
-  postModelSettingsRuntimeChannelEvent({
-    type: 'owner-gone',
-    ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+  // Sync study companion timer when page becomes visible
+  const handleVisibilityChange = () => {
+    if (!document.hidden) {
+      useStudyCompanionStore().syncFromWallClock()
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
+  onUnmounted(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    postModelSettingsRuntimeChannelEvent({
+      type: 'owner-gone',
+      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+    })
+    stopAudioInteraction()
+    chatSyncStore.dispose()
   })
-  stopAudioInteraction()
-  chatSyncStore.dispose()
 })
 
 watch(stream, async (currentStream) => {
@@ -491,6 +502,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
         <ControlsIsland
           ref="controlsIslandRef"
         />
+        <StudyIsland />
       </div>
     </div>
     <!-- Loading overlay sits on top, does not hide the stage -->
