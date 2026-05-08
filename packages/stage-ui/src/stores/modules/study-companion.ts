@@ -26,6 +26,9 @@ export type StudyEventType =
   | 'break_started'
   | 'break_completed'
   | 'day_rollover'
+  | 'task_created'
+  | 'task_completed'
+  | 'task_deleted'
   | (string & {})
 
 export interface StudyEventLogEntry {
@@ -47,6 +50,10 @@ export interface StudyCompanionPersisted {
   focusDurationMs: number
   breakDurationMs: number
   tasks: StudyTask[]
+  /** Completions recorded for the current UTC stats day (increments on mark-done, decrements on mark-undone). */
+  todayTasksCompleted: number
+  /** User hid the overload banner; reset when pending count drops below threshold. */
+  taskSplitHintDismissed: boolean
   todayReminderCount: number
   mutedUntil: number
   studyEvents: StudyEventLogEntry[]
@@ -65,6 +72,8 @@ export function createDefaultStudyCompanionPersisted(): StudyCompanionPersisted 
     focusDurationMs: DEFAULT_FOCUS_DURATION_MS,
     breakDurationMs: DEFAULT_BREAK_DURATION_MS,
     tasks: [],
+    todayTasksCompleted: 0,
+    taskSplitHintDismissed: false,
     todayReminderCount: 0,
     mutedUntil: 0,
     studyEvents: [],
@@ -73,6 +82,9 @@ export function createDefaultStudyCompanionPersisted(): StudyCompanionPersisted 
 
 const STORAGE_KEY = 'settings/study-companion/v1'
 const MAX_EVENTS = 500
+
+/** Pending (incomplete) tasks at or above this count trigger the split suggestion banner. */
+export const TASK_OVERLOAD_PENDING_THRESHOLD = 8
 
 function getTodayUTC(): string {
   const now = new Date()
@@ -91,6 +103,14 @@ export const useStudyCompanionStore = defineStore('modules:study-companion', () 
     persisted.value.statsDate = getTodayUTC()
   }
 
+  // Migrate older persisted shapes (new fields added after initial release).
+  if (typeof persisted.value.todayTasksCompleted !== 'number')
+    persisted.value.todayTasksCompleted = 0
+  if (typeof persisted.value.taskSplitHintDismissed !== 'boolean')
+    persisted.value.taskSplitHintDismissed = false
+  if (!Array.isArray(persisted.value.tasks))
+    persisted.value.tasks = []
+
   // Check for UTC day rollover
   function rolloverIfNeeded() {
     const today = getTodayUTC()
@@ -99,8 +119,83 @@ export const useStudyCompanionStore = defineStore('modules:study-companion', () 
       persisted.value.todayFocusSessions = 0
       persisted.value.todayFocusMinutes = 0
       persisted.value.todayReminderCount = 0
+      persisted.value.tasks = []
+      persisted.value.todayTasksCompleted = 0
+      persisted.value.taskSplitHintDismissed = false
       appendEvent('day_rollover')
     }
+  }
+
+  function pendingTaskCountValue(): number {
+    return persisted.value.tasks.filter(t => !t.done).length
+  }
+
+  /** Clears overload dismiss flag once the list is small enough that a new overload is meaningful. */
+  function refreshTaskSplitHintState() {
+    if (pendingTaskCountValue() < TASK_OVERLOAD_PENDING_THRESHOLD)
+      persisted.value.taskSplitHintDismissed = false
+  }
+
+  /**
+   * Adds a lightweight task for the current day.
+   *
+   * Use when: user enters a short title in the study companion task list.
+   *
+   * Expects: non-empty trimmed title; noop on blank input.
+   */
+  function addTask(title: string) {
+    rolloverIfNeeded()
+    const trimmed = title.trim()
+    if (!trimmed)
+      return
+
+    const task: StudyTask = {
+      id: nanoid(),
+      title: trimmed,
+      done: false,
+      createdAt: Date.now(),
+    }
+    persisted.value.tasks.push(task)
+    appendEvent('task_created', trimmed)
+    refreshTaskSplitHintState()
+  }
+
+  /**
+   * Marks a task done or not done; updates today completion counter and event log on transitions.
+   */
+  function setTaskDone(id: string, done: boolean) {
+    rolloverIfNeeded()
+    const task = persisted.value.tasks.find(t => t.id === id)
+    if (!task || task.done === done)
+      return
+
+    task.done = done
+    if (done) {
+      persisted.value.todayTasksCompleted += 1
+      appendEvent('task_completed', task.title)
+    }
+    else {
+      persisted.value.todayTasksCompleted = Math.max(0, persisted.value.todayTasksCompleted - 1)
+    }
+    refreshTaskSplitHintState()
+  }
+
+  /**
+   * Removes a task by id. Does not change todayTasksCompleted (completions already counted).
+   */
+  function removeTask(id: string) {
+    rolloverIfNeeded()
+    const index = persisted.value.tasks.findIndex(t => t.id === id)
+    if (index === -1)
+      return
+
+    const [removed] = persisted.value.tasks.splice(index, 1)
+    appendEvent('task_deleted', removed.title)
+    refreshTaskSplitHintState()
+  }
+
+  function dismissTaskSplitHint() {
+    persisted.value.taskSplitHintDismissed = true
   }
 
   // Sync with wall clock (e.g., on visibilitychange)
@@ -322,6 +417,15 @@ export const useStudyCompanionStore = defineStore('modules:study-companion', () 
     }
   })
 
+  const pendingTaskCount = computed(() => pendingTaskCountValue())
+
+  const showTaskSplitSuggestion = computed(() => {
+    return (
+      pendingTaskCount.value >= TASK_OVERLOAD_PENDING_THRESHOLD
+      && !persisted.value.taskSplitHintDismissed
+    )
+  })
+
   return {
     // Persisted state
     persisted,
@@ -331,6 +435,8 @@ export const useStudyCompanionStore = defineStore('modules:study-companion', () 
     isMuted,
     formattedRemaining,
     modeDisplayText,
+    pendingTaskCount,
+    showTaskSplitSuggestion,
 
     // Actions
     startFocus,
@@ -341,5 +447,9 @@ export const useStudyCompanionStore = defineStore('modules:study-companion', () 
     syncFromWallClock,
     rolloverIfNeeded,
     appendEvent,
+    addTask,
+    setTaskDone,
+    removeTask,
+    dismissTaskSplitHint,
   }
 })

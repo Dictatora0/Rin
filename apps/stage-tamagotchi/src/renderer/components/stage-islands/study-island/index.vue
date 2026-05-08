@@ -3,6 +3,8 @@ import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 
+import TaskList from './TaskList.vue'
+
 const studyStore = useStudyCompanionStore()
 const { persisted, formattedRemaining, modeDisplayText } = storeToRefs(studyStore)
 const { startFocus, startBreak, pause, resume, resetSession } = studyStore
@@ -154,5 +156,7 @@ const mainButtonIcon = computed(() => {
         <span>{{ todayFocusMinutes }} mins</span>
       </div>
     </div>
+
+    <TaskList />
   </div>
 </template>
