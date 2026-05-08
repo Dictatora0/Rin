@@ -30,12 +30,15 @@ const mocks = vi.hoisted(() => ({
 function createInteractionState() {
   const localFaceGate = {
     gateState: ref<'disabled' | 'enabled' | 'gated' | 'locked'>('disabled'),
+    profileStatus: ref<'not_enrolled' | 'enrolling' | 'enrolled' | 'matching' | 'matched' | 'unmatched' | 'uncertain' | 'multiple_faces' | 'no_face'>('not_enrolled'),
     matchScore: ref<number | null>(null),
   }
 
   return {
     isEnabled: ref(false),
     cameraState: ref<'off' | 'loading' | 'active' | 'error'>('off'),
+    cameraPermissionState: ref<'unknown' | 'prompt' | 'granted' | 'denied' | 'unsupported'>('unknown'),
+    mediaPipeStatus: ref<'idle' | 'loading' | 'ready' | 'failed'>('idle'),
     facePresence: ref<'present' | 'absent' | 'unknown'>('unknown'),
     faceCenter: ref<{ x: number, y: number } | null>(null),
     faceDirection: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
@@ -60,6 +63,10 @@ function createInteractionState() {
     rememberFaceProfileOnDevice: ref(false),
     secureStoreAvailable: ref(true),
     localFaceGate,
+    openCvFaceQuality: {
+      status: ref<'loading' | 'ready' | 'failed' | 'fallback'>('ready'),
+      errorMessage: ref(''),
+    },
     canTriggerInteractiveFeedback: ref(true),
     maxInferenceStallMs: ref(1_200),
     lastInferenceAt: ref<number | null>(null),
@@ -214,6 +221,12 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('摄像头默认关闭。')
     expect(text).toContain('识别仅在本地运行。')
     expect(text).toContain('不会上传任何摄像头数据。')
+    expect(text).toContain('Vision Diagnostics')
+    expect(text).toContain('cameraState: off')
+    expect(text).toContain('cameraPermission: unknown')
+    expect(text).toContain('MediaPipe: idle')
+    expect(text).toContain('OpenCV: ready')
+    expect(text).toContain('lastError: none')
 
     unmount()
   })
@@ -249,8 +262,14 @@ describe('visionIsland UI behavior', () => {
 
     mocks.interactionState.gateEnabled.value = true
     mocks.interactionState.localFaceGate.gateState.value = 'locked'
+    mocks.interactionState.localFaceGate.profileStatus.value = 'multiple_faces'
     mocks.interactionState.canTriggerInteractiveFeedback.value = false
     mocks.interactionState.profileStatus.value = 'encrypted'
+    mocks.interactionState.cameraPermissionState.value = 'denied'
+    mocks.interactionState.mediaPipeStatus.value = 'failed'
+    mocks.interactionState.openCvFaceQuality.status.value = 'fallback'
+    mocks.interactionState.openCvFaceQuality.errorMessage.value = 'OpenCV initialization failed'
+    mocks.interactionState.errorMessage.value = 'Vision prewarm failed'
     mocks.interactionState.lastEvent.value = {
       id: 71,
       type: 'detected_but_gated',
@@ -274,6 +293,11 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('Quiet remaining seconds: 5')
     expect(text).toContain('Celebration count: 3')
     expect(text).toContain('Gesture detected but pet feedback gated.')
+    expect(text).toContain('cameraPermission: denied')
+    expect(text).toContain('MediaPipe: failed')
+    expect(text).toContain('OpenCV: fallback')
+    expect(text).toContain('faceGate: locked / multiple_faces')
+    expect(text).toContain('lastError: Vision prewarm failed')
     expect(mocks.triggerVisionPetFeedback).toHaveBeenCalledWith('gated', expect.objectContaining({
       allowVisualFeedback: false,
       gateEnabled: true,

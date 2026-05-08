@@ -19,6 +19,8 @@ import { createLandmarkDescriptor, useLocalFaceGate } from './use-local-face-gat
 import { useOpenCvFaceQuality } from './use-opencv-face-quality'
 
 export type VisionCameraState = 'off' | 'loading' | 'active' | 'error'
+export type VisionCameraPermissionState = 'unknown' | 'prompt' | 'granted' | 'denied' | 'unsupported'
+export type VisionMediaPipeStatus = 'idle' | 'loading' | 'ready' | 'failed'
 export type VisionFacePresence = 'present' | 'absent' | 'unknown'
 export type VisionFaceDirection = 'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'
 export type VisionGesture = 'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'
@@ -119,8 +121,6 @@ const LOCAL_WASM_ROOT_URL = './assets/vision/wasm'
 const FACE_MODEL_ASSET_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
 const GESTURE_MODEL_ASSET_URL = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task'
 const WASM_ROOT_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm'
-const WASM_ESM_LOADER_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm/vision_wasm_module_internal.js'
-const WASM_BINARY_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm/vision_wasm_internal.wasm'
 const ENABLE_REMOTE_MODEL_FALLBACK = import.meta.env.VITE_VISION_ALLOW_REMOTE_FALLBACK === 'true'
 
 const GATE_ENABLED_STORAGE_KEY = 'airi.vision-experiment.local-face-gate-enabled.v1'
@@ -157,6 +157,8 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   const isEnabled = ref(false)
   const cameraState = ref<VisionCameraState>('off')
+  const cameraPermissionState = ref<VisionCameraPermissionState>('unknown')
+  const mediaPipeStatus = ref<VisionMediaPipeStatus>(sharedRecognizerInitialized ? 'ready' : 'idle')
   const facePresence = ref<VisionFacePresence>('unknown')
   const faceDirection = ref<VisionFaceDirection>('unknown')
   const faceCenter = ref<{ x: number, y: number } | null>(null)
@@ -277,6 +279,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   let isRecoveringFromTimestampMismatch = false
   let streamLifecycleToken = 0
   const trackedCameraStreams = new Set<MediaStream>()
+  let cameraPermissionStatus: PermissionStatus | null = null
 
   function invalidateStreamLifecycle() {
     streamLifecycleToken += 1
@@ -777,6 +780,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     sharedLastInferenceTimestampMs = -1
     modelWarmupStatus.value = 'idle'
     modelSource.value = 'unknown'
+    mediaPipeStatus.value = 'idle'
     resetStartTiming()
   }
 
@@ -788,6 +792,44 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     clearVideoBinding()
     resetFrameState()
     isEnabled.value = false
+  }
+
+  function normalizePermissionState(state: PermissionState): VisionCameraPermissionState {
+    if (state === 'granted')
+      return 'granted'
+    if (state === 'denied')
+      return 'denied'
+    return 'prompt'
+  }
+
+  async function refreshCameraPermissionState() {
+    if (typeof navigator === 'undefined' || !navigator.permissions?.query) {
+      cameraPermissionState.value = 'unsupported'
+      return cameraPermissionState.value
+    }
+
+    try {
+      const status = await navigator.permissions.query({ name: 'camera' as PermissionName })
+      cameraPermissionStatus = status
+      const sync = () => {
+        cameraPermissionState.value = normalizePermissionState(status.state)
+      }
+      sync()
+      status.onchange = sync
+      return cameraPermissionState.value
+    }
+    catch {
+      if (cameraPermissionState.value === 'unknown')
+        cameraPermissionState.value = 'unsupported'
+      return cameraPermissionState.value
+    }
+  }
+
+  function inferPermissionStateFromError(error: unknown): VisionCameraPermissionState {
+    const errorName = String((error as { name?: unknown })?.name ?? '')
+    if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError' || errorName === 'SecurityError')
+      return 'denied'
+    return cameraPermissionState.value
   }
 
   function normalizeGestureName(categoryName: string | null | undefined): VisionGesture {
@@ -1249,17 +1291,17 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       return recognizerInitPromise
 
     modelWarmupStatus.value = 'warming'
+    mediaPipeStatus.value = 'loading'
 
     recognizerInitPromise = (async () => {
-      const localFileset: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>> = await FilesetResolver.forVisionTasks(LOCAL_WASM_ROOT_URL)
-        .catch(() => {
-          return {
-            wasmLoaderPath: `${LOCAL_WASM_ROOT_URL}/vision_wasm_module_internal.js`,
-            wasmBinaryPath: `${LOCAL_WASM_ROOT_URL}/vision_wasm_internal.wasm`,
-          }
-        })
-
       try {
+        // NOTICE:
+        // Always resolve Wasm files via FilesetResolver instead of handcrafted loader URLs.
+        // We observed repeated loader script injection can surface SyntaxError:
+        // "Identifier 'ModuleFactory' has already been declared" in vision_wasm_internal.js.
+        // Using FilesetResolver keeps MediaPipe's internal loader selection/caching path consistent.
+        // Source/context: reports from vision prewarm runtime logs on this branch.
+        const localFileset = await FilesetResolver.forVisionTasks(LOCAL_WASM_ROOT_URL)
         await initializeRecognizersFromAssets(localFileset, {
           faceModelAssetPath: LOCAL_FACE_MODEL_ASSET_URL,
           gestureModelAssetPath: LOCAL_GESTURE_MODEL_ASSET_URL,
@@ -1268,18 +1310,13 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
         sharedRecognizerInitialized = true
         modelSource.value = 'local'
         modelWarmupStatus.value = 'ready'
+        mediaPipeStatus.value = 'ready'
       }
       catch {
         if (!ENABLE_REMOTE_MODEL_FALLBACK)
           throw new Error('本地视觉模型加载失败。请确认构建产物包含 ./assets/vision/models 和 ./assets/vision/wasm。')
 
-        const remoteFileset: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>> = await FilesetResolver.forVisionTasks(WASM_ROOT_URL)
-          .catch(async () => {
-            return {
-              wasmLoaderPath: WASM_ESM_LOADER_URL,
-              wasmBinaryPath: WASM_BINARY_URL,
-            }
-          })
+        const remoteFileset = await FilesetResolver.forVisionTasks(WASM_ROOT_URL)
         await initializeRecognizersFromAssets(remoteFileset, {
           faceModelAssetPath: FACE_MODEL_ASSET_URL,
           gestureModelAssetPath: GESTURE_MODEL_ASSET_URL,
@@ -1288,12 +1325,14 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
         sharedRecognizerInitialized = true
         modelSource.value = 'remote'
         modelWarmupStatus.value = 'fallback_remote'
+        mediaPipeStatus.value = 'ready'
       }
     })()
       .catch((caughtError) => {
         modelWarmupStatus.value = 'idle'
         modelSource.value = 'unknown'
         sharedRecognizerInitialized = false
+        mediaPipeStatus.value = 'failed'
         throw caughtError
       })
       .finally(() => {
@@ -1518,6 +1557,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     resetFrameState()
     try {
       const launchStartedAt = nowMs()
+      void refreshCameraPermissionState()
       startTiming.value = {
         startedAt: roundedMs(launchStartedAt),
         finishedAt: null,
@@ -1533,6 +1573,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
         audio: false,
         video: CAMERA_VIDEO_CONSTRAINTS,
       })
+      cameraPermissionState.value = 'granted'
       trackCameraStream(nextStream)
       if (startToken !== streamLifecycleToken) {
         stopCameraStream(nextStream, 'stale-start-after-getUserMedia')
@@ -1587,6 +1628,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       }
     }
     catch (caughtError) {
+      cameraPermissionState.value = inferPermissionStateFromError(caughtError)
       setError(caughtError)
       cleanupAll()
     }
@@ -1638,6 +1680,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     stableFrames: number
     enrollSampleCount: number
   }) {
+    const enrollmentStartToken = streamLifecycleToken
     const nowMs = Date.now()
     if (!isEnabled.value || cameraState.value !== 'active') {
       emitEvent({
@@ -1666,7 +1709,15 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     const targetCount = Math.max(5, Math.min(10, Math.round(options.enrollSampleCount)))
     const samples: VisionFaceProfileSample[] = []
     let rejected = 0
+    const isEnrollmentActive = () => {
+      return isEnabled.value
+        && cameraState.value === 'active'
+        && streamLifecycleToken === enrollmentStartToken
+    }
     for (let i = 0; i < targetCount * 3 && samples.length < targetCount; i += 1) {
+      if (!isEnrollmentActive())
+        return { ok: false as const, reason: 'enrollment cancelled' }
+
       const frame = latestFaceResult.value
       const currentLandmarks = frame?.faceLandmarks?.[0] ?? []
       if (!currentLandmarks.length) {
@@ -1702,6 +1753,9 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       })
       await sleep(120)
     }
+
+    if (!isEnrollmentActive())
+      return { ok: false as const, reason: 'enrollment cancelled' }
 
     if (samples.length < targetCount)
       return { ok: false as const, reason: rejected > 0 ? 'low quality' : 'descriptor failed' }
@@ -1805,8 +1859,11 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   syncQuietState(Date.now())
   startQuietTicker()
   void detectSecureStoreAvailability()
+  void refreshCameraPermissionState()
   void tryAutoUnlockFaceProfile()
   onBeforeUnmount(() => {
+    if (cameraPermissionStatus)
+      cameraPermissionStatus.onchange = null
     invalidateStreamLifecycle()
     clearLoop()
     stopQuietTicker()
@@ -1819,6 +1876,8 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   return {
     isEnabled,
     cameraState,
+    cameraPermissionState,
+    mediaPipeStatus,
     facePresence,
     faceCenter,
     faceDirection,

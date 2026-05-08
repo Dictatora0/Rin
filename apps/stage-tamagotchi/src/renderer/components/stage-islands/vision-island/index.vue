@@ -27,6 +27,8 @@ const router = useRouter()
 const {
   isEnabled,
   cameraState,
+  cameraPermissionState,
+  mediaPipeStatus,
   facePresence,
   faceCenter,
   faceDirection,
@@ -45,6 +47,7 @@ const {
   rememberFaceProfileOnDevice,
   secureStoreAvailable,
   localFaceGate,
+  openCvFaceQuality,
   canTriggerInteractiveFeedback,
   maxInferenceStallMs,
   lastInferenceAt,
@@ -110,6 +113,34 @@ const cameraStateText = computed(() => {
   }
   return map[cameraState.value] ?? cameraState.value
 })
+const cameraPermissionStateText = computed(() => {
+  const map: Record<string, string> = {
+    unknown: 'unknown',
+    prompt: 'prompt',
+    granted: 'granted',
+    denied: 'denied',
+    unsupported: 'unsupported',
+  }
+  return map[cameraPermissionState.value] ?? cameraPermissionState.value
+})
+const mediaPipeStatusText = computed(() => {
+  const map: Record<string, string> = {
+    idle: 'idle',
+    loading: 'loading',
+    ready: 'ready',
+    failed: 'failed',
+  }
+  return map[mediaPipeStatus.value] ?? mediaPipeStatus.value
+})
+const openCvStatusText = computed(() => {
+  const map: Record<string, string> = {
+    loading: 'loading',
+    ready: 'ready',
+    failed: 'failed',
+    fallback: 'fallback',
+  }
+  return map[openCvFaceQuality.status.value] ?? openCvFaceQuality.status.value
+})
 
 const facePresenceText = computed(() => {
   const map: Record<string, string> = {
@@ -161,6 +192,20 @@ const gateStateText = computed(() => {
   }
   return map[localFaceGate.gateState.value] ?? localFaceGate.gateState.value
 })
+const gateProfileStatusText = computed(() => {
+  const map: Record<string, string> = {
+    not_enrolled: 'not_enrolled',
+    enrolling: 'enrolling',
+    enrolled: 'enrolled',
+    matching: 'matching',
+    matched: 'matched',
+    unmatched: 'unmatched',
+    uncertain: 'uncertain',
+    multiple_faces: 'multiple_faces',
+    no_face: 'no_face',
+  }
+  return map[localFaceGate.profileStatus.value] ?? localFaceGate.profileStatus.value
+})
 
 const modelWarmupStatusText = computed(() => {
   const map: Record<string, string> = {
@@ -205,6 +250,13 @@ const shouldShowPetFeedbackGatedHint = computed(() => {
   if (petFeedbackState.value === 'gated')
     return true
   return lastEvent.value?.type === 'detected_but_gated'
+})
+const visionDiagnosticsLastError = computed(() => {
+  if (errorMessage.value)
+    return errorMessage.value
+  if (openCvFaceQuality.errorMessage.value)
+    return openCvFaceQuality.errorMessage.value
+  return 'none'
 })
 const rootClasses = computed(() => {
   if (props.embedded) {
@@ -420,6 +472,19 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
             默认仅使用构建期挂载的本地模型与 wasm。不会因为本地模式降级为弱模型。
           </div>
+        </div>
+
+        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            Vision Diagnostics
+          </div>
+          <div>cameraState: {{ cameraState }}</div>
+          <div>cameraPermission: {{ cameraPermissionStateText }}</div>
+          <div>MediaPipe: {{ mediaPipeStatusText }}</div>
+          <div>OpenCV: {{ openCvStatusText }}</div>
+          <div>faceProfile: {{ profileStatus }}</div>
+          <div>faceGate: {{ localFaceGate.gateState }} / {{ gateProfileStatusText }}</div>
+          <div>lastError: {{ visionDiagnosticsLastError }}</div>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">

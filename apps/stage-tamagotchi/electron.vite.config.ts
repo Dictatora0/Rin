@@ -20,6 +20,22 @@ import { defineConfig } from 'electron-vite'
 const stageUIAssetsRoot = resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src', 'assets'))
 const sharedCacheDir = resolve(join(import.meta.dirname, '..', '..', '.cache'))
 const rendererPublicRoot = resolve(join(import.meta.dirname, 'src', 'renderer', 'public'))
+const tamagotchiDevWatchIgnored = [
+  '**/.git/**',
+  '**/node_modules/**',
+  '**/.pnpm/**',
+  '**/.cache/**',
+  '**/.turbo/**',
+  '**/coverage/**',
+  '**/dist/**',
+  '**/out/**',
+  '**/docs/**',
+  '**/scripts/**',
+  '**/services/**',
+  '**/bucket/**',
+  '**/plugins/**',
+  '**/crates/**',
+]
 const requiredVisionAssetPaths = [
   resolve(join(rendererPublicRoot, 'assets', 'vision', 'models', 'face_landmarker.task')),
   resolve(join(rendererPublicRoot, 'assets', 'vision', 'models', 'gesture_recognizer.task')),
@@ -210,6 +226,13 @@ export default defineConfig({
           `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src'))}/*.vue`,
           `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src'))}/*.vue`,
         ],
+      },
+      watch: {
+        // NOTICE:
+        // Renderer dev mode can hit EMFILE in monorepo environments with aggressive file watching.
+        // Keep watching focused on directories required by stage-tamagotchi runtime editing.
+        // Source/context: repeated `EMFILE: too many open files, watch` during `pnpm dev:tamagotchi`.
+        ignored: tamagotchiDevWatchIgnored,
       },
     },
 

@@ -13,6 +13,8 @@ const isDev = import.meta.env.DEV
 const {
   isEnabled,
   cameraState,
+  cameraPermissionState,
+  mediaPipeStatus,
   errorMessage,
   displayName,
   gateEnabled,
@@ -82,6 +84,25 @@ const profileStatusText = computed(() => {
   }
   return map[profileStatus.value] ?? profileStatus.value
 })
+const cameraPermissionStateText = computed(() => {
+  const map: Record<string, string> = {
+    unknown: '未知',
+    prompt: '待请求',
+    granted: '已授权',
+    denied: '已拒绝',
+    unsupported: '不支持',
+  }
+  return map[cameraPermissionState.value] ?? cameraPermissionState.value
+})
+const mediaPipeStatusText = computed(() => {
+  const map: Record<string, string> = {
+    idle: 'idle',
+    loading: 'loading',
+    ready: 'ready',
+    failed: 'failed',
+  }
+  return map[mediaPipeStatus.value] ?? mediaPipeStatus.value
+})
 const gateStateText = computed(() => {
   const map: Record<string, string> = {
     disabled: '未启用',
@@ -90,6 +111,20 @@ const gateStateText = computed(() => {
     locked: '已锁定',
   }
   return map[localFaceGate.gateState.value] ?? localFaceGate.gateState.value
+})
+const gateProfileStatusText = computed(() => {
+  const map: Record<string, string> = {
+    not_enrolled: 'not_enrolled',
+    enrolling: 'enrolling',
+    enrolled: 'enrolled',
+    matching: 'matching',
+    matched: 'matched',
+    unmatched: 'unmatched',
+    uncertain: 'uncertain',
+    multiple_faces: 'multiple_faces',
+    no_face: 'no_face',
+  }
+  return map[localFaceGate.profileStatus.value] ?? localFaceGate.profileStatus.value
 })
 const qualityText = computed(() => {
   const q = latestQuality.value
@@ -106,6 +141,13 @@ const lastInferenceErrorAtText = computed(() => {
   if (!cameraDiagnostics.value.lastInferenceErrorAt)
     return '无'
   return new Date(cameraDiagnostics.value.lastInferenceErrorAt).toLocaleTimeString()
+})
+const visionLastError = computed(() => {
+  if (errorMessage.value)
+    return errorMessage.value
+  if (cameraDiagnostics.value.lastInferenceErrorMessage)
+    return cameraDiagnostics.value.lastInferenceErrorMessage
+  return '无'
 })
 
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
@@ -223,7 +265,22 @@ function runLock() {
 }
 
 function runDelete() {
+  if (!hasEncryptedProfile.value)
+    return
+  const confirmed = typeof window === 'undefined'
+    ? true
+    : window.confirm('确认删除本地加密人脸档案？此操作不可撤销。')
+  if (!confirmed)
+    return
+
   deleteLocalFaceProfile()
+  setFaceGateEnabled(false)
+  unlockPassphrase.value = ''
+  passphrase.value = ''
+  confirmPassphrase.value = ''
+  acceptedSamples.value = 0
+  rejectedSamples.value = 0
+  enrollmentMessage.value = '档案已清除。'
   toast.message('本地加密人脸档案已删除。')
 }
 
@@ -253,6 +310,7 @@ function mapEnrollmentFailureReason(reason: string | undefined) {
     'multiple faces': '检测到多张人脸',
     'low quality': '样本质量不足',
     'descriptor failed': '人脸特征提取失败',
+    'enrollment cancelled': '录入已取消',
     'save failed': '加密保存失败',
   }
   if (!reason)
@@ -489,6 +547,23 @@ function mapEnrollmentFailureReason(reason: string | undefined) {
 
     <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
       <div :class="['mb-2 text-sm font-700']">
+        Vision Diagnostics
+      </div>
+      <div :class="['grid gap-1 text-xs md:grid-cols-2']">
+        <div>cameraState：{{ cameraState }}</div>
+        <div>cameraPermission：{{ cameraPermissionStateText }}</div>
+        <div>MediaPipe：{{ mediaPipeStatusText }}</div>
+        <div>OpenCV：{{ openCvStatusText }}</div>
+        <div>faceProfile：{{ profileStatus }}</div>
+        <div>faceGate：{{ localFaceGate.gateState }} / {{ gateProfileStatusText }}</div>
+        <div :class="['md:col-span-2']">
+          lastError：{{ visionLastError }}
+        </div>
+      </div>
+    </div>
+
+    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
+      <div :class="['mb-2 text-sm font-700']">
         摄像头诊断日志
       </div>
       <div :class="['text-xs']">
@@ -517,8 +592,3 @@ function mapEnrollmentFailureReason(reason: string | undefined) {
     />
   </div>
 </template>
-
-<route lang="yaml">
-meta:
-  layout: default
-</route>

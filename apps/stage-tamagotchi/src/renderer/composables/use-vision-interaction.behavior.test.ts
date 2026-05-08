@@ -16,6 +16,7 @@ const gateStateRef = ref<'disabled' | 'enabled' | 'gated' | 'locked'>('disabled'
 const gateProfileStatusRef = ref('not_enrolled')
 const gateDisplayNameRef = ref('')
 const gateMatchScoreRef = ref<number | null>(null)
+const openCvStatusRef = ref<'loading' | 'ready' | 'failed' | 'fallback'>('ready')
 
 const evaluateFrameMock = vi.fn(() => ({ status: 'no_face' as const }))
 const consumeJustMatchedWelcomeMock = vi.fn(() => false)
@@ -27,6 +28,7 @@ const evaluateFaceQualityMock = vi.fn(async () => ({
   contrast: 38,
   faceSize: 0.22,
 }))
+const saveEncryptedProfileMock = vi.fn(async () => ({ ok: true as const }))
 
 function createFaceLandmarkerResult(landmarks: NormalizedLandmark[][]): FaceLandmarkerResult {
   return { faceLandmarks: landmarks } as FaceLandmarkerResult
@@ -93,7 +95,7 @@ vi.mock('./use-encrypted-face-profile', () => ({
     isUnlocked: { value: false },
     status: { value: 'none' },
     lastSuccessfulPassphrase: { value: '' },
-    saveEncryptedProfile: vi.fn(async () => ({ ok: true })),
+    saveEncryptedProfile: saveEncryptedProfileMock,
     unlockProfile: vi.fn(async () => ({ ok: false })),
     lockProfile: vi.fn(() => {}),
     deleteProfile: vi.fn(() => {}),
@@ -102,7 +104,7 @@ vi.mock('./use-encrypted-face-profile', () => ({
 
 vi.mock('./use-opencv-face-quality', () => ({
   useOpenCvFaceQuality: () => ({
-    status: { value: 'ready' },
+    status: openCvStatusRef,
     initializeOpenCv: vi.fn(async () => {}),
     evaluateFaceQuality: evaluateFaceQualityMock,
   }),
@@ -175,6 +177,7 @@ function resetInteractionMocks() {
   gateProfileStatusRef.value = 'not_enrolled'
   gateDisplayNameRef.value = ''
   gateMatchScoreRef.value = null
+  openCvStatusRef.value = 'ready'
   evaluateFrameMock.mockReset()
   evaluateFrameMock.mockReturnValue({ status: 'no_face' })
   consumeJustMatchedWelcomeMock.mockReset()
@@ -188,6 +191,8 @@ function resetInteractionMocks() {
     contrast: 38,
     faceSize: 0.22,
   })
+  saveEncryptedProfileMock.mockReset()
+  saveEncryptedProfileMock.mockResolvedValue({ ok: true })
 }
 
 async function runNextAnimationFrame(nowMs: number, video: HTMLVideoElement, timeSeconds: number) {
@@ -488,6 +493,32 @@ describe('useVisionInteraction behavior locks', () => {
     app.unmount()
   })
 
+  it('keeps basic gesture recognition available when OpenCV is in fallback mode', async () => {
+    openCvStatusRef.value = 'fallback'
+    evaluateFaceQualityMock.mockResolvedValue({
+      accepted: true,
+      qualityScore: 0.82,
+      brightness: 118,
+      sharpness: 24,
+      contrast: 28,
+      faceSize: 0.21,
+    })
+
+    const { interaction, videoElement, app } = await setupInteractionHarness()
+
+    queueFrames({ gesture: 'Victory', face: [createFaceAt(0.5, 0.5)], count: 3 })
+    await runNextAnimationFrame(200, videoElement, 1)
+    await runNextAnimationFrame(400, videoElement, 2)
+    await runNextAnimationFrame(600, videoElement, 3)
+
+    expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
+    expect(interaction.localCelebrationCount.value).toBe(1)
+    expect(evaluateFaceQualityMock).toHaveBeenCalled()
+
+    await interaction.stop()
+    app.unmount()
+  })
+
   it('rejects enrollment when captured samples stay below quality threshold', async () => {
     const { interaction, videoElement, app } = await setupInteractionHarness()
 
@@ -520,6 +551,45 @@ describe('useVisionInteraction behavior locks', () => {
     expect(evaluateFaceQualityMock).toHaveBeenCalled()
 
     await interaction.stop()
+    app.unmount()
+  })
+
+  it('cancels enrollment when camera is stopped midway and never persists half profile', async () => {
+    const { interaction, videoElement, app, videoTrack } = await setupInteractionHarness()
+
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.5, 0.5)], count: 1 })
+    await runNextAnimationFrame(200, videoElement, 1)
+
+    evaluateFaceQualityMock.mockResolvedValue({
+      accepted: true,
+      qualityScore: 0.95,
+      brightness: 132,
+      sharpness: 33,
+      contrast: 39,
+      faceSize: 0.24,
+    })
+
+    const enrollPromise = interaction.enrollLocalFaceProfile({
+      displayName: 'Alice',
+      passphrase: 'test-passphrase',
+      threshold: 0.42,
+      qualityThreshold: 0.45,
+      stableFrames: 3,
+      enrollSampleCount: 6,
+    })
+
+    await vi.advanceTimersByTimeAsync(320)
+    await interaction.stop()
+    await vi.advanceTimersByTimeAsync(800)
+    const result = await enrollPromise
+
+    expect(result.ok).toBe(false)
+    if (!result.ok)
+      expect(['enrollment cancelled', 'camera inactive']).toContain(result.reason)
+    expect(saveEncryptedProfileMock).toHaveBeenCalledTimes(0)
+    expect(interaction.cameraState.value).toBe('off')
+    expect(videoTrack.stop).toHaveBeenCalledTimes(1)
+
     app.unmount()
   })
 })

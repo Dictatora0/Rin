@@ -136,6 +136,18 @@ function assertInteractionReady(
   return interaction
 }
 
+async function getVisionRuntimeMocks() {
+  const visionModule = await import('@mediapipe/tasks-vision')
+  const faceCreateFromOptions = vi.mocked(visionModule.FaceLandmarker.createFromOptions)
+  const gestureCreateFromOptions = vi.mocked(visionModule.GestureRecognizer.createFromOptions)
+  const resolveFileset = vi.mocked(visionModule.FilesetResolver.forVisionTasks)
+  return {
+    faceCreateFromOptions,
+    gestureCreateFromOptions,
+    resolveFileset,
+  }
+}
+
 /**
  * ROOT CAUSE:
  *
@@ -304,6 +316,118 @@ describe('useVisionInteraction camera lifecycle regression locks', () => {
     expect(interaction.isEnabled.value).toBe(false)
     expect(interaction.cameraState.value).toBe('error')
     expect(interaction.errorMessage.value).toContain('Permission denied in test')
+    expect(['unknown', 'unsupported']).toContain(interaction.cameraPermissionState.value)
+
+    app.unmount()
+  })
+
+  it('marks permission denied on NotAllowedError and allows retry to recover on next start', async () => {
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1))
+    vi.stubGlobal('cancelAnimationFrame', vi.fn(() => {}))
+
+    const notAllowedError = new DOMException('User denied camera access', 'NotAllowedError')
+    const { stream } = createMockStream()
+    const getUserMedia = vi.fn()
+      .mockRejectedValueOnce(notAllowedError)
+      .mockResolvedValueOnce(stream)
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const videoElement = createMockVideoElement()
+    const { app, interaction } = mountInteractionWithVideo(videoElement)
+
+    await interaction.start()
+    expect(interaction.cameraState.value).toBe('error')
+    expect(interaction.cameraPermissionState.value).toBe('denied')
+    expect(interaction.isEnabled.value).toBe(false)
+
+    await interaction.start()
+    expect(interaction.cameraState.value).toBe('active')
+    expect(interaction.cameraPermissionState.value).toBe('granted')
+    expect(interaction.isEnabled.value).toBe(true)
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('keeps camera recoverable when MediaPipe initialization fails and stop still releases resources', async () => {
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1))
+    vi.stubGlobal('cancelAnimationFrame', vi.fn(() => {}))
+
+    const { faceCreateFromOptions, gestureCreateFromOptions, resolveFileset } = await getVisionRuntimeMocks()
+    resolveFileset.mockResolvedValue({
+      wasmLoaderPath: '/mock/vision_wasm_module_internal.js',
+      wasmBinaryPath: '/mock/vision_wasm_internal.wasm',
+    } as any)
+    faceCreateFromOptions.mockRejectedValue(new Error('MediaPipe face model init failed in test'))
+    gestureCreateFromOptions.mockResolvedValue({
+      recognizeForVideo: vi.fn(() => ({ gestures: [] })),
+      close: vi.fn(() => {}),
+    } as any)
+
+    const { stream, videoTrack } = createMockStream()
+    const getUserMedia = vi.fn(async () => stream)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const videoElement = createMockVideoElement()
+    const { app, interaction } = mountInteractionWithVideo(videoElement)
+
+    await interaction.start()
+    expect(interaction.cameraState.value).toBe('active')
+
+    await expect(interaction.prewarmVisionModels()).rejects.toThrow('本地视觉模型加载失败')
+    expect(interaction.mediaPipeStatus.value).toBe('failed')
+    expect(interaction.errorMessage.value).toContain('本地视觉模型加载失败')
+
+    await interaction.stop()
+    expect(videoTrack.stop).toHaveBeenCalledTimes(1)
+    expect(interaction.cameraState.value).toBe('off')
+    expect(interaction.isEnabled.value).toBe(false)
+
+    app.unmount()
+  })
+
+  it('deduplicates concurrent prewarm requests to avoid duplicate wasm loader initialization', async () => {
+    const { faceCreateFromOptions, gestureCreateFromOptions, resolveFileset } = await getVisionRuntimeMocks()
+    resolveFileset.mockResolvedValue({
+      wasmLoaderPath: '/mock/vision_wasm_module_internal.js',
+      wasmBinaryPath: '/mock/vision_wasm_internal.wasm',
+    } as any)
+    faceCreateFromOptions.mockResolvedValue({
+      detectForVideo: vi.fn(() => ({ faceLandmarks: [] })),
+      close: vi.fn(() => {}),
+    } as any)
+    gestureCreateFromOptions.mockResolvedValue({
+      recognizeForVideo: vi.fn(() => ({ gestures: [] })),
+      close: vi.fn(() => {}),
+    } as any)
+
+    const videoElement = createMockVideoElement()
+    const { app, interaction } = mountInteractionWithVideo(videoElement)
+
+    resolveFileset.mockClear()
+    faceCreateFromOptions.mockClear()
+    gestureCreateFromOptions.mockClear()
+
+    const [firstPrewarm, secondPrewarm] = await Promise.allSettled([
+      interaction.prewarmVisionModels(),
+      interaction.prewarmVisionModels(),
+    ])
+
+    expect(firstPrewarm.status).toBe('fulfilled')
+    expect(secondPrewarm.status).toBe('fulfilled')
+    expect(faceCreateFromOptions).toHaveBeenCalledTimes(1)
+    expect(gestureCreateFromOptions).toHaveBeenCalledTimes(1)
+    expect(resolveFileset).toHaveBeenCalledTimes(1)
+    expect(interaction.modelWarmupStatus.value).toBe('ready')
+    expect(interaction.mediaPipeStatus.value).toBe('ready')
 
     app.unmount()
   })
