@@ -15,6 +15,7 @@
 - encrypted local profile（本地加密人脸档案）。
 - OpenCV/canvas quality check（OpenCV 可用时优先，失败时降级 fallback）。
 - gesture-driven pet feedback（手势驱动 Rin 形象反馈）。
+- Vision Runtime Manager（MediaPipe + OpenCV 单例复用、状态可观测、可重试/可重置）。
 
 ## 手势语义
 - `open_palm`: quiet Rin temporarily
@@ -44,10 +45,30 @@
 - 用户可随时 Delete Profile 删除本地档案。
 - passphrase 不写入 localStorage，仅用于当次解锁与派生密钥。
 
+## Vision Runtime Manager（单例复用）
+- Runtime 生命周期是 renderer 级单例：Vision Island 与 Enrollment 共用同一份 runtime。
+- Vision Island 挂载会自动触发后台 warmup（不阻塞 UI）。
+- 首次冷启动可能较慢（wasm/model 下载与编译）；同一会话后续 Start/Stop/再 Start 复用已就绪 runtime。
+- `Stop Camera` 只释放摄像头流与循环，不销毁 MediaPipe/OpenCV runtime。
+- 仅在用户点击 `Reset Runtime`（或 renderer 重启）时清空 runtime 引用并重新初始化。
+- 若初始化失败可点 `Retry Runtime`，不需要重启应用。
+
+### Runtime 状态
+- runtime: `idle | warming | ready | partial_ready | failed | resetting`
+- mediapipe: `idle | loading | ready | failed`
+- opencv: `idle | loading | ready | fallback | failed`
+- 诊断字段：`warmupDurationMs`、`retryCount`、`lastError`
+
+### OpenCV fallback 机制
+- OpenCV warming 失败或超时后标记为 `fallback`，质量评估自动走 canvas 路径。
+- fallback 不阻断摄像头与手势识别；MediaPipe ready 时视觉交互可继续运行。
+
 ## 手动测试 Checklist
 - 冷启动：进入主界面，Vision Island 可打开，默认摄像头关闭。
+- Runtime 预热：进入 Vision Island 后观察 runtime 从 warming 到 ready/partial_ready。
 - Start Camera：摄像头状态变为 active。
 - Stop Camera：状态回到 off，摄像头轨道释放。
+- 再次 Start Camera：应明显快于首次冷启动，且不重新下载模型资源。
 - 未开启 gate：三类手势可触发反馈。
 - 开启 gate 且未解锁：手势被 gated，显示 detected but gated。
 - 录入 profile：单人脸、质量合格时可录入成功。
@@ -57,6 +78,7 @@
 - Delete Profile：确认后清空档案，状态回到未录入。
 - 权限拒绝恢复：拒绝权限后显示 error，再次允许后可重试 Start Camera。
 - Stop Camera 资源释放：track stop 计数与诊断信息更新。
+- Retry/Reset Runtime：failed 时可 Retry；Reset 后下一次 Start 触发完整 warmup。
 
 ## 已知限制
 - 光照极暗/极亮会降低质量评分。
@@ -68,16 +90,19 @@
 - `EMFILE` 通常是 dev watcher 环境问题，不是视觉逻辑故障。
 
 ## 稳定性补强说明（本轮）
-- MediaPipe 预热链路改为统一走 `FilesetResolver.forVisionTasks`，不再手工拼接 wasm loader 路径，降低重复注入 `vision_wasm_internal.js` 引发 `ModuleFactory already declared` 的风险。
-- 预热并发行为已加回归测试：并发触发 prewarm 时只应执行一次初始化。
-- 诊断面板已覆盖 camera permission / MediaPipe / OpenCV / face profile / face gate / lastError，便于现场定位是权限层、模型层还是门控层失败。
+- 新增 `use-vision-runtime` 作为统一 runtime manager，集中管理 MediaPipe/OpenCV 初始化、状态机与错误恢复。
+- MediaPipe/OpenCV warmup promise 均做并发去重；多组件并发 warmup 只跑一次实际初始化。
+- `startCamera` 与 `prewarmVisionModels` 均复用 runtime manager，不再各自重复初始化链路。
+- `stopCamera` 不销毁模型实例，避免反复 Start/Stop 的卡顿与重复 warmup。
+- `resetVisionRuntime` 可清理卡死 promise 与 runtime 代次；`retryVisionRuntime` 用于失败后重试。
+- 诊断面板覆盖 runtime / mediapipe / opencv / retryCount / warmupDuration / lastError，便于演示定位故障层。
 
 ## 演示步骤（5 分钟）
-1. 打开主界面，展示“视觉交互”入口与 Vision Diagnostics。
-2. Start Camera，说明 camera / permission / MediaPipe / OpenCV 状态。
+1. 打开主界面，展示“视觉交互”入口与 Vision Diagnostics，并等待 runtime 进入 ready/partial_ready。
+2. Start Camera，说明 camera / permission / runtime / MediaPipe / OpenCV 状态。
 3. 依次做 `open_palm`、`victory`、`thumbs_up`，展示 Rin 形象反馈。
 4. 开启 Face Gate，演示未解锁或多脸时“detected but gated”。
-5. 在录入页展示加密档案、解锁、Delete Profile（带确认）与删除后状态复位。
+5. 在录入页展示加密档案、解锁、Delete Profile（带确认）与删除后状态复位，并演示 Retry/Reset Runtime。
 
 ## EMFILE 风险与 Workaround
 - 建议先提升文件句柄上限再启动 dev：

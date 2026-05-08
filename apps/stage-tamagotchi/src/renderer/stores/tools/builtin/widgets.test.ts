@@ -225,9 +225,13 @@ describe('widgets tool helpers', () => {
       // be expressed as `number | null`. That preserves the runtime behavior while
       // satisfying strict tool validators that compare `required` against `properties`.
       expect(stageWidgetsTool).toSatisfyStrictToolSchema()
-      expect(windowSize).toBeDefined()
-      expect(windowSize?.additionalProperties).toBe(false)
-      expect(Object.keys(windowSize?.properties ?? {})).toEqual([
+      if (!windowSize)
+        throw new Error('windowSize schema must resolve to an object schema')
+
+      const propertyKeys = Object.keys(windowSize.properties ?? {})
+
+      expect(windowSize.additionalProperties).toBe(false)
+      expect(propertyKeys).toEqual([
         'width',
         'height',
         'minWidth',
@@ -236,7 +240,7 @@ describe('widgets tool helpers', () => {
         'maxHeight',
       ])
       expect(schema.required).toContain('windowSize')
-      expect(windowSize?.required).toEqual([
+      expect(windowSize.required).toEqual([
         'width',
         'height',
         'minWidth',
@@ -244,7 +248,7 @@ describe('widgets tool helpers', () => {
         'maxWidth',
         'maxHeight',
       ])
-      expect(windowSize?.required).toEqual(Object.keys(windowSize?.properties ?? {}))
+      expect(windowSize.required).toEqual(propertyKeys)
     })
 
     describe('live AIHubMix repro', () => {
@@ -459,20 +463,28 @@ describe('widgets tool helpers', () => {
         ttlSeconds: 0,
       }, { invokers })
 
-      const dispatched = vi.mocked(invokers.addWidget).mock.calls[0]?.[0]
-      expect(dispatched).toBeDefined()
-      expect(dispatched?.componentProps).toMatchObject({
+      expect(invokers.addWidget).toHaveBeenCalledTimes(1)
+      const addWidgetCall = vi.mocked(invokers.addWidget).mock.calls[0]
+      if (!addWidgetCall)
+        throw new Error('addWidget should be called once with a payload')
+      const [dispatched] = addWidgetCall
+
+      expect(dispatched.id).toBe('guarded-main')
+      expect(dispatched.componentName).toBe('extension-ui')
+      expect(dispatched.size).toBe('m')
+      expect(dispatched.ttlMs).toBe(0)
+      expect(dispatched.componentProps).toMatchObject({
         moduleId: 'guarded-main',
         title: 'Guarded Module',
         payload: {
           safe: true,
         },
       })
-      expect(dispatched?.componentProps).not.toHaveProperty('modelValue')
-      expect(dispatched?.componentProps).not.toHaveProperty('module')
-      expect(dispatched?.componentProps).not.toHaveProperty('moduleConfig')
-      expect(dispatched?.componentProps).not.toHaveProperty('model-value')
-      expect(dispatched?.componentProps).not.toHaveProperty('module-config')
+      expect(dispatched.componentProps).not.toHaveProperty('modelValue')
+      expect(dispatched.componentProps).not.toHaveProperty('module')
+      expect(dispatched.componentProps).not.toHaveProperty('moduleConfig')
+      expect(dispatched.componentProps).not.toHaveProperty('model-value')
+      expect(dispatched.componentProps).not.toHaveProperty('module-config')
     })
 
     it('updates props and trims id', async () => {

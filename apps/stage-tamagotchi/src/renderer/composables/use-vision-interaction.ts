@@ -1,12 +1,8 @@
 import type { Category, FaceLandmarkerResult, GestureRecognizerResult, NormalizedLandmark } from '@mediapipe/tasks-vision'
 
 import type { FaceSampleQuality, VisionFaceProfilePayload, VisionFaceProfileSample } from './use-encrypted-face-profile'
+import type { VisionRuntimeWarmupOptions } from './use-vision-runtime'
 
-import {
-  FaceLandmarker,
-  FilesetResolver,
-  GestureRecognizer,
-} from '@mediapipe/tasks-vision'
 import { defineInvoke } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
 import { getElectronEventaContext } from '@proj-airi/electron-vueuse'
@@ -16,7 +12,7 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { electronSecureStoreDelete, electronSecureStoreGet, electronSecureStoreSet } from '../../shared/eventa'
 import { useEncryptedFaceProfile } from './use-encrypted-face-profile'
 import { createLandmarkDescriptor, useLocalFaceGate } from './use-local-face-gate'
-import { useOpenCvFaceQuality } from './use-opencv-face-quality'
+import { useVisionRuntime } from './use-vision-runtime'
 
 export type VisionCameraState = 'off' | 'loading' | 'active' | 'error'
 export type VisionCameraPermissionState = 'unknown' | 'prompt' | 'granted' | 'denied' | 'unsupported'
@@ -53,6 +49,9 @@ export interface VisionInteractionEvent {
 
 export interface VisionInteractionOptions {
   stableFrames?: number
+  gestureStableFrames?: number
+  gestureInferenceIntervalMs?: number
+  gestureScoreThreshold?: number
   eventCooldownMs?: number
   loopIntervalMs?: number
   quietDurationMs?: number
@@ -104,6 +103,9 @@ interface EmitEventOptions {
 
 const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
   stableFrames: 3,
+  gestureStableFrames: 2,
+  gestureInferenceIntervalMs: 90,
+  gestureScoreThreshold: 0.35,
   eventCooldownMs: 2_000,
   loopIntervalMs: 120,
   quietDurationMs: 60_000,
@@ -115,50 +117,54 @@ const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
 }
 
 const DISPLAY_NAME_LOCAL_STORAGE_KEY = 'airi.vision-experiment.display-name'
-const LOCAL_FACE_MODEL_ASSET_URL = './assets/vision/models/face_landmarker.task'
-const LOCAL_GESTURE_MODEL_ASSET_URL = './assets/vision/models/gesture_recognizer.task'
-const LOCAL_WASM_ROOT_URL = './assets/vision/wasm'
-const FACE_MODEL_ASSET_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
-const GESTURE_MODEL_ASSET_URL = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task'
-const WASM_ROOT_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm'
-const ENABLE_REMOTE_MODEL_FALLBACK = import.meta.env.VITE_VISION_ALLOW_REMOTE_FALLBACK === 'true'
-
 const GATE_ENABLED_STORAGE_KEY = 'airi.vision-experiment.local-face-gate-enabled.v1'
-const VISION_MODEL_PROFILE = 'MediaPipe 官方 float16 v1（本地与远程同规格）'
 const INFERENCE_ERROR_LOG_COOLDOWN_MS = 1_500
 const TIMESTAMP_MISMATCH_RECOVERY_COOLDOWN_MS = 3_000
 const QUALITY_EVALUATION_INTERVAL_MS = 400
-const GESTURE_INFERENCE_INTERVAL_MS = 180
 const UI_YIELD_INTERVAL_MS = 240
 const FACE_PROFILE_AUTO_UNLOCK_STORE_KEY = 'vision.face-profile.auto-unlock.passphrase.v1'
+const GESTURE_HIGH_CONFIDENCE_THRESHOLD = 0.72
+const ENABLE_VISION_VERBOSE_DEBUG_LOGS = import.meta.env.DEV
+  && import.meta.env.VITE_VISION_DEBUG_LOGS === 'true'
+
+const HAND_LANDMARK_INDEX = {
+  wrist: 0,
+  thumbMcp: 2,
+  thumbIp: 3,
+  thumbTip: 4,
+  indexMcp: 5,
+  indexPip: 6,
+  indexTip: 8,
+  middleMcp: 9,
+  middlePip: 10,
+  middleTip: 12,
+  ringMcp: 13,
+  ringPip: 14,
+  ringTip: 16,
+  pinkyMcp: 17,
+  pinkyPip: 18,
+  pinkyTip: 20,
+} as const
 const CAMERA_VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   width: { ideal: 960, max: 1280 },
   height: { ideal: 540, max: 720 },
   frameRate: { ideal: 24, max: 30 },
 }
 
-/**
- * Shared recognizer runtime across Vision Island and enrollment page.
- * This prevents route switches from dropping warmup state.
- */
-const sharedModelWarmupStatus = ref<VisionModelWarmupStatus>('idle')
-const sharedModelSource = ref<VisionModelSource>('unknown')
-let sharedFaceLandmarker: FaceLandmarker | null = null
-let sharedGestureRecognizer: GestureRecognizer | null = null
-let sharedRecognizerInitPromise: Promise<void> | null = null
-let sharedRecognizerInitialized = false
-let sharedLastInferenceTimestampMs = -1
-
 export function useVisionInteraction(options?: VisionInteractionOptions) {
   const runtimeOptions = {
     ...DEFAULT_OPTIONS,
     ...options,
   }
+  const effectiveGestureStableFrames = Math.max(1, Math.round(runtimeOptions.gestureStableFrames))
+  const effectiveGestureInferenceIntervalMs = Math.max(40, Math.round(runtimeOptions.gestureInferenceIntervalMs))
+  const effectiveGestureScoreThreshold = Math.min(0.9, Math.max(0.05, runtimeOptions.gestureScoreThreshold))
+  const visionRuntime = useVisionRuntime()
 
   const isEnabled = ref(false)
   const cameraState = ref<VisionCameraState>('off')
   const cameraPermissionState = ref<VisionCameraPermissionState>('unknown')
-  const mediaPipeStatus = ref<VisionMediaPipeStatus>(sharedRecognizerInitialized ? 'ready' : 'idle')
+  const mediaPipeStatus = computed<VisionMediaPipeStatus>(() => visionRuntime.mediaPipeStatus.value)
   const facePresence = ref<VisionFacePresence>('unknown')
   const faceDirection = ref<VisionFaceDirection>('unknown')
   const faceCenter = ref<{ x: number, y: number } | null>(null)
@@ -184,9 +190,21 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   const isVisionQuiet = computed(() => quietRemainingMs.value > 0)
   const maxInferenceStallMs = ref(runtimeOptions.maxInferenceStallMs)
-  const modelWarmupStatus = sharedModelWarmupStatus
-  const modelSource = sharedModelSource
-  const modelProfile = ref(VISION_MODEL_PROFILE)
+  const modelWarmupStatus = computed<VisionModelWarmupStatus>(() => {
+    if (visionRuntime.mediaPipeStatus.value === 'loading' || visionRuntime.runtimeStatus.value === 'warming')
+      return 'warming'
+    if (visionRuntime.mediaPipeStatus.value === 'ready' && visionRuntime.modelSource.value === 'remote')
+      return 'fallback_remote'
+    if (visionRuntime.mediaPipeStatus.value === 'ready')
+      return 'ready'
+    return 'idle'
+  })
+  const modelSource = visionRuntime.modelSource
+  const modelProfile = visionRuntime.modelProfile
+  const runtimeStatus = visionRuntime.runtimeStatus
+  const runtimeWarmupDurationMs = visionRuntime.warmupDurationMs
+  const runtimeRetryCount = visionRuntime.retryCount
+  const runtimeLastError = visionRuntime.lastError
   const startTiming = ref<VisionStartTimingSnapshot>({
     startedAt: null,
     finishedAt: null,
@@ -215,7 +233,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   const latestFaceResult = shallowRef<FaceLandmarkerResult | null>(null)
 
   const encryptedProfile = useEncryptedFaceProfile()
-  const openCvFaceQuality = useOpenCvFaceQuality()
+  const openCvFaceQuality = visionRuntime.getOpenCVRuntime()
   const localFaceGate = useLocalFaceGate({
     stableFrames: runtimeOptions.stableFrames,
   })
@@ -245,18 +263,14 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     { immediate: true },
   )
 
-  let faceLandmarker: FaceLandmarker | null = sharedFaceLandmarker
-  let gestureRecognizer: GestureRecognizer | null = sharedGestureRecognizer
-  let recognizerInitPromise: Promise<void> | null = sharedRecognizerInitPromise
   let rafId: number | null = null
   let lastLoopAtMs = 0
-  let recognizerInitialized = sharedRecognizerInitialized
 
   let quietTickerId: number | null = null
   let nextEventId = 1
   let activePromptEventId: number | null = null
   let lastProcessedVideoTimeSec = -1
-  let lastProcessedFrameTimestampMs = sharedLastInferenceTimestampMs
+  let lastProcessedFrameTimestampMs = -1
 
   let presentFrameStreak = 0
   let absentFrameStreak = 0
@@ -299,12 +313,11 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   function nextMonotonicInferenceTimestampMs(frameNowMs: number) {
     const candidateTimestampMs = Math.floor(frameNowMs)
-    const floorTimestampMs = Math.max(lastProcessedFrameTimestampMs, sharedLastInferenceTimestampMs)
+    const floorTimestampMs = lastProcessedFrameTimestampMs
     const nextTimestampMs = candidateTimestampMs > floorTimestampMs
       ? candidateTimestampMs
       : (floorTimestampMs + 1)
     lastProcessedFrameTimestampMs = nextTimestampMs
-    sharedLastInferenceTimestampMs = nextTimestampMs
     return nextTimestampMs
   }
 
@@ -760,30 +773,6 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     activePromptEventId = null
   }
 
-  function cleanupRecognizers() {
-    recognizerInitPromise = null
-    sharedRecognizerInitPromise = null
-    try {
-      faceLandmarker?.close()
-    }
-    catch {}
-    try {
-      gestureRecognizer?.close()
-    }
-    catch {}
-    faceLandmarker = null
-    gestureRecognizer = null
-    recognizerInitialized = false
-    sharedFaceLandmarker = null
-    sharedGestureRecognizer = null
-    sharedRecognizerInitialized = false
-    sharedLastInferenceTimestampMs = -1
-    modelWarmupStatus.value = 'idle'
-    modelSource.value = 'unknown'
-    mediaPipeStatus.value = 'idle'
-    resetStartTiming()
-  }
-
   function cleanupAll() {
     invalidateStreamLifecycle()
     clearLoop()
@@ -840,15 +829,123 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       return 'none'
     if (normalized === 'open_palm')
       return 'open_palm'
-    if (normalized === 'victory')
+    if (normalized === 'victory' || normalized === 'peace' || normalized === 'v_sign')
       return 'victory'
     if (normalized === 'thumb_up' || normalized === 'thumbs_up')
       return 'thumbs_up'
     return 'unknown'
   }
 
+  function normalizeHandednessLabel(label: string | null | undefined) {
+    const normalized = label?.trim().toLowerCase()
+    if (normalized === 'left')
+      return 'left'
+    if (normalized === 'right')
+      return 'right'
+    return 'unknown'
+  }
+
+  function distance2d(a: NormalizedLandmark, b: NormalizedLandmark) {
+    const dx = a.x - b.x
+    const dy = a.y - b.y
+    return Math.hypot(dx, dy)
+  }
+
+  function isFingerExtended(landmarks: NormalizedLandmark[], tip: number, pip: number, mcp: number) {
+    const tipPoint = landmarks[tip]
+    const pipPoint = landmarks[pip]
+    const mcpPoint = landmarks[mcp]
+    if (!tipPoint || !pipPoint || !mcpPoint)
+      return false
+    return tipPoint.y < pipPoint.y && pipPoint.y < mcpPoint.y
+  }
+
+  function isFingerCurled(landmarks: NormalizedLandmark[], tip: number, pip: number, mcp: number) {
+    const tipPoint = landmarks[tip]
+    const pipPoint = landmarks[pip]
+    const mcpPoint = landmarks[mcp]
+    if (!tipPoint || !pipPoint || !mcpPoint)
+      return false
+    return tipPoint.y > pipPoint.y && pipPoint.y > mcpPoint.y
+  }
+
+  function detectGestureFromLandmarks(
+    landmarks: NormalizedLandmark[] | undefined,
+    handednessLabel: string | null | undefined,
+  ): VisionGesture {
+    if (!landmarks || landmarks.length < 21)
+      return 'unknown'
+
+    const wrist = landmarks[HAND_LANDMARK_INDEX.wrist]
+    const thumbTip = landmarks[HAND_LANDMARK_INDEX.thumbTip]
+    const thumbMcp = landmarks[HAND_LANDMARK_INDEX.thumbMcp]
+    const thumbIp = landmarks[HAND_LANDMARK_INDEX.thumbIp]
+    const indexMcp = landmarks[HAND_LANDMARK_INDEX.indexMcp]
+    const indexTip = landmarks[HAND_LANDMARK_INDEX.indexTip]
+    const middleTip = landmarks[HAND_LANDMARK_INDEX.middleTip]
+    const ringTip = landmarks[HAND_LANDMARK_INDEX.ringTip]
+    const pinkyTip = landmarks[HAND_LANDMARK_INDEX.pinkyTip]
+    if (!wrist || !thumbTip || !thumbMcp || !thumbIp || !indexMcp || !indexTip || !middleTip || !ringTip || !pinkyTip)
+      return 'unknown'
+
+    const normalizedHandedness = normalizeHandednessLabel(handednessLabel)
+    const thumbRaisedByY = thumbTip.y < thumbIp.y && thumbIp.y < thumbMcp.y
+    const thumbExtendedByX = normalizedHandedness === 'right'
+      ? thumbTip.x < thumbMcp.x
+      : normalizedHandedness === 'left'
+        ? thumbTip.x > thumbMcp.x
+        : false
+    const thumbExtendedByDistance = distance2d(thumbTip, indexMcp) > (distance2d(thumbMcp, indexMcp) * 1.08)
+    const thumbExtended = thumbRaisedByY || thumbExtendedByX || thumbExtendedByDistance
+
+    const indexExtended = isFingerExtended(landmarks, HAND_LANDMARK_INDEX.indexTip, HAND_LANDMARK_INDEX.indexPip, HAND_LANDMARK_INDEX.indexMcp)
+    const middleExtended = isFingerExtended(landmarks, HAND_LANDMARK_INDEX.middleTip, HAND_LANDMARK_INDEX.middlePip, HAND_LANDMARK_INDEX.middleMcp)
+    const ringExtended = isFingerExtended(landmarks, HAND_LANDMARK_INDEX.ringTip, HAND_LANDMARK_INDEX.ringPip, HAND_LANDMARK_INDEX.ringMcp)
+    const pinkyExtended = isFingerExtended(landmarks, HAND_LANDMARK_INDEX.pinkyTip, HAND_LANDMARK_INDEX.pinkyPip, HAND_LANDMARK_INDEX.pinkyMcp)
+
+    const indexCurled = isFingerCurled(landmarks, HAND_LANDMARK_INDEX.indexTip, HAND_LANDMARK_INDEX.indexPip, HAND_LANDMARK_INDEX.indexMcp)
+    const middleCurled = isFingerCurled(landmarks, HAND_LANDMARK_INDEX.middleTip, HAND_LANDMARK_INDEX.middlePip, HAND_LANDMARK_INDEX.middleMcp)
+    const ringCurled = isFingerCurled(landmarks, HAND_LANDMARK_INDEX.ringTip, HAND_LANDMARK_INDEX.ringPip, HAND_LANDMARK_INDEX.ringMcp)
+    const pinkyCurled = isFingerCurled(landmarks, HAND_LANDMARK_INDEX.pinkyTip, HAND_LANDMARK_INDEX.pinkyPip, HAND_LANDMARK_INDEX.pinkyMcp)
+
+    const indexSpread = distance2d(indexTip, middleTip)
+    const indexToWrist = distance2d(indexTip, wrist)
+    const middleToWrist = distance2d(middleTip, wrist)
+    const ringToWrist = distance2d(ringTip, wrist)
+    const pinkyToWrist = distance2d(pinkyTip, wrist)
+
+    const isOpenPalm = thumbExtended
+      && indexExtended
+      && middleExtended
+      && ringExtended
+      && pinkyExtended
+    if (isOpenPalm)
+      return 'open_palm'
+
+    const isVictory = indexExtended
+      && middleExtended
+      && !ringExtended
+      && !pinkyExtended
+      && (ringCurled || ringToWrist < middleToWrist)
+      && (pinkyCurled || pinkyToWrist < middleToWrist)
+      && indexSpread > 0.05
+    if (isVictory)
+      return 'victory'
+
+    const isThumbsUp = thumbExtended
+      && thumbRaisedByY
+      && (indexCurled || indexToWrist < (middleToWrist * 0.95))
+      && (middleCurled || middleToWrist < (ringToWrist * 1.05))
+      && !ringExtended
+      && !pinkyExtended
+    if (isThumbsUp)
+      return 'thumbs_up'
+
+    return 'unknown'
+  }
+
   function logGestureDebug(message: string, payload: Record<string, unknown>) {
-    if (!import.meta.env.DEV)
+    if (!ENABLE_VISION_VERBOSE_DEBUG_LOGS)
       return
 
     console.info(`[vision][gesture] ${message}`, payload)
@@ -859,8 +956,51 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   }
 
   function extractTopGesture(result: GestureRecognizerResult): VisionGesture {
-    const topCategory = result.gestures?.[0]?.[0] as Category | undefined
-    return normalizeGestureName(topCategory?.categoryName)
+    const categories = (result.gestures?.[0] ?? []) as Category[]
+    const landmarkGesture = detectGestureFromLandmarks(
+      result.landmarks?.[0],
+      result.handedness?.[0]?.[0]?.categoryName ?? result.handednesses?.[0]?.[0]?.categoryName,
+    )
+
+    let mlGesture: VisionGesture | null = null
+    let mlGestureScore = Number.NEGATIVE_INFINITY
+    let sawNoneCandidate = false
+    let sawUnknownCandidate = false
+
+    for (const category of categories) {
+      const normalized = normalizeGestureName(category.categoryName)
+      const score = Number.isFinite(category.score) ? Number(category.score) : 1
+      if (score < effectiveGestureScoreThreshold)
+        continue
+
+      if (normalized === 'none') {
+        sawNoneCandidate = true
+        continue
+      }
+      if (normalized === 'unknown') {
+        sawUnknownCandidate = true
+        continue
+      }
+      mlGesture = normalized
+      mlGestureScore = score
+      break
+    }
+
+    if (mlGesture) {
+      if (landmarkGesture === mlGesture)
+        return mlGesture
+      if (landmarkGesture !== 'unknown' && landmarkGesture !== 'none' && mlGestureScore < GESTURE_HIGH_CONFIDENCE_THRESHOLD)
+        return landmarkGesture
+      return mlGesture
+    }
+
+    if (landmarkGesture !== 'unknown' && landmarkGesture !== 'none')
+      return landmarkGesture
+    if (sawNoneCandidate)
+      return 'none'
+    if (sawUnknownCandidate)
+      return 'unknown'
+    return 'none'
   }
 
   function canEmitEvent(key: string, nowMs: number, cooldownMs: number) {
@@ -1085,9 +1225,6 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     if (!shouldEvaluateNow)
       return cachedQualityMetrics
 
-    if (openCvFaceQuality.status.value !== 'ready' && openCvFaceQuality.status.value !== 'loading')
-      void openCvFaceQuality.initializeOpenCv()
-
     const metrics = await openCvFaceQuality.evaluateFaceQuality(videoElement.value, options.primaryLandmarks)
     cachedQualityMetrics = metrics
     lastQualityEvaluatedAt = options.nowMs
@@ -1249,7 +1386,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       rawGesture: gesture,
       candidateGesture,
       candidateGestureFrames,
-      requiredStableFrames: runtimeOptions.stableFrames,
+      requiredStableFrames: effectiveGestureStableFrames,
       lastGesture: lastGesture.value,
       gateEnabled: localFaceGate.gateEnabled.value,
       gateState: localFaceGate.gateState.value,
@@ -1258,7 +1395,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       faceGateStatusText: faceGateStatusText.value,
     })
 
-    if (candidateGestureFrames < runtimeOptions.stableFrames)
+    if (candidateGestureFrames < effectiveGestureStableFrames)
       return
     if (gesture === 'none') {
       lastGesture.value = 'none'
@@ -1279,111 +1416,19 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       handleThumbsUp(nowMs)
   }
 
-  async function ensureRecognizers() {
-    faceLandmarker = sharedFaceLandmarker
-    gestureRecognizer = sharedGestureRecognizer
-    recognizerInitialized = sharedRecognizerInitialized
-    recognizerInitPromise = sharedRecognizerInitPromise
-
-    if (recognizerInitialized)
-      return
-    if (recognizerInitPromise)
-      return recognizerInitPromise
-
-    modelWarmupStatus.value = 'warming'
-    mediaPipeStatus.value = 'loading'
-
-    recognizerInitPromise = (async () => {
-      try {
-        // NOTICE:
-        // Always resolve Wasm files via FilesetResolver instead of handcrafted loader URLs.
-        // We observed repeated loader script injection can surface SyntaxError:
-        // "Identifier 'ModuleFactory' has already been declared" in vision_wasm_internal.js.
-        // Using FilesetResolver keeps MediaPipe's internal loader selection/caching path consistent.
-        // Source/context: reports from vision prewarm runtime logs on this branch.
-        const localFileset = await FilesetResolver.forVisionTasks(LOCAL_WASM_ROOT_URL)
-        await initializeRecognizersFromAssets(localFileset, {
-          faceModelAssetPath: LOCAL_FACE_MODEL_ASSET_URL,
-          gestureModelAssetPath: LOCAL_GESTURE_MODEL_ASSET_URL,
-        })
-        recognizerInitialized = true
-        sharedRecognizerInitialized = true
-        modelSource.value = 'local'
-        modelWarmupStatus.value = 'ready'
-        mediaPipeStatus.value = 'ready'
-      }
-      catch {
-        if (!ENABLE_REMOTE_MODEL_FALLBACK)
-          throw new Error('本地视觉模型加载失败。请确认构建产物包含 ./assets/vision/models 和 ./assets/vision/wasm。')
-
-        const remoteFileset = await FilesetResolver.forVisionTasks(WASM_ROOT_URL)
-        await initializeRecognizersFromAssets(remoteFileset, {
-          faceModelAssetPath: FACE_MODEL_ASSET_URL,
-          gestureModelAssetPath: GESTURE_MODEL_ASSET_URL,
-        })
-        recognizerInitialized = true
-        sharedRecognizerInitialized = true
-        modelSource.value = 'remote'
-        modelWarmupStatus.value = 'fallback_remote'
-        mediaPipeStatus.value = 'ready'
-      }
-    })()
-      .catch((caughtError) => {
-        modelWarmupStatus.value = 'idle'
-        modelSource.value = 'unknown'
-        sharedRecognizerInitialized = false
-        mediaPipeStatus.value = 'failed'
-        throw caughtError
-      })
-      .finally(() => {
-        recognizerInitPromise = null
-        sharedRecognizerInitPromise = null
-      })
-
-    sharedRecognizerInitPromise = recognizerInitPromise
-    return recognizerInitPromise
-  }
-
-  async function initializeRecognizersFromAssets(
-    fileset: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>,
-    modelAssetPath: {
-      faceModelAssetPath: string
-      gestureModelAssetPath: string
-    },
-  ) {
-    const nextFaceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: modelAssetPath.faceModelAssetPath },
-      runningMode: 'VIDEO',
-      numFaces: 2,
-      minFaceDetectionConfidence: 0.5,
-      minFacePresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-      outputFaceBlendshapes: false,
-      outputFacialTransformationMatrixes: false,
+  async function ensureVisionRuntimeReady(options?: VisionRuntimeWarmupOptions) {
+    await visionRuntime.warmupVisionRuntime({
+      background: options?.background ?? false,
+      includeOpenCv: options?.includeOpenCv ?? true,
+      force: options?.force ?? false,
     })
 
-    try {
-      const nextGestureRecognizer = await GestureRecognizer.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: modelAssetPath.gestureModelAssetPath },
-        runningMode: 'VIDEO',
-        numHands: 1,
-        minHandDetectionConfidence: 0.5,
-        minHandPresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-      })
-
-      faceLandmarker = nextFaceLandmarker
-      gestureRecognizer = nextGestureRecognizer
-      sharedFaceLandmarker = nextFaceLandmarker
-      sharedGestureRecognizer = nextGestureRecognizer
+    const runtime = visionRuntime.getMediaPipeRuntime()
+    if (!runtime) {
+      const runtimeError = visionRuntime.lastError.value
+      throw new Error(runtimeError || 'Vision runtime is not ready')
     }
-    catch (caughtError) {
-      try {
-        nextFaceLandmarker.close()
-      }
-      catch {}
-      throw caughtError
-    }
+    return runtime
   }
 
   function bindVideoStream(nextStream: MediaStream) {
@@ -1424,20 +1469,24 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
           return
         }
 
-        if (!recognizerInitialized || !faceLandmarker || !gestureRecognizer) {
-          if (!recognizerInitPromise && modelWarmupStatus.value === 'warming') {
-            void ensureRecognizers().catch((caughtError) => {
-              errorMessage.value = errorMessageFrom(caughtError) ?? 'Vision initialization failed'
-              cleanupRecognizers()
+        const activeRuntime = visionRuntime.getMediaPipeRuntime()
+        if (!activeRuntime) {
+          if (visionRuntime.runtimeStatus.value !== 'warming' && visionRuntime.mediaPipeStatus.value !== 'loading') {
+            void visionRuntime.warmupVisionRuntime({ background: true, includeOpenCv: false }).catch((runtimeError) => {
+              errorMessage.value = errorMessageFrom(runtimeError) ?? 'Vision runtime warmup failed'
             })
           }
-          if (!errorMessage.value && modelWarmupStatus.value === 'idle')
-            errorMessage.value = '视觉模型尚未预热。请先点击“预热视觉模型”，再进行识别。'
+          if (visionRuntime.runtimeStatus.value === 'failed') {
+            errorMessage.value = visionRuntime.lastError.value || 'Vision runtime failed'
+          }
+          else if (!errorMessage.value) {
+            errorMessage.value = 'Vision runtime warming in background.'
+          }
           rafId = requestAnimationFrame(tick)
           return
         }
 
-        if (errorMessage.value === '视觉模型尚未预热。请先点击“预热视觉模型”，再进行识别。')
+        if (errorMessage.value === 'Vision runtime warming in background.')
           errorMessage.value = ''
 
         const wallNowMs = Date.now()
@@ -1461,26 +1510,22 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
         if (hasFiniteFrameTime)
           lastProcessedVideoTimeSec = frameTimeSec
 
-        const previousSharedInferenceTimestampMs = sharedLastInferenceTimestampMs
+        const previousInferenceTimestampMs = lastProcessedFrameTimestampMs
         const frameTimestampMs = nextMonotonicInferenceTimestampMs(nowMs)
-        if (import.meta.env.DEV) {
-          const deltaMs = previousSharedInferenceTimestampMs < 0
+        if (ENABLE_VISION_VERBOSE_DEBUG_LOGS) {
+          const deltaMs = previousInferenceTimestampMs < 0
             ? null
-            : (frameTimestampMs - previousSharedInferenceTimestampMs)
+            : (frameTimestampMs - previousInferenceTimestampMs)
           console.info('[vision] inference timestamp', {
             frameTimestampMs,
-            previousTimestampMs: previousSharedInferenceTimestampMs < 0 ? null : previousSharedInferenceTimestampMs,
+            previousTimestampMs: previousInferenceTimestampMs < 0 ? null : previousInferenceTimestampMs,
             deltaMs,
-            isMonotonic: previousSharedInferenceTimestampMs < 0 || frameTimestampMs > previousSharedInferenceTimestampMs,
+            isMonotonic: previousInferenceTimestampMs < 0 || frameTimestampMs > previousInferenceTimestampMs,
           })
         }
 
-        const activeFaceLandmarker = faceLandmarker
-        const activeGestureRecognizer = gestureRecognizer
-        if (!activeFaceLandmarker || !activeGestureRecognizer) {
-          rafId = requestAnimationFrame(tick)
-          return
-        }
+        const activeFaceLandmarker = activeRuntime.faceLandmarker
+        const activeGestureRecognizer = activeRuntime.gestureRecognizer
 
         if (wallNowMs - lastUiYieldAtMs >= UI_YIELD_INTERVAL_MS) {
           lastUiYieldAtMs = wallNowMs
@@ -1489,7 +1534,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
         const faceResult = activeFaceLandmarker.detectForVideo(video, frameTimestampMs)
         await applyFacePresence(faceResult, frameTimestampMs)
-        if ((wallNowMs - lastGestureInferenceAtMs) >= GESTURE_INFERENCE_INTERVAL_MS) {
+        if ((wallNowMs - lastGestureInferenceAtMs) >= effectiveGestureInferenceIntervalMs) {
           const gestureResult = activeGestureRecognizer.recognizeForVideo(video, frameTimestampMs)
           const topGesture = extractTopGesture(gestureResult)
           applyGesture(topGesture, frameTimestampMs)
@@ -1512,12 +1557,10 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
             lastTimestampMismatchRecoveryAtMs = now
             try {
               clearLoop()
-              cleanupRecognizers()
               lastProcessedVideoTimeSec = -1
-              lastProcessedFrameTimestampMs = sharedLastInferenceTimestampMs
+              lastProcessedFrameTimestampMs = -1
 
               if (isEnabled.value && hasLiveVideoTrack()) {
-                await ensureRecognizers()
                 errorMessage.value = ''
                 await startLoop()
               }
@@ -1608,6 +1651,20 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
         videoPlayElapsedMs: roundedMs(nowMs() - videoPlayStartedAt),
       })
       const videoPlayMs = nowMs() - videoPlayStartedAt
+      const recognizerInitStartedAt = nowMs()
+      await ensureVisionRuntimeReady({ background: false, includeOpenCv: false })
+      if (startToken !== streamLifecycleToken) {
+        stopCameraStream(nextStream, 'stale-start-after-runtime-warmup')
+        clearVideoBinding()
+        return
+      }
+      const recognizerInitMs = nowMs() - recognizerInitStartedAt
+      startTiming.value = {
+        ...startTiming.value,
+        recognizerInitMs: roundedMs(recognizerInitMs),
+        recognizerSource: modelSource.value,
+      }
+
       isEnabled.value = true
       cameraState.value = 'active'
       syncQuietState(Date.now())
@@ -1623,7 +1680,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
         readyForPreviewMs: roundedMs(afterVideoReadyAt - launchStartedAt),
         permissionMs: roundedMs(permissionMs),
         videoPlayMs: roundedMs(videoPlayMs),
-        recognizerInitMs: startTiming.value.recognizerInitMs,
+        recognizerInitMs: startTiming.value.recognizerInitMs ?? roundedMs(nowMs() - recognizerInitStartedAt),
         recognizerSource: modelSource.value,
       }
     }
@@ -1646,11 +1703,14 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   }
 
   async function prewarmVisionModels() {
-    if (modelWarmupStatus.value === 'warming')
+    if (visionRuntime.runtimeStatus.value === 'warming')
       return
     const warmupStartedAt = nowMs()
     try {
-      await ensureRecognizers()
+      await visionRuntime.warmupVisionRuntime({
+        background: true,
+        includeOpenCv: false,
+      })
       const durationMs = nowMs() - warmupStartedAt
       startTiming.value = {
         ...startTiming.value,
@@ -1662,9 +1722,38 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       }
     }
     catch (caughtError) {
-      errorMessage.value = errorMessageFrom(caughtError) ?? 'Vision prewarm failed'
+      errorMessage.value = errorMessageFrom(caughtError) ?? visionRuntime.lastError.value ?? 'Vision prewarm failed'
       throw caughtError
     }
+  }
+
+  async function warmupVisionRuntime(options?: VisionRuntimeWarmupOptions) {
+    await visionRuntime.warmupVisionRuntime({
+      background: options?.background ?? false,
+      includeOpenCv: options?.includeOpenCv ?? true,
+      force: options?.force ?? false,
+    })
+  }
+
+  async function retryVisionRuntime() {
+    try {
+      await visionRuntime.retryVisionRuntime({
+        includeOpenCv: false,
+      })
+      if (errorMessage.value === (runtimeLastError.value || errorMessage.value))
+        errorMessage.value = ''
+    }
+    catch (caughtError) {
+      errorMessage.value = errorMessageFrom(caughtError) ?? runtimeLastError.value ?? 'Vision runtime retry failed'
+      throw caughtError
+    }
+  }
+
+  async function resetVisionRuntime() {
+    await visionRuntime.resetVisionRuntime()
+    errorMessage.value = ''
+    resetStartTiming()
+    lastProcessedFrameTimestampMs = -1
   }
 
   function attachVideoElement(element: HTMLVideoElement | null) {
@@ -1899,6 +1988,10 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     modelWarmupStatus,
     modelSource,
     modelProfile,
+    runtimeStatus,
+    runtimeWarmupDurationMs,
+    runtimeRetryCount,
+    runtimeLastError,
     startTiming,
     cameraDiagnostics,
     faceGateStatusText,
@@ -1926,6 +2019,9 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     setRememberFaceProfileOnDevice,
     acknowledgePrompt,
     prewarmVisionModels,
+    warmupVisionRuntime,
+    retryVisionRuntime,
+    resetVisionRuntime,
   }
 }
 

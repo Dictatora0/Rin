@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Button } from '@proj-airi/ui'
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
@@ -15,6 +15,10 @@ const {
   cameraState,
   cameraPermissionState,
   mediaPipeStatus,
+  runtimeStatus,
+  runtimeWarmupDurationMs,
+  runtimeRetryCount,
+  runtimeLastError,
   errorMessage,
   displayName,
   gateEnabled,
@@ -28,6 +32,9 @@ const {
   attachVideoElement,
   start,
   stop,
+  warmupVisionRuntime,
+  retryVisionRuntime,
+  resetVisionRuntime,
   setDisplayName,
   setFaceGateEnabled,
   enrollLocalFaceProfile,
@@ -42,6 +49,7 @@ const confirmPassphrase = ref('')
 const unlockPassphrase = ref('')
 const enrolling = ref(false)
 const unlocking = ref(false)
+const runtimeWorking = ref(false)
 const rememberOnDevice = ref(false)
 const displayNameInput = ref(displayName.value)
 
@@ -69,6 +77,7 @@ const cameraStateText = computed(() => {
 })
 const openCvStatusText = computed(() => {
   const map: Record<string, string> = {
+    idle: '未初始化',
     loading: '加载中',
     ready: '就绪',
     failed: '失败',
@@ -103,6 +112,18 @@ const mediaPipeStatusText = computed(() => {
   }
   return map[mediaPipeStatus.value] ?? mediaPipeStatus.value
 })
+const runtimeStatusText = computed(() => {
+  const map: Record<string, string> = {
+    idle: 'idle',
+    warming: 'warming',
+    ready: 'ready',
+    partial_ready: 'partial_ready',
+    failed: 'failed',
+    resetting: 'resetting',
+  }
+  return map[runtimeStatus.value] ?? runtimeStatus.value
+})
+const runtimeWarmupDurationText = computed(() => formatTiming(runtimeWarmupDurationMs.value))
 const gateStateText = computed(() => {
   const map: Record<string, string> = {
     disabled: '未启用',
@@ -145,6 +166,8 @@ const lastInferenceErrorAtText = computed(() => {
 const visionLastError = computed(() => {
   if (errorMessage.value)
     return errorMessage.value
+  if (runtimeLastError.value)
+    return runtimeLastError.value
   if (cameraDiagnostics.value.lastInferenceErrorMessage)
     return cameraDiagnostics.value.lastInferenceErrorMessage
   return '无'
@@ -194,12 +217,50 @@ watch(rememberFaceProfileOnDevice, (value) => {
   rememberOnDevice.value = value
 }, { immediate: true })
 
+onMounted(() => {
+  void warmupVisionRuntime({
+    background: true,
+    includeOpenCv: false,
+  }).catch(() => {
+    // runtime diagnostics card will display latest error
+  })
+})
+
 function toggleCamera() {
   if (isEnabled.value) {
     void stop()
     return
   }
   void start()
+}
+
+async function handleRetryRuntime() {
+  if (runtimeWorking.value)
+    return
+  runtimeWorking.value = true
+  try {
+    await retryVisionRuntime()
+    toast.success('Vision runtime retry completed.')
+  }
+  catch {
+    toast.error('Vision runtime retry failed.')
+  }
+  finally {
+    runtimeWorking.value = false
+  }
+}
+
+async function handleResetRuntime() {
+  if (runtimeWorking.value)
+    return
+  runtimeWorking.value = true
+  try {
+    await resetVisionRuntime()
+    toast.message('Vision runtime reset complete.')
+  }
+  finally {
+    runtimeWorking.value = false
+  }
 }
 
 async function runEnrollment() {
@@ -317,6 +378,12 @@ function mapEnrollmentFailureReason(reason: string | undefined) {
     return '未知错误'
   return map[reason] ?? reason
 }
+
+function formatTiming(ms: number | null) {
+  if (ms === null || !Number.isFinite(ms))
+    return '无'
+  return `${ms.toFixed(1)} ms`
+}
 </script>
 
 <template>
@@ -368,6 +435,35 @@ function mapEnrollmentFailureReason(reason: string | undefined) {
             {{ openCvErrorMessage }}
           </div>
         </div>
+      </div>
+    </div>
+
+    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
+      <div :class="['mb-2 text-sm font-700']">
+        Vision Runtime
+      </div>
+      <div :class="['text-xs']">
+        <div>status：{{ runtimeStatusText }}</div>
+        <div>warmupDuration：{{ runtimeWarmupDurationText }}</div>
+        <div>retryCount：{{ runtimeRetryCount }}</div>
+        <div>lastError：{{ runtimeLastError || 'none' }}</div>
+        <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+          First startup may take a moment.
+        </div>
+        <div :class="['text-neutral-500 dark:text-neutral-400']">
+          Models are reused after warmup.
+        </div>
+        <div :class="['text-neutral-500 dark:text-neutral-400']">
+          Stop Camera releases camera only; models stay ready.
+        </div>
+      </div>
+      <div :class="['mt-2 flex flex-wrap items-center gap-2']">
+        <Button size="sm" variant="ghost" :disabled="runtimeWorking" @click="handleRetryRuntime">
+          {{ runtimeWorking ? '处理中...' : 'Retry Runtime' }}
+        </Button>
+        <Button size="sm" variant="ghost" :disabled="runtimeWorking" @click="handleResetRuntime">
+          Reset Runtime
+        </Button>
       </div>
     </div>
 
@@ -550,6 +646,9 @@ function mapEnrollmentFailureReason(reason: string | undefined) {
         Vision Diagnostics
       </div>
       <div :class="['grid gap-1 text-xs md:grid-cols-2']">
+        <div>runtimeStatus：{{ runtimeStatusText }}</div>
+        <div>runtimeWarmup：{{ runtimeWarmupDurationText }}</div>
+        <div>runtimeRetryCount：{{ runtimeRetryCount }}</div>
         <div>cameraState：{{ cameraState }}</div>
         <div>cameraPermission：{{ cameraPermissionStateText }}</div>
         <div>MediaPipe：{{ mediaPipeStatusText }}</div>

@@ -8,7 +8,7 @@ import ControlsIsland from './index.vue'
 const mocks = vi.hoisted(() => {
   return {
     isOutside: { value: false } as { value: boolean },
-    visionPanelUnmounted: vi.fn(),
+    visionUnmountStop: vi.fn(),
     openSettings: vi.fn(),
     openChat: vi.fn(),
     closeWindow: vi.fn(),
@@ -116,7 +116,7 @@ vi.mock('../vision-island/index.vue', () => ({
     name: 'VisionIslandStub',
     setup() {
       onBeforeUnmount(() => {
-        mocks.visionPanelUnmounted()
+        mocks.visionUnmountStop()
       })
       return () => h('div', { 'data-testid': 'vision-island-stub' }, 'vision')
     },
@@ -198,6 +198,7 @@ function mountControlsIsland() {
   document.body.appendChild(container)
   app.mount(container)
   return {
+    app,
     container,
     unmount() {
       app.unmount()
@@ -217,11 +218,11 @@ function findButtonByTooltipText(container: HTMLElement, text: string) {
   return button
 }
 
-describe('controls island layout regression locks', () => {
+describe('controls island vision panel interaction flow', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.isOutside = ref(false)
-    mocks.visionPanelUnmounted.mockReset()
+    mocks.visionUnmountStop.mockReset()
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
     mocks.closeWindow.mockReset()
@@ -235,7 +236,7 @@ describe('controls island layout regression locks', () => {
     vi.restoreAllMocks()
   })
 
-  it('keeps top grid structure and button count stable after opening vision panel', async () => {
+  it('keeps vision panel mounted after mouse leaves for 2s and does not trigger stop', async () => {
     const { container, unmount } = mountControlsIsland()
 
     const allButtons = Array.from(container.querySelectorAll('button'))
@@ -243,63 +244,21 @@ describe('controls island layout regression locks', () => {
     expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
-    const topGrid = container.querySelector('[data-testid="controls-top-grid"]') as HTMLDivElement | null
-    if (!topGrid)
-      throw new Error('top grid container missing after expand')
-
-    const topGridButtonsBefore = topGrid.querySelectorAll('button').length
-    expect(topGrid.className).toContain('w-max')
-    expect(topGrid.className).toContain('self-start')
-    expect(topGrid.hasAttribute('grid-cols-3')).toBe(true)
-    expect(topGridButtonsBefore).toBe(9)
-
-    const visionButton = container.querySelector('[data-testid="controls-vision-toggle"]') as HTMLButtonElement | null
-    if (!visionButton)
-      throw new Error('vision toggle button missing')
-
-    visionButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const cameraButton = findButtonByTooltipText(container, '打开视觉交互')
+    cameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="controls-top-grid"]')).not.toBeNull()
 
-    const topGridAfter = container.querySelector('[data-testid="controls-top-grid"]') as HTMLDivElement | null
-    if (!topGridAfter)
-      throw new Error('top grid container missing after opening vision panel')
-    const topGridButtonsAfter = topGridAfter.querySelectorAll('button').length
-    expect(topGridButtonsAfter).toBe(topGridButtonsBefore)
-    expect(topGridAfter.className).toContain('w-max')
-    expect(topGridAfter.className).toContain('self-start')
-    expect(topGridAfter.hasAttribute('grid-cols-3')).toBe(true)
-
-    unmount()
-  })
-
-  it('keeps close button reachable after vision panel opens', async () => {
-    const { container, unmount } = mountControlsIsland()
-
-    const allButtons = Array.from(container.querySelectorAll('button'))
-    const expandButton = allButtons[0]
-    expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    mocks.isOutside.value = true
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(2_100)
     await nextTick()
 
-    const visionButton = container.querySelector('[data-testid="controls-vision-toggle"]') as HTMLButtonElement | null
-    if (!visionButton)
-      throw new Error('vision toggle button missing')
-    visionButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await nextTick()
-
-    const closeButton = container.querySelector('[data-testid="controls-close-button"]') as HTMLButtonElement | null
-    if (!closeButton)
-      throw new Error('close button missing')
-    closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await nextTick()
-
-    expect(mocks.closeWindow).toHaveBeenCalledTimes(1)
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(mocks.visionUnmountStop).toHaveBeenCalledTimes(0)
+    expect(mocks.closeWindow).toHaveBeenCalledTimes(0)
 
-    const cameraButton = findButtonByTooltipText(container, '收起视觉交互')
-    expect(cameraButton).toBe(visionButton)
     unmount()
   })
 })

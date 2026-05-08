@@ -154,6 +154,8 @@ describe('useVisionPetFeedback', () => {
     expect(feedback.petFeedbackState.value).toBe('quiet')
     expect(feedback.lastPetFeedback.value?.suppressedByQuiet).toBe(true)
     expect(feedback.lastPetFeedback.value?.state).toBe('quiet')
+    expect(toggleExpression).toHaveBeenCalledTimes(1)
+    expect(currentMotion.value.group).toBe('Idle')
     unmount()
   })
 
@@ -237,6 +239,29 @@ describe('useVisionPetFeedback', () => {
     expect(feedback.celebrationCount.value).toBe(0)
     expect(toggleExpression).not.toHaveBeenCalled()
     expect(currentMotion.value.group).toBe('Idle')
+    unmount()
+  })
+
+  it('keeps celebration blocked for multiple_faces gate state without mutating motion or expression', () => {
+    const { feedback, unmount } = createFeedbackHarness()
+
+    currentMotion.value = { group: 'Idle' }
+    const result = feedback.triggerVisionPetFeedback('victory', {
+      allowVisualFeedback: false,
+      gateEnabled: true,
+      gateState: 'locked',
+      summary: 'Gesture detected but pet feedback gated.',
+      sourceEventId: 777,
+    })
+
+    expect(result).toBe(false)
+    expect(feedback.petFeedbackState.value).toBe('gated')
+    expect(feedback.lastPetFeedback.value?.eventType).toBe('gated')
+    expect(feedback.lastPetFeedback.value?.summary).toBe('Gesture detected but pet feedback gated.')
+    expect(feedback.lastPetFeedback.value?.sourceEventId).toBe(777)
+    expect(feedback.celebrationCount.value).toBe(0)
+    expect(currentMotion.value.group).toBe('Idle')
+    expect(toggleExpression).toHaveBeenCalledTimes(0)
     unmount()
   })
 

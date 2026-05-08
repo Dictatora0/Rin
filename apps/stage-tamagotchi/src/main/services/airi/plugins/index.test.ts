@@ -721,10 +721,73 @@ describe('setupPluginHost', () => {
       await cp(join(chessLikePluginRoot, 'dist'), pluginDir, { recursive: true })
     }
     catch {
+      const providersCapability = 'proj-airi:plugin-sdk:apis:protocol:resources:providers:list-providers'
+      const fallbackEntrypointFile = 'airi-plugin-game-chess-fallback.mjs'
       await mkdir(pluginDir, { recursive: true })
+      await writeFile(join(pluginDir, fallbackEntrypointFile), [
+        'const moduleId = \'chess-like-main\'',
+        '',
+        'export async function init(ctx) {',
+        '  await ctx.apis.bindings.announce({',
+        '    moduleId,',
+        '    kitId: \'kit.gamelet\',',
+        '    kitModuleType: \'gamelet\',',
+        '    config: {',
+        '      title: \'Chess\',',
+        '      entrypoint: \'ui/index.html\',',
+        '      widget: {',
+        '        mount: \'iframe\',',
+        '        iframe: {',
+        '          assetPath: \'ui/index.html\',',
+        '          sandbox: \'allow-scripts allow-same-origin allow-forms allow-popups\',',
+        '        },',
+        '        windowSize: {',
+        '          width: 980,',
+        '          height: 840,',
+        '          minWidth: 640,',
+        '          minHeight: 640,',
+        '        },',
+        '      },',
+        '      config: {',
+        '        defaults: {',
+        '          opening: \'queen-gambit\',',
+        '          side: \'white\',',
+        '        },',
+        '      },',
+        '    },',
+        '  })',
+        '  await ctx.apis.bindings.activate({ moduleId })',
+        '}',
+      ].join('\n'))
       await writeFile(
         join(pluginDir, pluginManifestFileName),
-        await readFile(join(chessLikePluginRoot, pluginManifestFileName), 'utf-8'),
+        JSON.stringify({
+          apiVersion: 'v1',
+          kind: 'manifest.plugin.airi.moeru.ai',
+          name: 'airi-plugin-game-chess',
+          permissions: {
+            apis: [
+              { key: 'proj-airi:plugin-sdk:apis:protocol:capabilities:wait', actions: ['invoke'] },
+              { key: providersCapability, actions: ['invoke'] },
+              { key: 'proj-airi:plugin-sdk:apis:client:kits:list', actions: ['invoke'] },
+              { key: 'proj-airi:plugin-sdk:apis:client:bindings:list', actions: ['invoke'] },
+              { key: 'proj-airi:plugin-sdk:apis:client:bindings:announce', actions: ['invoke'] },
+              { key: 'proj-airi:plugin-sdk:apis:client:bindings:activate', actions: ['invoke'] },
+            ],
+            resources: [
+              { key: providersCapability, actions: ['read'] },
+              { key: 'proj-airi:plugin-sdk:resources:kits', actions: ['read'] },
+              { key: 'proj-airi:plugin-sdk:resources:bindings', actions: ['read'] },
+              { key: 'proj-airi:plugin-sdk:resources:kits:kit.gamelet:bindings', actions: ['read', 'write'] },
+            ],
+            capabilities: [
+              { key: providersCapability, actions: ['wait'] },
+            ],
+          },
+          entrypoints: {
+            electron: `./${fallbackEntrypointFile}`,
+          },
+        } satisfies ManifestV1, null, 2),
       )
       await mkdir(join(pluginDir, 'ui'), { recursive: true })
       await writeFile(join(pluginDir, 'ui', 'index.html'), '<!doctype html><title>fallback</title>')

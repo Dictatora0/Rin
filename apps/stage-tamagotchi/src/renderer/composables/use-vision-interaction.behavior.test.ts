@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, ref } from 'vue'
 
 import { useVisionInteraction } from './use-vision-interaction'
+import { useVisionRuntime } from './use-vision-runtime'
 
 const queuedFaceResults: FaceLandmarkerResult[] = []
 const queuedGestureResults: GestureRecognizerResult[] = []
@@ -16,18 +17,47 @@ const gateStateRef = ref<'disabled' | 'enabled' | 'gated' | 'locked'>('disabled'
 const gateProfileStatusRef = ref('not_enrolled')
 const gateDisplayNameRef = ref('')
 const gateMatchScoreRef = ref<number | null>(null)
-const openCvStatusRef = ref<'loading' | 'ready' | 'failed' | 'fallback'>('ready')
+const interactionBehaviorHarness = vi.hoisted(() => {
+  const openCvStatusRef = { value: 'ready' as 'idle' | 'loading' | 'ready' | 'failed' | 'fallback' }
+  const openCvErrorMessageRef = { value: '' }
+  const initializeOpenCvMock = vi.fn(async () => {})
+  const markOpenCvFallbackMock = vi.fn((message: string) => {
+    openCvStatusRef.value = 'fallback'
+    openCvErrorMessageRef.value = message
+  })
+  const resetOpenCvRuntimeMock = vi.fn(() => {
+    openCvStatusRef.value = 'idle'
+    openCvErrorMessageRef.value = ''
+  })
+  const evaluateFaceQualityMock = vi.fn(async () => ({
+    accepted: true,
+    qualityScore: 0.96,
+    brightness: 130,
+    sharpness: 32,
+    contrast: 38,
+    faceSize: 0.22,
+  }))
+  return {
+    openCvStatusRef,
+    openCvErrorMessageRef,
+    initializeOpenCvMock,
+    markOpenCvFallbackMock,
+    resetOpenCvRuntimeMock,
+    evaluateFaceQualityMock,
+  }
+})
+
+const {
+  openCvStatusRef,
+  openCvErrorMessageRef,
+  initializeOpenCvMock,
+  markOpenCvFallbackMock,
+  resetOpenCvRuntimeMock,
+  evaluateFaceQualityMock,
+} = interactionBehaviorHarness
 
 const evaluateFrameMock = vi.fn(() => ({ status: 'no_face' as const }))
 const consumeJustMatchedWelcomeMock = vi.fn(() => false)
-const evaluateFaceQualityMock = vi.fn(async () => ({
-  accepted: true,
-  qualityScore: 0.96,
-  brightness: 130,
-  sharpness: 32,
-  contrast: 38,
-  faceSize: 0.22,
-}))
 const saveEncryptedProfileMock = vi.fn(async () => ({ ok: true as const }))
 
 function createFaceLandmarkerResult(landmarks: NormalizedLandmark[][]): FaceLandmarkerResult {
@@ -37,6 +67,20 @@ function createFaceLandmarkerResult(landmarks: NormalizedLandmark[][]): FaceLand
 function createGestureRecognizerResult(categoryName: string): GestureRecognizerResult {
   return {
     gestures: [[{ categoryName }]],
+  } as GestureRecognizerResult
+}
+
+function createGestureRecognizerResultWithCandidates(
+  options: {
+    candidates: Array<{ categoryName: string, score?: number }>
+    landmarks?: NormalizedLandmark[][]
+    handedness?: string
+  },
+): GestureRecognizerResult {
+  return {
+    gestures: [options.candidates],
+    landmarks: options.landmarks ?? [],
+    handedness: options.handedness ? [[{ categoryName: options.handedness } as any]] : [],
   } as GestureRecognizerResult
 }
 
@@ -59,6 +103,49 @@ function queueFrames(options: {
     queuedFaceResults.push(createFaceLandmarkerResult(options.face))
     queuedGestureResults.push(createGestureRecognizerResult(options.gesture))
   }
+}
+
+function queueFramesWithGestureCandidates(options: {
+  candidates: Array<{ categoryName: string, score?: number }>
+  face: NormalizedLandmark[][]
+  count: number
+  handLandmarks?: NormalizedLandmark[][]
+  handedness?: string
+}) {
+  for (let i = 0; i < options.count; i += 1) {
+    queuedFaceResults.push(createFaceLandmarkerResult(options.face))
+    queuedGestureResults.push(createGestureRecognizerResultWithCandidates({
+      candidates: options.candidates,
+      landmarks: options.handLandmarks,
+      handedness: options.handedness,
+    }))
+  }
+}
+
+function createVictoryHandLandmarks(): NormalizedLandmark[] {
+  const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.7, z: 0.01, visibility: 0 } as NormalizedLandmark))
+  points[0] = { x: 0.5, y: 0.82, z: 0.01, visibility: 0 } // wrist
+  points[1] = { x: 0.44, y: 0.78, z: 0.01, visibility: 0 }
+  points[2] = { x: 0.41, y: 0.73, z: 0.01, visibility: 0 } // thumb mcp
+  points[3] = { x: 0.38, y: 0.68, z: 0.01, visibility: 0 } // thumb ip
+  points[4] = { x: 0.34, y: 0.63, z: 0.01, visibility: 0 } // thumb tip
+  points[5] = { x: 0.45, y: 0.67, z: 0.01, visibility: 0 } // index mcp
+  points[6] = { x: 0.44, y: 0.53, z: 0.01, visibility: 0 } // index pip
+  points[7] = { x: 0.43, y: 0.45, z: 0.01, visibility: 0 }
+  points[8] = { x: 0.42, y: 0.36, z: 0.01, visibility: 0 } // index tip
+  points[9] = { x: 0.52, y: 0.68, z: 0.01, visibility: 0 } // middle mcp
+  points[10] = { x: 0.53, y: 0.54, z: 0.01, visibility: 0 } // middle pip
+  points[11] = { x: 0.54, y: 0.45, z: 0.01, visibility: 0 }
+  points[12] = { x: 0.55, y: 0.35, z: 0.01, visibility: 0 } // middle tip
+  points[13] = { x: 0.58, y: 0.69, z: 0.01, visibility: 0 } // ring mcp
+  points[14] = { x: 0.60, y: 0.73, z: 0.01, visibility: 0 } // ring pip
+  points[15] = { x: 0.61, y: 0.76, z: 0.01, visibility: 0 }
+  points[16] = { x: 0.62, y: 0.79, z: 0.01, visibility: 0 } // ring tip
+  points[17] = { x: 0.64, y: 0.70, z: 0.01, visibility: 0 } // pinky mcp
+  points[18] = { x: 0.66, y: 0.74, z: 0.01, visibility: 0 } // pinky pip
+  points[19] = { x: 0.67, y: 0.77, z: 0.01, visibility: 0 }
+  points[20] = { x: 0.68, y: 0.80, z: 0.01, visibility: 0 } // pinky tip
+  return points
 }
 
 vi.mock('@mediapipe/tasks-vision', () => {
@@ -104,9 +191,12 @@ vi.mock('./use-encrypted-face-profile', () => ({
 
 vi.mock('./use-opencv-face-quality', () => ({
   useOpenCvFaceQuality: () => ({
-    status: openCvStatusRef,
-    initializeOpenCv: vi.fn(async () => {}),
-    evaluateFaceQuality: evaluateFaceQualityMock,
+    status: interactionBehaviorHarness.openCvStatusRef,
+    errorMessage: interactionBehaviorHarness.openCvErrorMessageRef,
+    initializeOpenCv: interactionBehaviorHarness.initializeOpenCvMock,
+    markFallback: interactionBehaviorHarness.markOpenCvFallbackMock,
+    resetRuntime: interactionBehaviorHarness.resetOpenCvRuntimeMock,
+    evaluateFaceQuality: interactionBehaviorHarness.evaluateFaceQualityMock,
   }),
 }))
 
@@ -178,6 +268,14 @@ function resetInteractionMocks() {
   gateDisplayNameRef.value = ''
   gateMatchScoreRef.value = null
   openCvStatusRef.value = 'ready'
+  openCvErrorMessageRef.value = ''
+  initializeOpenCvMock.mockReset()
+  initializeOpenCvMock.mockImplementation(async () => {
+    openCvStatusRef.value = 'ready'
+    openCvErrorMessageRef.value = ''
+  })
+  markOpenCvFallbackMock.mockClear()
+  resetOpenCvRuntimeMock.mockClear()
   evaluateFrameMock.mockReset()
   evaluateFrameMock.mockReturnValue({ status: 'no_face' })
   consumeJustMatchedWelcomeMock.mockReset()
@@ -207,7 +305,7 @@ async function runNextAnimationFrame(nowMs: number, video: HTMLVideoElement, tim
   await framePromise
 }
 
-async function setupInteractionHarness() {
+async function setupInteractionHarness(options?: Parameters<typeof useVisionInteraction>[0]) {
   const { stream, videoTrack } = createMockStream()
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
@@ -220,8 +318,10 @@ async function setupInteractionHarness() {
   const host = defineComponent({
     setup() {
       interaction = useVisionInteraction({
-        stableFrames: 3,
-        loopIntervalMs: 120,
+        stableFrames: options?.stableFrames ?? 3,
+        gestureStableFrames: options?.gestureStableFrames ?? 3,
+        gestureInferenceIntervalMs: options?.gestureInferenceIntervalMs ?? 180,
+        loopIntervalMs: options?.loopIntervalMs ?? 120,
       })
       interaction.attachVideoElement(videoElement)
       return () => h('div')
@@ -234,7 +334,9 @@ async function setupInteractionHarness() {
 
   const readyInteraction = assertInteractionReady(interaction)
 
-  await readyInteraction.prewarmVisionModels()
+  const prewarmPromise = readyInteraction.prewarmVisionModels()
+  await vi.advanceTimersByTimeAsync(300)
+  await prewarmPromise
   await readyInteraction.start()
 
   return {
@@ -246,10 +348,11 @@ async function setupInteractionHarness() {
 }
 
 describe('useVisionInteraction behavior locks', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(1_000))
     resetInteractionMocks()
+    await useVisionRuntime().resetVisionRuntime()
     vi.stubGlobal('requestAnimationFrame', vi.fn((cb: FrameRequestCallback) => {
       rafCallbacks.push(cb)
       return rafCallbacks.length
@@ -261,6 +364,57 @@ describe('useVisionInteraction behavior locks', () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('reacts on the second stable frame when fast gesture mode is enabled', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureStableFrames: 2,
+      gestureInferenceIntervalMs: 80,
+      loopIntervalMs: 80,
+    })
+
+    queueFrames({
+      gesture: 'Open_Palm',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 1,
+    })
+    await runNextAnimationFrame(200, videoElement, 1)
+    expect(interaction.lastEvent.value).toBeNull()
+
+    queueFrames({
+      gesture: 'Open_Palm',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 1,
+    })
+    await runNextAnimationFrame(320, videoElement, 2)
+    expect(interaction.lastEvent.value?.type).toBe('quiet_mode_requested')
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('keeps OpenCV lazy during runtime prewarm and still evaluates face quality through fallback', async () => {
+    openCvStatusRef.value = 'idle'
+
+    const { interaction, videoElement, app } = await setupInteractionHarness()
+
+    expect(initializeOpenCvMock).toHaveBeenCalledTimes(0)
+    expect(interaction.openCvFaceQuality.status.value).toBe('idle')
+    expect(evaluateFaceQualityMock).toHaveBeenCalledTimes(0)
+
+    queueFrames({
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 1,
+    })
+    await runNextAnimationFrame(200, videoElement, 1)
+
+    expect(initializeOpenCvMock).toHaveBeenCalledTimes(0)
+    expect(interaction.openCvFaceQuality.status.value).toBe('idle')
+    expect(evaluateFaceQualityMock).toHaveBeenCalledTimes(1)
+
+    await interaction.stop()
+    app.unmount()
   })
 
   it('requires stable gesture frames and enforces gesture cooldowns', async () => {
@@ -505,15 +659,68 @@ describe('useVisionInteraction behavior locks', () => {
     })
 
     const { interaction, videoElement, app } = await setupInteractionHarness()
+    const stableFace = [createFaceAt(0.5, 0.5)]
 
-    queueFrames({ gesture: 'Victory', face: [createFaceAt(0.5, 0.5)], count: 3 })
+    queueFrames({ gesture: 'Victory', face: stableFace, count: 3 })
     await runNextAnimationFrame(200, videoElement, 1)
     await runNextAnimationFrame(400, videoElement, 2)
     await runNextAnimationFrame(600, videoElement, 3)
 
     expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
+    expect(interaction.lastGesture.value).toBe('victory')
     expect(interaction.localCelebrationCount.value).toBe(1)
-    expect(evaluateFaceQualityMock).toHaveBeenCalled()
+    expect(interaction.openCvFaceQuality.status.value).toBe('fallback')
+    expect(initializeOpenCvMock).toHaveBeenCalledTimes(0)
+    expect(evaluateFaceQualityMock).toHaveBeenCalledTimes(2)
+    expect(evaluateFaceQualityMock).toHaveBeenNthCalledWith(1, videoElement, stableFace[0])
+    expect(evaluateFaceQualityMock).toHaveBeenNthCalledWith(2, videoElement, stableFace[0])
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('recognizes victory when None is the first candidate but Victory is still present', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness()
+
+    queueFramesWithGestureCandidates({
+      candidates: [
+        { categoryName: 'None', score: 0.71 },
+        { categoryName: 'Victory', score: 0.63 },
+      ],
+      face: [createFaceAt(0.5, 0.5)],
+      count: 3,
+    })
+    await runNextAnimationFrame(200, videoElement, 1)
+    await runNextAnimationFrame(400, videoElement, 2)
+    await runNextAnimationFrame(600, videoElement, 3)
+
+    expect(interaction.lastGesture.value).toBe('victory')
+    expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
+    expect(interaction.localCelebrationCount.value).toBe(1)
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('uses landmark heuristic fallback when category candidates are None but hand shape is Victory', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness()
+
+    queueFramesWithGestureCandidates({
+      candidates: [
+        { categoryName: 'None', score: 0.61 },
+      ],
+      face: [createFaceAt(0.5, 0.5)],
+      handLandmarks: [createVictoryHandLandmarks()],
+      handedness: 'Right',
+      count: 3,
+    })
+    await runNextAnimationFrame(200, videoElement, 1)
+    await runNextAnimationFrame(400, videoElement, 2)
+    await runNextAnimationFrame(600, videoElement, 3)
+
+    expect(interaction.lastGesture.value).toBe('victory')
+    expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
+    expect(interaction.localCelebrationCount.value).toBe(1)
 
     await interaction.stop()
     app.unmount()
@@ -548,7 +755,8 @@ describe('useVisionInteraction behavior locks', () => {
     expect(result.ok).toBe(false)
     if (!result.ok)
       expect(result.reason).toBe('low quality')
-    expect(evaluateFaceQualityMock).toHaveBeenCalled()
+    expect(evaluateFaceQualityMock).toHaveBeenCalledTimes(16)
+    expect(saveEncryptedProfileMock).toHaveBeenCalledTimes(0)
 
     await interaction.stop()
     app.unmount()
@@ -585,7 +793,7 @@ describe('useVisionInteraction behavior locks', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok)
-      expect(['enrollment cancelled', 'camera inactive']).toContain(result.reason)
+      expect(result.reason).toBe('enrollment cancelled')
     expect(saveEncryptedProfileMock).toHaveBeenCalledTimes(0)
     expect(interaction.cameraState.value).toBe('off')
     expect(videoTrack.stop).toHaveBeenCalledTimes(1)

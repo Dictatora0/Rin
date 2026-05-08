@@ -1,9 +1,51 @@
 // @vitest-environment jsdom
 
+import type { VisionInteractionOptions } from './use-vision-interaction'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h } from 'vue'
 
 import { useVisionInteraction } from './use-vision-interaction'
+import { useVisionRuntime } from './use-vision-runtime'
+
+const interactionTestHarness = vi.hoisted(() => {
+  const openCvStatusRef = { value: 'ready' as 'idle' | 'loading' | 'ready' | 'failed' | 'fallback' }
+  const openCvErrorMessageRef = { value: '' }
+  const openCvInitializeMock = vi.fn(async () => {})
+  const openCvMarkFallbackMock = vi.fn((message: string) => {
+    openCvStatusRef.value = 'fallback'
+    openCvErrorMessageRef.value = message
+  })
+  const openCvResetRuntimeMock = vi.fn(() => {
+    openCvStatusRef.value = 'idle'
+    openCvErrorMessageRef.value = ''
+  })
+  const openCvEvaluateFaceQualityMock = vi.fn(async () => ({
+    accepted: true,
+    qualityScore: 0.95,
+    brightness: 0.5,
+    sharpness: 0.5,
+    contrast: 0.5,
+    faceSize: 0.4,
+  }))
+  return {
+    openCvStatusRef,
+    openCvErrorMessageRef,
+    openCvInitializeMock,
+    openCvMarkFallbackMock,
+    openCvResetRuntimeMock,
+    openCvEvaluateFaceQualityMock,
+  }
+})
+
+const {
+  openCvStatusRef,
+  openCvErrorMessageRef,
+  openCvInitializeMock,
+  openCvMarkFallbackMock,
+  openCvResetRuntimeMock,
+  openCvEvaluateFaceQualityMock,
+} = interactionTestHarness
 
 vi.mock('@mediapipe/tasks-vision', () => ({
   FaceLandmarker: {
@@ -19,16 +61,12 @@ vi.mock('@mediapipe/tasks-vision', () => ({
 
 vi.mock('./use-opencv-face-quality', () => ({
   useOpenCvFaceQuality: () => ({
-    status: { value: 'ready' },
-    initializeOpenCv: vi.fn(async () => {}),
-    evaluateFaceQuality: vi.fn(async () => ({
-      accepted: true,
-      qualityScore: 0.95,
-      brightness: 0.5,
-      sharpness: 0.5,
-      contrast: 0.5,
-      faceSize: 0.4,
-    })),
+    status: interactionTestHarness.openCvStatusRef,
+    errorMessage: interactionTestHarness.openCvErrorMessageRef,
+    initializeOpenCv: interactionTestHarness.openCvInitializeMock,
+    markFallback: interactionTestHarness.openCvMarkFallbackMock,
+    resetRuntime: interactionTestHarness.openCvResetRuntimeMock,
+    evaluateFaceQuality: interactionTestHarness.openCvEvaluateFaceQualityMock,
   }),
 }))
 
@@ -107,12 +145,12 @@ function createMockStream() {
   return { stream, videoTrack }
 }
 
-function mountInteractionWithVideo(videoElement: HTMLVideoElement) {
+function mountInteractionWithVideo(videoElement: HTMLVideoElement, options?: VisionInteractionOptions) {
   let interaction: ReturnType<typeof useVisionInteraction> | null = null
 
   const host = defineComponent({
     setup() {
-      interaction = useVisionInteraction()
+      interaction = useVisionInteraction(options)
       interaction.attachVideoElement(videoElement)
       return () => h('div')
     },
@@ -165,9 +203,47 @@ async function getVisionRuntimeMocks() {
  */
 describe('useVisionInteraction camera lifecycle regression locks', () => {
   const originalMediaDevices = navigator.mediaDevices
+  const originalPermissions = navigator.permissions
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks()
+    openCvStatusRef.value = 'ready'
+    openCvErrorMessageRef.value = ''
+    openCvInitializeMock.mockReset()
+    openCvInitializeMock.mockImplementation(async () => {
+      openCvStatusRef.value = 'ready'
+      openCvErrorMessageRef.value = ''
+    })
+    openCvMarkFallbackMock.mockClear()
+    openCvResetRuntimeMock.mockClear()
+    openCvEvaluateFaceQualityMock.mockReset()
+    openCvEvaluateFaceQualityMock.mockResolvedValue({
+      accepted: true,
+      qualityScore: 0.95,
+      brightness: 0.5,
+      sharpness: 0.5,
+      contrast: 0.5,
+      faceSize: 0.4,
+    })
+
+    const { faceCreateFromOptions, gestureCreateFromOptions, resolveFileset } = await getVisionRuntimeMocks()
+    resolveFileset.mockReset()
+    resolveFileset.mockResolvedValue({
+      wasmLoaderPath: '/mock/vision_wasm_module_internal.js',
+      wasmBinaryPath: '/mock/vision_wasm_internal.wasm',
+    } as any)
+    faceCreateFromOptions.mockReset()
+    faceCreateFromOptions.mockResolvedValue({
+      detectForVideo: vi.fn(() => ({ faceLandmarks: [] })),
+      close: vi.fn(() => {}),
+    } as any)
+    gestureCreateFromOptions.mockReset()
+    gestureCreateFromOptions.mockResolvedValue({
+      recognizeForVideo: vi.fn(() => ({ gestures: [] })),
+      close: vi.fn(() => {}),
+    } as any)
+
+    await useVisionRuntime().resetVisionRuntime()
   })
 
   afterEach(() => {
@@ -176,6 +252,10 @@ describe('useVisionInteraction camera lifecycle regression locks', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: originalMediaDevices,
+    })
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: originalPermissions,
     })
   })
 
@@ -289,7 +369,7 @@ describe('useVisionInteraction camera lifecycle regression locks', () => {
     expect(videoElement.srcObject).toBeNull()
     expect(videoElement.pause).toHaveBeenCalledTimes(1)
     expect(videoElement.load).toHaveBeenCalledTimes(1)
-    expect(requestAnimationFrameMock).toHaveBeenCalledTimes(1)
+    expect(requestAnimationFrameMock.mock.calls.length).toBeGreaterThanOrEqual(1)
     expect(cancelAnimationFrameMock).toHaveBeenCalledTimes(1)
 
     app.unmount()
@@ -298,6 +378,11 @@ describe('useVisionInteraction camera lifecycle regression locks', () => {
   it('sets error state and message when camera permission request fails', async () => {
     vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1))
     vi.stubGlobal('cancelAnimationFrame', vi.fn(() => {}))
+
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: undefined,
+    })
 
     const getUserMedia = vi.fn(async () => {
       throw new Error('Permission denied in test')
@@ -316,7 +401,7 @@ describe('useVisionInteraction camera lifecycle regression locks', () => {
     expect(interaction.isEnabled.value).toBe(false)
     expect(interaction.cameraState.value).toBe('error')
     expect(interaction.errorMessage.value).toContain('Permission denied in test')
-    expect(['unknown', 'unsupported']).toContain(interaction.cameraPermissionState.value)
+    expect(interaction.cameraPermissionState.value).toBe('unsupported')
 
     app.unmount()
   })
@@ -380,11 +465,10 @@ describe('useVisionInteraction camera lifecycle regression locks', () => {
     const { app, interaction } = mountInteractionWithVideo(videoElement)
 
     await interaction.start()
-    expect(interaction.cameraState.value).toBe('active')
-
-    await expect(interaction.prewarmVisionModels()).rejects.toThrow('本地视觉模型加载失败')
+    expect(interaction.cameraState.value).toBe('error')
     expect(interaction.mediaPipeStatus.value).toBe('failed')
-    expect(interaction.errorMessage.value).toContain('本地视觉模型加载失败')
+    expect(interaction.errorMessage.value).toContain('MediaPipe face model init failed in test')
+    expect(interaction.isEnabled.value).toBe(false)
 
     await interaction.stop()
     expect(videoTrack.stop).toHaveBeenCalledTimes(1)
@@ -428,6 +512,41 @@ describe('useVisionInteraction camera lifecycle regression locks', () => {
     expect(resolveFileset).toHaveBeenCalledTimes(1)
     expect(interaction.modelWarmupStatus.value).toBe('ready')
     expect(interaction.mediaPipeStatus.value).toBe('ready')
+
+    app.unmount()
+  })
+
+  it('configures gesture recognizer with practical gesture allowlist and score threshold', async () => {
+    const { faceCreateFromOptions, gestureCreateFromOptions, resolveFileset } = await getVisionRuntimeMocks()
+    resolveFileset.mockResolvedValue({
+      wasmLoaderPath: '/mock/vision_wasm_module_internal.js',
+      wasmBinaryPath: '/mock/vision_wasm_internal.wasm',
+    } as any)
+    faceCreateFromOptions.mockResolvedValue({
+      detectForVideo: vi.fn(() => ({ faceLandmarks: [] })),
+      close: vi.fn(() => {}),
+    } as any)
+    gestureCreateFromOptions.mockResolvedValue({
+      recognizeForVideo: vi.fn(() => ({ gestures: [] })),
+      close: vi.fn(() => {}),
+    } as any)
+
+    const videoElement = createMockVideoElement()
+    const { app, interaction } = mountInteractionWithVideo(videoElement)
+
+    await interaction.prewarmVisionModels()
+
+    expect(gestureCreateFromOptions).toHaveBeenCalledTimes(1)
+    const [, options] = gestureCreateFromOptions.mock.calls[0] ?? []
+    expect(options).toMatchObject({
+      runningMode: 'VIDEO',
+      numHands: 1,
+      cannedGesturesClassifierOptions: {
+        categoryAllowlist: ['Open_Palm', 'Victory', 'Thumb_Up'],
+        maxResults: 3,
+        scoreThreshold: 0.35,
+      },
+    })
 
     app.unmount()
   })

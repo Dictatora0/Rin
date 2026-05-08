@@ -2,7 +2,7 @@
 import type { VisionInteractionEvent } from '../../../composables/use-vision-interaction'
 
 import { Button } from '@proj-airi/ui'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
@@ -54,17 +54,26 @@ const {
   modelWarmupStatus,
   modelSource,
   modelProfile,
+  runtimeStatus,
+  runtimeWarmupDurationMs,
+  runtimeRetryCount,
+  runtimeLastError,
   startTiming,
   attachVideoElement,
   start,
   stop,
-  prewarmVisionModels,
+  warmupVisionRuntime,
+  retryVisionRuntime,
+  resetVisionRuntime,
   setFaceGateEnabled,
   setMaxInferenceStallMs,
   setRememberFaceProfileOnDevice,
   unlockFaceProfile,
 } = useVisionInteraction({
   stableFrames: 3,
+  gestureStableFrames: 2,
+  gestureInferenceIntervalMs: 90,
+  gestureScoreThreshold: 0.35,
   eventCooldownMs: 2_000,
   loopIntervalMs: 120,
 })
@@ -81,6 +90,10 @@ const {
 
 const maxInferenceStallInput = ref(String(maxInferenceStallMs.value))
 const prewarming = ref(false)
+const BACKGROUND_WARMUP_DELAY_MS = 1_200
+const BACKGROUND_WARMUP_IDLE_TIMEOUT_MS = 2_000
+let scheduledWarmupTimerId: number | null = null
+let scheduledIdleCallbackId: number | null = null
 const quietRemainingSeconds = computed(() => Math.ceil(quietRemainingMs.value / 1000))
 const petQuietRemainingSeconds = computed(() => Math.ceil(petQuietRemainingMs.value / 1000))
 
@@ -134,6 +147,7 @@ const mediaPipeStatusText = computed(() => {
 })
 const openCvStatusText = computed(() => {
   const map: Record<string, string> = {
+    idle: 'idle',
     loading: 'loading',
     ready: 'ready',
     failed: 'failed',
@@ -225,6 +239,18 @@ const modelSourceText = computed(() => {
   }
   return map[modelSource.value] ?? modelSource.value
 })
+const runtimeStatusText = computed(() => {
+  const map: Record<string, string> = {
+    idle: 'idle',
+    warming: 'warming',
+    ready: 'ready',
+    partial_ready: 'partial_ready',
+    failed: 'failed',
+    resetting: 'resetting',
+  }
+  return map[runtimeStatus.value] ?? runtimeStatus.value
+})
+const runtimeWarmupDurationText = computed(() => formatTiming(runtimeWarmupDurationMs.value))
 
 const permissionTimingText = computed(() => formatTiming(startTiming.value.permissionMs))
 const videoPlayTimingText = computed(() => formatTiming(startTiming.value.videoPlayMs))
@@ -254,6 +280,8 @@ const shouldShowPetFeedbackGatedHint = computed(() => {
 const visionDiagnosticsLastError = computed(() => {
   if (errorMessage.value)
     return errorMessage.value
+  if (runtimeLastError.value)
+    return runtimeLastError.value
   if (openCvFaceQuality.errorMessage.value)
     return openCvFaceQuality.errorMessage.value
   return 'none'
@@ -295,6 +323,18 @@ watch(lastEvent, (event) => {
 watch(isEnabled, (enabled) => {
   if (!enabled)
     clearPetFeedback()
+})
+
+onMounted(() => {
+  scheduleRuntimeWarmup({
+    delayMs: BACKGROUND_WARMUP_DELAY_MS,
+    trackLoadingState: false,
+    reportToast: false,
+  })
+})
+
+onBeforeUnmount(() => {
+  clearScheduledWarmup()
 })
 
 function toggleCamera() {
@@ -342,13 +382,37 @@ async function toggleRememberOnDevice(event: Event) {
 async function handlePrewarmVision() {
   if (prewarming.value)
     return
+  toast.message('Vision runtime warmup queued for idle background.')
+  scheduleRuntimeWarmup({
+    delayMs: 0,
+    trackLoadingState: true,
+    reportToast: true,
+  })
+}
+
+async function handleRetryRuntime() {
+  if (prewarming.value)
+    return
   prewarming.value = true
   try {
-    await prewarmVisionModels()
-    toast.success('视觉模型预热完成。')
+    await retryVisionRuntime()
+    toast.success('Vision runtime retry completed.')
   }
   catch {
-    toast.error('视觉模型预热失败，请检查本地资源或网络回退。')
+    toast.error('Vision runtime retry failed.')
+  }
+  finally {
+    prewarming.value = false
+  }
+}
+
+async function handleResetRuntime() {
+  if (prewarming.value)
+    return
+  prewarming.value = true
+  try {
+    await resetVisionRuntime()
+    toast.message('Vision runtime reset complete.')
   }
   finally {
     prewarming.value = false
@@ -359,6 +423,71 @@ function formatTiming(ms: number | null) {
   if (ms === null || !Number.isFinite(ms))
     return '无'
   return `${ms.toFixed(1)} ms`
+}
+
+function clearScheduledWarmup() {
+  if (scheduledWarmupTimerId !== null) {
+    clearTimeout(scheduledWarmupTimerId)
+    scheduledWarmupTimerId = null
+  }
+
+  if (scheduledIdleCallbackId !== null && typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
+    window.cancelIdleCallback(scheduledIdleCallbackId)
+    scheduledIdleCallbackId = null
+  }
+}
+
+function scheduleRuntimeWarmup(options: {
+  delayMs: number
+  trackLoadingState: boolean
+  reportToast: boolean
+}) {
+  clearScheduledWarmup()
+
+  const runWarmup = async () => {
+    if (options.trackLoadingState)
+      prewarming.value = true
+
+    try {
+      await warmupVisionRuntime({
+        background: true,
+        includeOpenCv: false,
+      })
+      if (options.reportToast)
+        toast.success('Vision runtime warmed up.')
+    }
+    catch {
+      if (options.reportToast)
+        toast.error('Vision runtime warmup failed.')
+    }
+    finally {
+      if (options.trackLoadingState)
+        prewarming.value = false
+    }
+  }
+
+  const dispatchWarmup = () => {
+    const hasIdleCallback = typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function'
+    if (hasIdleCallback) {
+      scheduledIdleCallbackId = window.requestIdleCallback(() => {
+        scheduledIdleCallbackId = null
+        void runWarmup()
+      }, { timeout: BACKGROUND_WARMUP_IDLE_TIMEOUT_MS })
+      return
+    }
+
+    void runWarmup()
+  }
+
+  if (options.delayMs <= 0) {
+    dispatchWarmup()
+    return
+  }
+
+  scheduledWarmupTimerId = window.setTimeout(() => {
+    scheduledWarmupTimerId = null
+    dispatchWarmup()
+  }, options.delayMs)
 }
 
 function createPetFeedbackOptions(event: VisionInteractionEvent) {
@@ -446,11 +575,36 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             {{ isEnabled ? '关闭摄像头' : '开启摄像头' }}
           </Button>
           <Button size="sm" variant="ghost" :disabled="prewarming" @click="handlePrewarmVision">
-            {{ prewarming ? '预热中...' : '预热视觉模型' }}
+            {{ prewarming ? '处理中...' : '预加载/重试 Runtime' }}
+          </Button>
+          <Button size="sm" variant="ghost" :disabled="prewarming" @click="handleRetryRuntime">
+            Retry Runtime
+          </Button>
+          <Button size="sm" variant="ghost" :disabled="prewarming" @click="handleResetRuntime">
+            Reset Runtime
           </Button>
           <Button size="sm" variant="ghost" @click="openEnrollmentPage">
             打开人脸录入页
           </Button>
+        </div>
+
+        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            Vision Runtime
+          </div>
+          <div>status: {{ runtimeStatusText }}</div>
+          <div>warmupDuration: {{ runtimeWarmupDurationText }}</div>
+          <div>retryCount: {{ runtimeRetryCount }}</div>
+          <div>lastError: {{ runtimeLastError || 'none' }}</div>
+          <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+            First startup may take a moment.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Models are reused after warmup.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Stop Camera releases camera only; models stay ready.
+          </div>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
@@ -478,6 +632,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
             Vision Diagnostics
           </div>
+          <div>runtimeStatus: {{ runtimeStatusText }}</div>
           <div>cameraState: {{ cameraState }}</div>
           <div>cameraPermission: {{ cameraPermissionStateText }}</div>
           <div>MediaPipe: {{ mediaPipeStatusText }}</div>

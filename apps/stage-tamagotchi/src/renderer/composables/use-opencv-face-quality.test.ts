@@ -92,6 +92,11 @@ describe('useOpenCvFaceQuality canvas fallback metrics', () => {
     vi.restoreAllMocks()
   })
 
+  it('starts from idle instead of perpetual loading before initialization', () => {
+    const quality = useOpenCvFaceQuality()
+    expect(quality.status.value).toBe('idle')
+  })
+
   it('reports expected brightness ranges for black, white, and gray frames', async () => {
     const outputSize = 8
     const quality = useOpenCvFaceQuality({ outputSize, minFaceSizeNormalized: 0.1 })

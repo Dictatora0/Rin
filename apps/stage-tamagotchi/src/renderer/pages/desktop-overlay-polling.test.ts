@@ -104,25 +104,32 @@ describe('extractRunStateFromResult', () => {
   })
 
   it('extracts runState from structuredContent.runState', () => {
+    const runState = {
+      lastGroundingSnapshot: { snapshotId: 'dg_1' },
+    }
     const result = extractRunStateFromResult({
       structuredContent: {
-        runState: {
-          lastGroundingSnapshot: { snapshotId: 'dg_1' },
-        },
+        runState,
       },
     })
-    expect(result).toBeDefined()
-    expect((result as any).lastGroundingSnapshot.snapshotId).toBe('dg_1')
+    expect(result).toBe(runState)
+    expect(result).toEqual({
+      lastGroundingSnapshot: { snapshotId: 'dg_1' },
+    })
+    expect((result as Record<string, unknown>).runState).toBeUndefined()
   })
 
   it('falls back to structuredContent directly when no runState key', () => {
+    const structuredContent = {
+      lastGroundingSnapshot: { snapshotId: 'dg_2' },
+    }
     const result = extractRunStateFromResult({
-      structuredContent: {
-        lastGroundingSnapshot: { snapshotId: 'dg_2' },
-      },
+      structuredContent,
     })
-    expect(result).toBeDefined()
-    expect((result as any).lastGroundingSnapshot.snapshotId).toBe('dg_2')
+    expect(result).toBe(structuredContent)
+    expect(result).toEqual({
+      lastGroundingSnapshot: { snapshotId: 'dg_2' },
+    })
   })
 
   it('returns undefined when structuredContent is missing', () => {

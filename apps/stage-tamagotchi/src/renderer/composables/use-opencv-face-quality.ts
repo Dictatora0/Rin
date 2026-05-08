@@ -11,7 +11,7 @@ type OpenCvInstance = OpenCvModule & {
   onRuntimeInitialized?: () => void
 }
 
-export type OpenCvStatus = 'loading' | 'ready' | 'failed' | 'fallback'
+export type OpenCvStatus = 'idle' | 'loading' | 'ready' | 'failed' | 'fallback'
 
 export interface OpenCvFaceQualityResult extends FaceSampleQuality {
   accepted: boolean
@@ -42,7 +42,7 @@ export function useOpenCvFaceQuality(partialConfig?: OpenCvFaceQualityConfig) {
     ...DEFAULT_CONFIG,
     ...partialConfig,
   }
-  const status = ref<OpenCvStatus>('loading')
+  const status = ref<OpenCvStatus>('idle')
   const errorMessage = ref('')
   const latestQuality = ref<OpenCvFaceQualityResult | null>(null)
   const cvInstance = shallowRef<OpenCvInstance | null>(null)
@@ -82,6 +82,22 @@ export function useOpenCvFaceQuality(partialConfig?: OpenCvFaceQualityConfig) {
     return initializePromise
   }
 
+  function markFallback(message: string) {
+    cvInstance.value = null
+    initializePromise = null
+    status.value = 'fallback'
+    errorMessage.value = message
+  }
+
+  function resetRuntime() {
+    cvInstance.value = null
+    initializePromise = null
+    status.value = 'idle'
+    errorMessage.value = ''
+    latestQuality.value = null
+    scratchCanvas.value = null
+  }
+
   async function evaluateFaceQuality(video: HTMLVideoElement, landmarks: NormalizedLandmark[]) {
     try {
       const bounds = extractFaceBounds(landmarks)
@@ -100,8 +116,6 @@ export function useOpenCvFaceQuality(partialConfig?: OpenCvFaceQualityConfig) {
 
       const cv = cvInstance.value
       if (!cv || status.value !== 'ready') {
-        if (!cv && status.value !== 'loading')
-          void initializeOpenCv()
         const fallback = evaluateQualityWithCanvasFallback(video, bounds, config)
         latestQuality.value = fallback
         return fallback
@@ -135,17 +149,20 @@ export function useOpenCvFaceQuality(partialConfig?: OpenCvFaceQualityConfig) {
     isReady,
     usesFallback,
     initializeOpenCv,
+    markFallback,
+    resetRuntime,
     evaluateFaceQuality,
   }
 }
 
 async function normalizeOpenCvModule(module: OpenCvInstance | Promise<OpenCvInstance>) {
   const maybeResolved = await module
-  if (typeof maybeResolved.getBuildInformation === 'function')
-    return maybeResolved
-
-  if (maybeResolved instanceof Promise)
-    return await maybeResolved
+  const maybeDefault = (maybeResolved as { default?: unknown })?.default
+  const candidate = (maybeDefault ?? maybeResolved) as OpenCvInstance | Promise<OpenCvInstance>
+  if (candidate instanceof Promise)
+    return await normalizeOpenCvModule(await candidate)
+  if (typeof candidate.getBuildInformation === 'function')
+    return candidate
 
   await new Promise<void>((resolve, reject) => {
     let timeoutId: number | null = null
@@ -158,13 +175,13 @@ async function normalizeOpenCvModule(module: OpenCvInstance | Promise<OpenCvInst
       reject(new Error('OpenCV runtime initialization timeout'))
     }, 8_000)
 
-    maybeResolved.onRuntimeInitialized = () => {
+    candidate.onRuntimeInitialized = () => {
       clear()
       resolve()
     }
   })
 
-  return maybeResolved
+  return candidate
 }
 
 function evaluateWithOpenCv(options: {

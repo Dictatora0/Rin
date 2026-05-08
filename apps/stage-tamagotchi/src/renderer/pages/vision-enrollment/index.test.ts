@@ -8,6 +8,9 @@ import VisionEnrollmentPage from './index.vue'
 const mocks = vi.hoisted(() => ({
   start: vi.fn(async () => {}),
   stop: vi.fn(async () => {}),
+  warmupVisionRuntime: vi.fn(async () => {}),
+  retryVisionRuntime: vi.fn(async () => {}),
+  resetVisionRuntime: vi.fn(async () => {}),
   setDisplayName: vi.fn(() => {}),
   setFaceGateEnabled: vi.fn((_: boolean) => {}),
   enrollLocalFaceProfile: vi.fn(async () => ({ ok: false as const, reason: 'camera inactive' })),
@@ -66,6 +69,10 @@ function createInteractionState() {
     cameraState: ref<'off' | 'loading' | 'active' | 'error'>('off'),
     cameraPermissionState: ref<'unknown' | 'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt'),
     mediaPipeStatus: ref<'idle' | 'loading' | 'ready' | 'failed'>('ready'),
+    runtimeStatus: ref<'idle' | 'warming' | 'ready' | 'partial_ready' | 'failed' | 'resetting'>('idle'),
+    runtimeWarmupDurationMs: ref<number | null>(null),
+    runtimeRetryCount: ref(0),
+    runtimeLastError: ref(''),
     errorMessage: ref(''),
     displayName,
     profileStatus,
@@ -84,7 +91,7 @@ function createInteractionState() {
         contrast: 39,
         faceSize: 0.24,
       }),
-      status: ref<'loading' | 'ready' | 'failed' | 'fallback'>('ready'),
+      status: ref<'idle' | 'loading' | 'ready' | 'failed' | 'fallback'>('ready'),
       errorMessage: ref(''),
     },
     encryptedProfile,
@@ -103,6 +110,9 @@ function createInteractionState() {
     attachVideoElement: mocks.attachVideoElement,
     start: mocks.start,
     stop: mocks.stop,
+    warmupVisionRuntime: mocks.warmupVisionRuntime,
+    retryVisionRuntime: mocks.retryVisionRuntime,
+    resetVisionRuntime: mocks.resetVisionRuntime,
     setDisplayName: mocks.setDisplayName,
     setFaceGateEnabled: mocks.setFaceGateEnabled,
     enrollLocalFaceProfile: mocks.enrollLocalFaceProfile,
@@ -200,6 +210,9 @@ describe('vision enrollment page stability behaviors', () => {
   beforeEach(() => {
     mocks.start.mockReset()
     mocks.stop.mockReset()
+    mocks.warmupVisionRuntime.mockReset()
+    mocks.retryVisionRuntime.mockReset()
+    mocks.resetVisionRuntime.mockReset()
     mocks.setDisplayName.mockReset()
     mocks.setFaceGateEnabled.mockReset()
     mocks.enrollLocalFaceProfile.mockReset()
@@ -221,6 +234,10 @@ describe('vision enrollment page stability behaviors', () => {
   })
 
   it('shows vision diagnostics statuses for demo troubleshooting', async () => {
+    mocks.interactionState.runtimeStatus.value = 'failed'
+    mocks.interactionState.runtimeWarmupDurationMs.value = 1200
+    mocks.interactionState.runtimeRetryCount.value = 2
+    mocks.interactionState.runtimeLastError.value = 'MediaPipe warmup timed out'
     mocks.interactionState.cameraState.value = 'error'
     mocks.interactionState.cameraPermissionState.value = 'denied'
     mocks.interactionState.mediaPipeStatus.value = 'failed'
@@ -234,7 +251,12 @@ describe('vision enrollment page stability behaviors', () => {
     await nextTick()
 
     const text = container.textContent ?? ''
+    expect(text).toContain('Vision Runtime')
+    expect(text).toContain('status：failed')
+    expect(text).toContain('retryCount：2')
+    expect(text).toContain('lastError：MediaPipe warmup timed out')
     expect(text).toContain('Vision Diagnostics')
+    expect(text).toContain('runtimeStatus：failed')
     expect(text).toContain('cameraState：error')
     expect(text).toContain('cameraPermission：已拒绝')
     expect(text).toContain('MediaPipe：failed')
@@ -242,6 +264,23 @@ describe('vision enrollment page stability behaviors', () => {
     expect(text).toContain('faceProfile：encrypted')
     expect(text).toContain('faceGate：locked / multiple_faces')
     expect(text).toContain('lastError：Vision prewarm failed')
+    expect(mocks.warmupVisionRuntime).toHaveBeenCalledWith({
+      background: true,
+      includeOpenCv: false,
+    })
+
+    unmount()
+  })
+
+  it('wires runtime retry and reset buttons to shared runtime controls', async () => {
+    const { container, unmount } = mountPage()
+    await nextTick()
+
+    await clickButton(container, 'Retry Runtime')
+    expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
+
+    await clickButton(container, 'Reset Runtime')
+    expect(mocks.resetVisionRuntime).toHaveBeenCalledTimes(1)
 
     unmount()
   })

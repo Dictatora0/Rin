@@ -77,6 +77,10 @@ watch(expanded, (isExpanded) => {
   }
 })
 
+watch(visionPanelVisible, (visible) => {
+  setOverlay('vision-panel', visible)
+})
+
 useIntervalFn(() => {
   if (expanded.value && isOutside.value && !isBlocked.value) {
     expanded.value = false
@@ -156,7 +160,7 @@ function toggleVisionPanel() {
             :icon-class="adjustStyleClasses.icon"
           />
 
-          <div class="w-max self-start" grid grid-cols-3 gap-2>
+          <div data-testid="controls-top-grid" class="w-max self-start" grid grid-cols-3 gap-2>
             <ControlButtonTooltip disable-hoverable-content>
               <ControlButton :button-style="adjustStyleClasses.button" @click="openSettings({ route: '/settings' })">
                 <div i-solar:settings-minimalistic-outline :class="adjustStyleClasses.icon" text="neutral-800 dark:neutral-300" />
@@ -223,6 +227,7 @@ function toggleVisionPanel() {
 
             <ControlButtonTooltip disable-hoverable-content>
               <ControlButton
+                data-testid="controls-vision-toggle"
                 :button-style="adjustStyleClasses.button"
                 :class="[
                   visionPanelVisible ? 'bg-sky-100/80 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300' : '',
@@ -237,7 +242,7 @@ function toggleVisionPanel() {
             </ControlButtonTooltip>
 
             <ControlButtonTooltip disable-hoverable-content>
-              <ControlButton :button-style="adjustStyleClasses.button" hover:bg-red-500 hover:text-white @click="closeWindow()">
+              <ControlButton data-testid="controls-close-button" :button-style="adjustStyleClasses.button" hover:bg-red-500 hover:text-white @click="closeWindow()">
                 <div i-solar:close-circle-outline :class="adjustStyleClasses.icon" />
               </ControlButton>
               <template #tooltip>

@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(async () => {}),
   stop: vi.fn(async () => {}),
   prewarmVisionModels: vi.fn(async () => {}),
+  warmupVisionRuntime: vi.fn(async () => {}),
+  retryVisionRuntime: vi.fn(async () => {}),
+  resetVisionRuntime: vi.fn(async () => {}),
   setFaceGateEnabled: vi.fn(() => {}),
   setMaxInferenceStallMs: vi.fn(() => {}),
   setRememberFaceProfileOnDevice: vi.fn(async () => true),
@@ -64,7 +67,7 @@ function createInteractionState() {
     secureStoreAvailable: ref(true),
     localFaceGate,
     openCvFaceQuality: {
-      status: ref<'loading' | 'ready' | 'failed' | 'fallback'>('ready'),
+      status: ref<'idle' | 'loading' | 'ready' | 'failed' | 'fallback'>('ready'),
       errorMessage: ref(''),
     },
     canTriggerInteractiveFeedback: ref(true),
@@ -73,6 +76,10 @@ function createInteractionState() {
     modelWarmupStatus: ref<'idle' | 'warming' | 'ready' | 'fallback_remote'>('idle'),
     modelSource: ref<'local' | 'remote' | 'unknown'>('unknown'),
     modelProfile: ref('MediaPipe 官方 float16 v1（本地与远程同规格）'),
+    runtimeStatus: ref<'idle' | 'warming' | 'ready' | 'partial_ready' | 'failed' | 'resetting'>('idle'),
+    runtimeWarmupDurationMs: ref<number | null>(null),
+    runtimeRetryCount: ref(0),
+    runtimeLastError: ref(''),
     startTiming: ref({
       startedAt: null,
       finishedAt: null,
@@ -87,6 +94,9 @@ function createInteractionState() {
     start: mocks.start,
     stop: mocks.stop,
     prewarmVisionModels: mocks.prewarmVisionModels,
+    warmupVisionRuntime: mocks.warmupVisionRuntime,
+    retryVisionRuntime: mocks.retryVisionRuntime,
+    resetVisionRuntime: mocks.resetVisionRuntime,
     setFaceGateEnabled: mocks.setFaceGateEnabled,
     setMaxInferenceStallMs: mocks.setMaxInferenceStallMs,
     setRememberFaceProfileOnDevice: mocks.setRememberFaceProfileOnDevice,
@@ -184,9 +194,13 @@ async function clickButton(container: HTMLElement, text: string) {
 
 describe('visionIsland UI behavior', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     mocks.start.mockReset()
     mocks.stop.mockReset()
     mocks.prewarmVisionModels.mockReset()
+    mocks.warmupVisionRuntime.mockReset()
+    mocks.retryVisionRuntime.mockReset()
+    mocks.resetVisionRuntime.mockReset()
     mocks.setFaceGateEnabled.mockReset()
     mocks.setMaxInferenceStallMs.mockReset()
     mocks.setRememberFaceProfileOnDevice.mockReset()
@@ -221,17 +235,30 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('摄像头默认关闭。')
     expect(text).toContain('识别仅在本地运行。')
     expect(text).toContain('不会上传任何摄像头数据。')
+    expect(text).toContain('Vision Runtime')
+    expect(text).toContain('status: idle')
+    expect(text).toContain('retryCount: 0')
     expect(text).toContain('Vision Diagnostics')
+    expect(text).toContain('runtimeStatus: idle')
     expect(text).toContain('cameraState: off')
     expect(text).toContain('cameraPermission: unknown')
     expect(text).toContain('MediaPipe: idle')
     expect(text).toContain('OpenCV: ready')
     expect(text).toContain('lastError: none')
+    expect(mocks.warmupVisionRuntime).toHaveBeenCalledTimes(0)
+    await vi.advanceTimersByTimeAsync(1_200)
+    await Promise.resolve()
+    await nextTick()
+    expect(mocks.warmupVisionRuntime).toHaveBeenCalledTimes(1)
+    expect(mocks.warmupVisionRuntime).toHaveBeenCalledWith({
+      background: true,
+      includeOpenCv: false,
+    })
 
     unmount()
   })
 
-  it('wires camera, prewarm, and enrollment actions to composable/router handlers', async () => {
+  it('wires camera, runtime actions, and enrollment routing to composable handlers', async () => {
     const { container, unmount } = mountVisionIsland()
     await nextTick()
 
@@ -245,10 +272,21 @@ describe('visionIsland UI behavior', () => {
     await clickButton(container, '关闭摄像头')
     expect(mocks.stop).toHaveBeenCalledTimes(1)
 
-    await clickButton(container, '预热视觉模型')
-    expect(mocks.prewarmVisionModels).toHaveBeenCalledTimes(1)
+    await clickButton(container, '预加载/重试 Runtime')
+    expect(mocks.warmupVisionRuntime).toHaveBeenCalledTimes(1)
+    expect(mocks.warmupVisionRuntime).toHaveBeenLastCalledWith({
+      background: true,
+      includeOpenCv: false,
+    })
+    expect(mocks.toastMessage).toHaveBeenCalledWith('Vision runtime warmup queued for idle background.')
     expect(mocks.toastSuccess).toHaveBeenCalledTimes(1)
     expect(mocks.toastError).toHaveBeenCalledTimes(0)
+
+    await clickButton(container, 'Retry Runtime')
+    expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
+
+    await clickButton(container, 'Reset Runtime')
+    expect(mocks.resetVisionRuntime).toHaveBeenCalledTimes(1)
 
     await clickButton(container, '打开人脸录入页')
     expect(mocks.routerPush).toHaveBeenCalledWith('/vision-enrollment')
@@ -305,6 +343,75 @@ describe('visionIsland UI behavior', () => {
       sourceEventId: 71,
     }))
 
+    unmount()
+  })
+
+  it('keeps critical guidance visible after runtime retry failure and reset flow', async () => {
+    mocks.retryVisionRuntime.mockRejectedValueOnce(new Error('runtime retry failed in test'))
+    const { container, unmount } = mountVisionIsland()
+    await nextTick()
+
+    await clickButton(container, 'Retry Runtime')
+    expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
+    expect(mocks.toastError).toHaveBeenCalledTimes(1)
+    expect(mocks.toastError).toHaveBeenCalledWith('Vision runtime retry failed.')
+
+    await clickButton(container, 'Reset Runtime')
+    expect(mocks.resetVisionRuntime).toHaveBeenCalledTimes(1)
+    expect(mocks.toastMessage).toHaveBeenCalledWith('Vision runtime reset complete.')
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('Open Palm: quiet Rin visually')
+    expect(text).toContain('Victory: trigger Rin celebration')
+    expect(text).toContain('Thumbs Up: acknowledge current prompt')
+    expect(text).toContain('摄像头默认关闭。')
+    expect(text).toContain('识别仅在本地运行。')
+    expect(text).toContain('不会上传任何摄像头数据。')
+    expect(text).toContain('Vision Diagnostics')
+    expect(text).toContain('Vision Runtime')
+
+    unmount()
+  })
+
+  it('uses branch-specific camera toggle actions without double-triggering start', async () => {
+    const { container, unmount } = mountVisionIsland()
+    await nextTick()
+
+    await clickButton(container, '开启摄像头')
+    expect(mocks.start).toHaveBeenCalledTimes(1)
+    expect(mocks.stop).toHaveBeenCalledTimes(0)
+
+    mocks.interactionState.isEnabled.value = true
+    mocks.interactionState.cameraState.value = 'active'
+    await nextTick()
+
+    await clickButton(container, '关闭摄像头')
+    expect(mocks.stop).toHaveBeenCalledTimes(1)
+    expect(mocks.start).toHaveBeenCalledTimes(1)
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('Vision Runtime')
+    expect(text).toContain('Vision Diagnostics')
+    unmount()
+  })
+
+  it('does not emit pet feedback for non-gesture/non-direction events', async () => {
+    const { container, unmount } = mountVisionIsland()
+    await nextTick()
+
+    mocks.triggerVisionPetFeedback.mockClear()
+    mocks.interactionState.lastEvent.value = {
+      id: 802,
+      type: 'face_gate_enrolled',
+      message: 'Face profile enrolled locally.',
+      at: Date.now(),
+    }
+    await nextTick()
+
+    expect(mocks.triggerVisionPetFeedback).toHaveBeenCalledTimes(0)
+    const text = container.textContent ?? ''
+    expect(text).toContain('Face profile enrolled locally.')
+    expect(text).toContain('Vision Diagnostics')
     unmount()
   })
 })
