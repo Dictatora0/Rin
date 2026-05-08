@@ -376,14 +376,24 @@ function minDistanceToSamples(descriptor: number[], samples: VisionFaceProfilePa
 }
 
 function descriptorDistance(a: number[], b: number[]) {
-  const n = Math.min(a.length, b.length)
-  if (!n)
+  if (!a.length || !b.length)
     return Number.POSITIVE_INFINITY
+  if (a.length !== b.length)
+    return Number.POSITIVE_INFINITY
+
+  const n = a.length
   let sum = 0
   for (let i = 0; i < n; i += 1) {
-    const d = (a[i] ?? 0) - (b[i] ?? 0)
+    const left = a[i] ?? 0
+    const right = b[i] ?? 0
+    if (!Number.isFinite(left) || !Number.isFinite(right))
+      return Number.POSITIVE_INFINITY
+    const d = left - right
     sum += d * d
   }
+  if (!Number.isFinite(sum))
+    return Number.POSITIVE_INFINITY
+
   return Math.sqrt(sum / n)
 }
 

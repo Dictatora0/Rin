@@ -9,7 +9,13 @@ import { toast } from 'vue-sonner'
 import { useVisionInteraction } from '../../../composables/use-vision-interaction'
 import { useVisionPetFeedback } from '../../../composables/use-vision-pet-feedback'
 
-const collapsed = ref(true)
+const props = withDefaults(defineProps<{
+  embedded?: boolean
+}>(), {
+  embedded: false,
+})
+
+const collapsed = ref(!props.embedded)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const unlockPassphrase = ref('')
 const unlocking = ref(false)
@@ -200,6 +206,16 @@ const shouldShowPetFeedbackGatedHint = computed(() => {
     return true
   return lastEvent.value?.type === 'detected_but_gated'
 })
+const rootClasses = computed(() => {
+  if (props.embedded) {
+    return [
+      'relative w-full',
+      'max-h-[68vh] overflow-y-auto',
+    ]
+  }
+
+  return ['fixed left-3 top-14 z-20']
+})
 
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
 
@@ -355,23 +371,24 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 </script>
 
 <template>
-  <div fixed left-3 top-14 z-20>
+  <div :class="rootClasses">
     <div
       :class="[
-        'w-80 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-xl backdrop-blur-md',
+        props.embedded ? 'w-full' : 'w-80',
+        'rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-xl backdrop-blur-md',
         'dark:border-neutral-700/70 dark:bg-neutral-900/80',
       ]"
     >
       <div :class="['mb-2 flex items-center justify-between gap-2']">
         <div :class="['text-sm font-700 text-neutral-800 dark:text-neutral-100']">
-          视觉实验
+          视觉交互
         </div>
-        <Button size="sm" variant="ghost" @click="collapsed = !collapsed">
+        <Button v-if="!props.embedded" size="sm" variant="ghost" @click="collapsed = !collapsed">
           {{ collapsed ? '展开' : '收起' }}
         </Button>
       </div>
 
-      <div v-if="!collapsed" :class="['flex flex-col gap-2']">
+      <div v-if="props.embedded || !collapsed" :class="['flex flex-col gap-2']">
         <div :class="['flex items-center gap-2']">
           <Button size="sm" :variant="isEnabled ? 'secondary' : 'primary'" @click="toggleCamera">
             {{ isEnabled ? '关闭摄像头' : '开启摄像头' }}

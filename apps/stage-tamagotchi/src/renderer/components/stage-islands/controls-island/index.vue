@@ -8,6 +8,7 @@ import { storeToRefs } from 'pinia'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import VisionIsland from '../vision-island/index.vue'
 import ControlButtonTooltip from './control-button-tooltip.vue'
 import ControlButton from './control-button.vue'
 import ControlsIslandAuthButton from './controls-island-auth-button.vue'
@@ -40,6 +41,7 @@ const closeWindow = useElectronEventaInvoke(electronAppQuit)
 const setAlwaysOnTop = useElectronEventaInvoke(electronWindowSetAlwaysOnTop)
 
 const expanded = ref(false)
+const visionPanelVisible = ref(false)
 const islandRef = ref<HTMLElement>()
 
 // Tracks open overlays/dialogs that should prevent auto-collapse (e.g. 'hearing', 'profile-picker')
@@ -47,7 +49,10 @@ const blockingOverlays = reactive(new Set<string>())
 const isBlocked = computed(() => blockingOverlays.size > 0)
 
 function setOverlay(key: string, active: boolean) {
-  active ? blockingOverlays.add(key) : blockingOverlays.delete(key)
+  if (active)
+    blockingOverlays.add(key)
+  else
+    blockingOverlays.delete(key)
 }
 
 // Expose for parent (e.g. to disable click-through when a dialog is open)
@@ -68,6 +73,7 @@ watch(isOutsideAfter2seconds, (outside) => {
 watch(expanded, (isExpanded) => {
   if (!isExpanded) {
     blockingOverlays.clear()
+    visionPanelVisible.value = false
   }
 })
 
@@ -123,6 +129,10 @@ const startDraggingWindow = !isLinux() ? defineInvoke(context.value, electronSta
 function refreshWindow() {
   window.location.reload()
 }
+
+function toggleVisionPanel() {
+  visionPanelVisible.value = !visionPanelVisible.value
+}
 </script>
 
 <template>
@@ -135,13 +145,18 @@ function refreshWindow() {
         enter-from-class="opacity-0 translate-y-8 scale-90 blur-sm"
         leave-to-class="opacity-0 translate-y-8 scale-90 blur-sm"
       >
-        <div v-if="expanded" border="1 neutral-200 dark:neutral-800" mb-2 flex flex-col gap-1 rounded-2xl p-2 backdrop-blur-xl class="bg-neutral-100/80 shadow-2xl shadow-black/20 dark:bg-neutral-900/80">
+        <div
+          v-if="expanded"
+          border="1 neutral-200 dark:neutral-800"
+          mb-2 flex max-h="[74vh]" flex-col gap-2 overflow-y-auto rounded-2xl p-2 backdrop-blur-xl
+          class="bg-neutral-100/80 shadow-2xl shadow-black/20 dark:bg-neutral-900/80"
+        >
           <ControlsIslandAuthButton
             :button-style="adjustStyleClasses.button"
             :icon-class="adjustStyleClasses.icon"
           />
 
-          <div grid grid-cols-3 gap-2>
+          <div class="w-max self-start" grid grid-cols-3 gap-2>
             <ControlButtonTooltip disable-hoverable-content>
               <ControlButton :button-style="adjustStyleClasses.button" @click="openSettings({ route: '/settings' })">
                 <div i-solar:settings-minimalistic-outline :class="adjustStyleClasses.icon" text="neutral-800 dark:neutral-300" />
@@ -207,6 +222,21 @@ function refreshWindow() {
             <ControlsIslandFadeOnHover :icon-class="adjustStyleClasses.icon" :button-style="adjustStyleClasses.button" />
 
             <ControlButtonTooltip disable-hoverable-content>
+              <ControlButton
+                :button-style="adjustStyleClasses.button"
+                :class="[
+                  visionPanelVisible ? 'bg-sky-100/80 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300' : '',
+                ]"
+                @click="toggleVisionPanel"
+              >
+                <div i-solar:camera-outline :class="adjustStyleClasses.icon" />
+              </ControlButton>
+              <template #tooltip>
+                {{ visionPanelVisible ? '收起视觉交互' : '打开视觉交互' }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip disable-hoverable-content>
               <ControlButton :button-style="adjustStyleClasses.button" hover:bg-red-500 hover:text-white @click="closeWindow()">
                 <div i-solar:close-circle-outline :class="adjustStyleClasses.icon" />
               </ControlButton>
@@ -215,6 +245,8 @@ function refreshWindow() {
               </template>
             </ControlButtonTooltip>
           </div>
+
+          <VisionIsland v-if="visionPanelVisible" embedded />
         </div>
       </Transition>
 

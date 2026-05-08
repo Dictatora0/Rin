@@ -278,6 +278,10 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   let streamLifecycleToken = 0
   const trackedCameraStreams = new Set<MediaStream>()
 
+  function invalidateStreamLifecycle() {
+    streamLifecycleToken += 1
+  }
+
   function nowMs() {
     if (typeof performance !== 'undefined' && typeof performance.now === 'function')
       return performance.now()
@@ -777,6 +781,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   }
 
   function cleanupAll() {
+    invalidateStreamLifecycle()
     clearLoop()
     stopQuietTicker()
     stopTracks()
@@ -1588,7 +1593,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   }
 
   async function stop() {
-    streamLifecycleToken += 1
+    invalidateStreamLifecycle()
     isEnabled.value = false
     clearLoop()
     stopTracks()
@@ -1802,6 +1807,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   void detectSecureStoreAvailability()
   void tryAutoUnlockFaceProfile()
   onBeforeUnmount(() => {
+    invalidateStreamLifecycle()
     clearLoop()
     stopQuietTicker()
     stopTracks()
