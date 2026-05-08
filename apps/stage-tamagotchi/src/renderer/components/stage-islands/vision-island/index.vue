@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import type { VisionInteractionEvent } from '../../../composables/use-vision-interaction'
+
 import { Button } from '@proj-airi/ui'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
 import { useVisionInteraction } from '../../../composables/use-vision-interaction'
+import { useVisionPetFeedback } from '../../../composables/use-vision-pet-feedback'
 
 const collapsed = ref(true)
 const videoRef = ref<HTMLVideoElement | null>(null)
@@ -56,10 +59,21 @@ const {
   eventCooldownMs: 2_000,
   loopIntervalMs: 120,
 })
+const {
+  triggerVisionPetFeedback,
+  petFeedbackState,
+  lastPetFeedback,
+  isQuietVisualMode,
+  quietRemainingMs: petQuietRemainingMs,
+  celebrationCount: petCelebrationCount,
+  cancelQuietVisualMode,
+  clearPetFeedback,
+} = useVisionPetFeedback()
 
 const maxInferenceStallInput = ref(String(maxInferenceStallMs.value))
 const prewarming = ref(false)
 const quietRemainingSeconds = computed(() => Math.ceil(quietRemainingMs.value / 1000))
+const petQuietRemainingSeconds = computed(() => Math.ceil(petQuietRemainingMs.value / 1000))
 
 const faceCenterText = computed(() => {
   if (!faceCenter.value)
@@ -166,6 +180,26 @@ const videoPlayTimingText = computed(() => formatTiming(startTiming.value.videoP
 const recognizerInitTimingText = computed(() => formatTiming(startTiming.value.recognizerInitMs))
 const totalTimingText = computed(() => formatTiming(startTiming.value.totalMs))
 const readyForPreviewTimingText = computed(() => formatTiming(startTiming.value.readyForPreviewMs))
+const petFeedbackStateText = computed(() => {
+  const map: Record<string, string> = {
+    idle: 'idle',
+    quiet: 'quiet',
+    celebrating: 'celebrating',
+    acknowledged: 'acknowledged',
+    gated: 'gated',
+  }
+  return map[petFeedbackState.value] ?? petFeedbackState.value
+})
+const lastPetFeedbackSummary = computed(() => {
+  if (!lastPetFeedback.value)
+    return '无'
+  return `${lastPetFeedback.value.summary} (${new Date(lastPetFeedback.value.at).toLocaleTimeString()})`
+})
+const shouldShowPetFeedbackGatedHint = computed(() => {
+  if (petFeedbackState.value === 'gated')
+    return true
+  return lastEvent.value?.type === 'detected_but_gated'
+})
 
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
 
@@ -187,6 +221,12 @@ watch(lastEvent, (event) => {
     return
   if (event.toastMessage)
     toast.message(event.toastMessage)
+  applyPetFeedbackForEvent(event)
+})
+
+watch(isEnabled, (enabled) => {
+  if (!enabled)
+    clearPetFeedback()
 })
 
 function toggleCamera() {
@@ -252,6 +292,66 @@ function formatTiming(ms: number | null) {
     return '无'
   return `${ms.toFixed(1)} ms`
 }
+
+function createPetFeedbackOptions(event: VisionInteractionEvent) {
+  return {
+    allowVisualFeedback: canTriggerInteractiveFeedback.value,
+    gateEnabled: gateEnabled.value,
+    gateState: localFaceGate.gateState.value,
+    sourceEventId: event.id,
+    summary: event.message,
+  }
+}
+
+function directionFromEventType(eventType: VisionInteractionEvent['type']) {
+  if (eventType === 'user_moved_left')
+    return 'left'
+  if (eventType === 'user_moved_right')
+    return 'right'
+  if (eventType === 'user_moved_up')
+    return 'up'
+  if (eventType === 'user_moved_down')
+    return 'down'
+  return 'center'
+}
+
+function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
+  if (event.type === 'quiet_mode_requested') {
+    triggerVisionPetFeedback('open_palm', createPetFeedbackOptions(event))
+    return
+  }
+
+  if (event.type === 'completion_celebration') {
+    triggerVisionPetFeedback('victory', createPetFeedbackOptions(event))
+    return
+  }
+
+  if (event.type === 'acknowledged') {
+    triggerVisionPetFeedback('thumbs_up', createPetFeedbackOptions(event))
+    return
+  }
+
+  if (event.type === 'subject_matched' || event.type === 'welcome_back') {
+    triggerVisionPetFeedback('face_return', createPetFeedbackOptions(event))
+    return
+  }
+
+  if (event.type === 'user_moved_left' || event.type === 'user_moved_right' || event.type === 'user_moved_up' || event.type === 'user_moved_down') {
+    triggerVisionPetFeedback('face_direction_change', {
+      ...createPetFeedbackOptions(event),
+      faceDirection: directionFromEventType(event.type),
+    })
+    return
+  }
+
+  if (event.type === 'detected_but_gated') {
+    triggerVisionPetFeedback('gated', {
+      ...createPetFeedbackOptions(event),
+      allowVisualFeedback: false,
+      summary: 'Gesture detected but pet feedback gated.',
+    })
+  }
+}
 </script>
 
 <template>
@@ -288,9 +388,9 @@ function formatTiming(ms: number | null) {
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
             手势映射
           </div>
-          <div>张开手掌：让 Rin 暂时安静</div>
-          <div>胜利手势：庆祝一个完成时刻</div>
-          <div>竖拇指：确认当前提示</div>
+          <div>Open Palm: quiet Rin visually</div>
+          <div>Victory: trigger Rin celebration</div>
+          <div>Thumbs Up: acknowledge current prompt</div>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
@@ -323,8 +423,29 @@ function formatTiming(ms: number | null) {
           <div>人脸中心：{{ faceCenterText }}</div>
           <div>最近手势：{{ gestureText }}</div>
           <div>最近推理：{{ lastInferenceText }}</div>
-          <div>安静模式：{{ isVisionQuiet ? `进行中（${quietRemainingSeconds}秒）` : '未开启' }}</div>
+          <div>交互安静模式：{{ isVisionQuiet ? `进行中（${quietRemainingSeconds}秒）` : '未开启' }}</div>
           <div>本地庆祝计数：{{ localCelebrationCount }}</div>
+        </div>
+
+        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            Pet feedback
+          </div>
+          <div>Current pet state: {{ petFeedbackStateText }}</div>
+          <div>Last pet feedback: {{ lastPetFeedbackSummary }}</div>
+          <div>Quiet remaining seconds: {{ isQuietVisualMode ? petQuietRemainingSeconds : 0 }}</div>
+          <div>Celebration count: {{ petCelebrationCount }}</div>
+          <div
+            v-if="shouldShowPetFeedbackGatedHint"
+            :class="['mt-1 text-amber-600 dark:text-amber-300']"
+          >
+            Gesture detected but pet feedback gated.
+          </div>
+          <div v-if="isQuietVisualMode" :class="['mt-2 flex items-center gap-2']">
+            <Button size="sm" variant="ghost" @click="cancelQuietVisualMode">
+              关闭 quiet visual mode
+            </Button>
+          </div>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
