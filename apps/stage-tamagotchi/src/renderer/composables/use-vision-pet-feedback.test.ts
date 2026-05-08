@@ -82,7 +82,10 @@ function createFeedbackHarness(options?: Parameters<typeof useVisionPetFeedback>
 
   const host = defineComponent({
     setup() {
-      feedback = useVisionPetFeedback(options)
+      feedback = useVisionPetFeedback({
+        random: () => 0,
+        ...options,
+      })
       return () => h('div')
     },
   })
@@ -103,6 +106,7 @@ describe('useVisionPetFeedback', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-05-08T00:00:00.000Z'))
+    localStorage.clear()
     resetLive2dMocks()
   })
 
@@ -309,6 +313,318 @@ describe('useVisionPetFeedback', () => {
     expect(feedback.petFeedbackState.value).toBe('gated')
     expect(feedback.lastPetFeedback.value?.eventType).toBe('gated')
     expect(feedback.celebrationCount.value).toBe(0)
+    unmount()
+  })
+
+  it('triggers subject-position response with cooldown and direction-change gating', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      subjectResponseCooldownMs: 3_500,
+      subjectResponseVisualMs: 1_500,
+      feedbackMessageCooldownMs: 3_500,
+    })
+
+    const firstLeft = feedback.triggerSubjectPositionFeedback('left', {
+      allowVisualFeedback: true,
+      sourceEventId: 9001,
+    })
+    expect(firstLeft).toBe(true)
+    expect(feedback.subjectResponseState.value).toBe('following_left')
+    expect(feedback.lastSubjectResponseEvent.value).toEqual(expect.objectContaining({
+      eventType: 'subject_moved_left',
+      direction: 'left',
+      state: 'following_left',
+      sourceEventId: 9001,
+      gated: false,
+      suppressedByQuiet: false,
+      summary: 'I noticed you moved left.',
+      motion: 'Think',
+      expression: 'normal',
+    }))
+    expect(feedback.subjectResponseCooldownUntil.value).toBe(Date.now() + 3_500)
+
+    const duplicateLeftInCooldown = feedback.triggerSubjectPositionFeedback('left', {
+      allowVisualFeedback: true,
+      sourceEventId: 9002,
+    })
+    expect(duplicateLeftInCooldown).toBe(false)
+    expect(feedback.lastSubjectResponseEvent.value?.sourceEventId).toBe(9001)
+
+    vi.advanceTimersByTime(3_600)
+    const duplicateLeftAfterCooldown = feedback.triggerSubjectPositionFeedback('left', {
+      allowVisualFeedback: true,
+      sourceEventId: 9003,
+    })
+    expect(duplicateLeftAfterCooldown).toBe(true)
+    expect(feedback.lastSubjectResponseEvent.value?.sourceEventId).toBe(9003)
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('You shifted to the left.')
+
+    const switchRightAfterCooldown = feedback.triggerSubjectPositionFeedback('right', {
+      allowVisualFeedback: true,
+      sourceEventId: 9004,
+    })
+    expect(switchRightAfterCooldown).toBe(true)
+    expect(feedback.subjectResponseState.value).toBe('following_right')
+    expect(feedback.lastSubjectResponseEvent.value).toEqual(expect.objectContaining({
+      eventType: 'subject_moved_right',
+      direction: 'right',
+      state: 'following_right',
+      sourceEventId: 9004,
+      gated: false,
+      suppressedByQuiet: false,
+      summary: 'I noticed you moved right.',
+      motion: 'Think',
+      expression: 'normal',
+    }))
+    expect(toggleExpression).toHaveBeenCalledWith('normal', 1.5)
+    unmount()
+  })
+
+  it('blocks subject-position response when gate is locked and records gated state', () => {
+    const { feedback, unmount } = createFeedbackHarness()
+
+    const previousMotion = { ...currentMotion.value }
+    const blocked = feedback.triggerSubjectPositionFeedback('down', {
+      gateEnabled: true,
+      gateState: 'locked',
+      sourceEventId: 9101,
+      summary: 'Subject position detected but gated.',
+    })
+
+    expect(blocked).toBe(true)
+    expect(feedback.subjectResponseState.value).toBe('gated')
+    expect(feedback.lastSubjectResponseEvent.value).toEqual(expect.objectContaining({
+      eventType: 'subject_gated',
+      direction: 'down',
+      state: 'gated',
+      sourceEventId: 9101,
+      gated: true,
+      suppressedByQuiet: false,
+      summary: 'Subject position detected but gated.',
+    }))
+    expect(currentMotion.value).toEqual(previousMotion)
+    expect(toggleExpression).toHaveBeenCalledTimes(0)
+    unmount()
+  })
+
+  it('keeps subject-position feedback lightweight during quiet mode', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      quietDurationMs: 10_000,
+    })
+
+    const quietTriggered = feedback.triggerVisionPetFeedback('open_palm', {
+      allowVisualFeedback: true,
+    })
+    expect(quietTriggered).toBe(true)
+    expect(feedback.petFeedbackState.value).toBe('quiet')
+    expect(toggleExpression).toHaveBeenCalledWith('neutral', 1.8)
+
+    toggleExpression.mockClear()
+    const quietDirection = feedback.triggerSubjectPositionFeedback('center', {
+      allowVisualFeedback: true,
+      sourceEventId: 9201,
+    })
+    expect(quietDirection).toBe(true)
+    expect(feedback.subjectResponseState.value).toBe('centered')
+    expect(feedback.lastSubjectResponseEvent.value).toEqual(expect.objectContaining({
+      eventType: 'subject_centered',
+      direction: 'center',
+      state: 'centered',
+      sourceEventId: 9201,
+      gated: false,
+      suppressedByQuiet: true,
+      motion: undefined,
+      expression: undefined,
+      summary: 'Back to center.',
+    }))
+    expect(toggleExpression).toHaveBeenCalledTimes(0)
+    unmount()
+  })
+
+  it('uses contextual cooldown per event type and allows returned events less frequently than direction changes', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      feedbackMessageCooldownMs: 5_000,
+      subjectReturnedCooldownMs: 10_000,
+    })
+
+    const left = feedback.triggerContextualVisionFeedback('subject_moved_left', {
+      allowVisualFeedback: true,
+      direction: 'left',
+    })
+    expect(left).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_moved_left')
+    expect(feedback.nextAllowedFeedbackAt.value).toBe(Date.now() + 5_000)
+
+    const leftInCooldown = feedback.triggerContextualVisionFeedback('subject_moved_left', {
+      allowVisualFeedback: true,
+      direction: 'left',
+    })
+    expect(leftInCooldown).toBe(false)
+
+    vi.advanceTimersByTime(5_100)
+    const leftAfterCooldown = feedback.triggerContextualVisionFeedback('subject_moved_left', {
+      allowVisualFeedback: true,
+      direction: 'left',
+    })
+    expect(leftAfterCooldown).toBe(true)
+
+    const returned = feedback.triggerContextualVisionFeedback('subject_returned', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(returned).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_returned')
+    expect(feedback.nextAllowedFeedbackAt.value).toBe(Date.now() + 10_000)
+
+    const returnedInCooldown = feedback.triggerContextualVisionFeedback('subject_returned', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(returnedInCooldown).toBe(false)
+    unmount()
+  })
+
+  it('supports feedback intensity levels and persists intensity across composable recreation', () => {
+    const { feedback, unmount } = createFeedbackHarness()
+    expect(feedback.feedbackIntensity.value).toBe('balanced')
+
+    feedback.setFeedbackIntensity('minimal')
+    expect(feedback.feedbackIntensity.value).toBe('minimal')
+
+    const minimalMoved = feedback.triggerContextualVisionFeedback('subject_moved_right', {
+      allowVisualFeedback: true,
+      direction: 'right',
+    })
+    expect(minimalMoved).toBe(true)
+    expect(feedback.lastFeedbackLevel.value).toBe('subtle')
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBeUndefined()
+
+    feedback.setFeedbackIntensity('expressive')
+    expect(feedback.feedbackIntensity.value).toBe('expressive')
+    expect(localStorage.getItem('airi.vision-experiment.feedback-intensity.v1')).toBe('expressive')
+    unmount()
+
+    const secondHarness = createFeedbackHarness()
+    expect(secondHarness.feedback.feedbackIntensity.value).toBe('expressive')
+    secondHarness.unmount()
+  })
+
+  it('suppresses contextual toast and motion while quiet mode is active but keeps UI event state', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      quietDurationMs: 8_000,
+    })
+
+    feedback.triggerVisionPetFeedback('open_palm', { allowVisualFeedback: true })
+    expect(feedback.isQuietVisualMode.value).toBe(true)
+
+    const returned = feedback.triggerContextualVisionFeedback('subject_returned', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(returned).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_returned')
+    expect(feedback.lastFeedbackMessage.value).toBe('Welcome back, Rin.')
+    expect(feedback.feedbackSuppressedByQuiet.value).toBe(true)
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.expression).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBeUndefined()
+    unmount()
+  })
+
+  it('blocks contextual feedback when gate disallows and records gated message only', () => {
+    const { feedback, unmount } = createFeedbackHarness()
+    const previousMotion = { ...currentMotion.value }
+
+    const gated = feedback.triggerContextualVisionFeedback('subject_moved_left', {
+      allowVisualFeedback: false,
+      gateEnabled: true,
+      gateState: 'locked',
+      direction: 'left',
+    })
+
+    expect(gated).toBe(true)
+    expect(feedback.feedbackBlockedByGate.value).toBe(true)
+    expect(feedback.subjectResponseState.value).toBe('gated')
+    expect(feedback.lastFeedbackType.value).toBe('subject_gated')
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('Detected, but feedback is gated.')
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.expression).toBeUndefined()
+    expect(currentMotion.value).toEqual(previousMotion)
+    expect(toggleExpression).toHaveBeenCalledTimes(0)
+    unmount()
+  })
+
+  it('emits dwell feedback once then respects dwell cooldown', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      subjectDwellCooldownMs: 12_000,
+    })
+
+    const firstDwell = feedback.triggerContextualVisionFeedback('subject_dwelled_center', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(firstDwell).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_dwelled_center')
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('Rin, you held center steadily.')
+
+    const repeatedDwell = feedback.triggerContextualVisionFeedback('subject_dwelled_center', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(repeatedDwell).toBe(false)
+
+    vi.advanceTimersByTime(12_100)
+    const dwellAfterCooldown = feedback.triggerContextualVisionFeedback('subject_dwelled_center', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(dwellAfterCooldown).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_dwelled_center')
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('Rin, center dwell detected.')
+    unmount()
+  })
+
+  it('allows contextual feedback when gate is disabled or matched, and blocks when locked', () => {
+    const { feedback, unmount } = createFeedbackHarness()
+
+    const allowedWithoutGate = feedback.triggerContextualVisionFeedback('subject_moved_left', {
+      allowVisualFeedback: true,
+      gateEnabled: false,
+      direction: 'left',
+    })
+    expect(allowedWithoutGate).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_moved_left')
+    expect(feedback.lastSubjectResponseEvent.value?.gated).toBe(false)
+
+    vi.advanceTimersByTime(5_100)
+    const allowedWithMatchedGate = feedback.triggerContextualVisionFeedback('subject_moved_right', {
+      allowVisualFeedback: true,
+      gateEnabled: true,
+      gateState: 'enabled',
+      direction: 'right',
+    })
+    expect(allowedWithMatchedGate).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_moved_right')
+    expect(feedback.lastSubjectResponseEvent.value?.gated).toBe(false)
+
+    vi.advanceTimersByTime(5_100)
+    const blockedWithLockedGate = feedback.triggerContextualVisionFeedback('subject_moved_up', {
+      allowVisualFeedback: false,
+      gateEnabled: true,
+      gateState: 'locked',
+      direction: 'up',
+    })
+    expect(blockedWithLockedGate).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_gated')
+    expect(feedback.lastSubjectResponseEvent.value?.gated).toBe(true)
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.expression).toBeUndefined()
     unmount()
   })
 })

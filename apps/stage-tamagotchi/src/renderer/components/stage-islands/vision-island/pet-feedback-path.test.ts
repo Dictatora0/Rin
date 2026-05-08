@@ -37,6 +37,18 @@ function createInteractionState() {
     facePresence: ref<'present' | 'absent' | 'unknown'>('unknown'),
     faceCenter: ref<{ x: number, y: number } | null>(null),
     faceDirection: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
+    subjectPosition: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
+    lastStableSubjectPosition: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
+    subjectPositionChangedAt: ref<number | null>(null),
+    subjectResponseState: ref<'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'>('idle'),
+    lastSubjectResponseEvent: ref<{
+      direction: 'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'
+      state: 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
+      at: number
+      message: string
+      gated: boolean
+    } | null>(null),
+    subjectResponseCooldownUntil: ref(0),
     lastGesture: ref<'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'>('none'),
     lastEvent: ref<{
       id: number
@@ -44,6 +56,7 @@ function createInteractionState() {
       message: string
       at: number
       toastMessage?: string
+      subjectPosition?: 'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'
     } | null>(null),
     errorMessage: ref(''),
     quietRemainingMs: ref(0),
@@ -63,6 +76,7 @@ function createInteractionState() {
       errorMessage: ref(''),
     },
     canTriggerInteractiveFeedback: ref(true),
+    canTriggerSubjectPositionResponse: ref(true),
     maxInferenceStallMs: ref(1_200),
     lastInferenceAt: ref<number | null>(null),
     modelWarmupStatus: ref<'idle' | 'warming' | 'ready' | 'fallback_remote'>('idle'),
@@ -122,6 +136,21 @@ function resetLive2dState() {
   mocks.toggleExpression.mockReset()
   mocks.toggleExpression.mockReturnValue({ success: true, name: 'neutral', durationSeconds: 1.8 })
 }
+
+const LEFT_POSITION_MESSAGES = [
+  'I noticed you moved left.',
+  'You shifted to the left.',
+  'Left side detected.',
+  'You are leaning left now.',
+  'Left position confirmed.',
+]
+
+const GATED_POSITION_MESSAGES = [
+  'Detected, but feedback is gated.',
+  'Position detected, gate is blocking.',
+  'Gate lock: no active feedback.',
+  'Feedback paused by face gate.',
+]
 
 vi.mock('pinia', () => ({
   storeToRefs: <T extends Record<string, unknown>>(store: T) => store,
@@ -209,6 +238,7 @@ async function emitVisionEvent(event: {
   message: string
   at?: number
   toastMessage?: string
+  subjectPosition?: 'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'
 }) {
   mocks.interactionState.lastEvent.value = {
     ...event,
@@ -219,6 +249,8 @@ async function emitVisionEvent(event: {
 
 describe('vision Island pet feedback integration path', () => {
   beforeEach(() => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    localStorage.clear()
     mocks.stageModelRenderer = ref<'live2d' | 'vrm' | 'godot'>('live2d')
     mocks.currentMotion = ref<{ group: string, index?: number }>({ group: 'Idle' })
     mocks.availableMotions = ref<Array<{ motionName: string, motionIndex?: number }>>([])
@@ -297,6 +329,67 @@ describe('vision Island pet feedback integration path', () => {
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
     expect(container.textContent).toContain('Current pet state: gated')
     expect(container.textContent).toContain('Gesture detected but pet feedback gated.')
+
+    unmount()
+  })
+
+  it('maps subject-position event to gaze-like feedback motion/expression path', async () => {
+    const { container, unmount } = mountVisionIsland()
+
+    await emitVisionEvent({
+      id: 41,
+      type: 'user_moved_left',
+      message: 'I noticed you moved left.',
+      subjectPosition: 'left',
+    })
+
+    expect(mocks.currentMotion.value.group).toBe('Think')
+    expect(mocks.toggleExpression).toHaveBeenCalledWith('normal', 1.4)
+    expect(container.textContent).toContain('petSubjectResponseState: following_left')
+    expect(container.textContent).toContain('lastFeedbackType: subject_moved_left')
+    const hasAllowedLeftMessage = LEFT_POSITION_MESSAGES.some((message) => {
+      return container.textContent?.includes(`lastFeedbackMessage: ${message}`) ?? false
+    })
+    expect(hasAllowedLeftMessage).toBe(true)
+
+    await emitVisionEvent({
+      id: 42,
+      type: 'user_centered',
+      message: 'Back to center.',
+      subjectPosition: 'center',
+    })
+
+    expect(mocks.currentMotion.value.group).toBe('Think')
+    expect(mocks.toggleExpression).toHaveBeenCalledWith('smile', 1.4)
+    expect(container.textContent).toContain('petSubjectResponseState: centered')
+
+    unmount()
+  })
+
+  it('keeps subject-position response gated when face gate blocks matched subject', async () => {
+    const { container, unmount } = mountVisionIsland()
+    mocks.interactionState.gateEnabled.value = true
+    mocks.interactionState.localFaceGate.gateState.value = 'locked'
+    mocks.interactionState.localFaceGate.profileStatus.value = 'multiple_faces'
+    mocks.interactionState.canTriggerInteractiveFeedback.value = false
+    mocks.interactionState.canTriggerSubjectPositionResponse.value = false
+
+    await emitVisionEvent({
+      id: 43,
+      type: 'subject_position_gated',
+      message: 'Subject position detected but gated.',
+      subjectPosition: 'right',
+    })
+
+    expect(mocks.currentMotion.value.group).toBe('Idle')
+    expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
+    expect(container.textContent).toContain('subjectResponseGate: gated')
+    expect(container.textContent).toContain('petSubjectResponseState: gated')
+    expect(container.textContent).toContain('lastFeedbackType: subject_gated')
+    const hasAllowedGatedMessage = GATED_POSITION_MESSAGES.some((message) => {
+      return container.textContent?.includes(`lastFeedbackMessage: ${message}`) ?? false
+    })
+    expect(hasAllowedGatedMessage).toBe(true)
 
     unmount()
   })

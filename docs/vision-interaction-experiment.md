@@ -22,6 +22,62 @@
 - `victory`: celebrate completed moment
 - `thumbs_up`: acknowledge current prompt
 
+## Subject-position response（主体位置响应）
+- 响应来源：`faceCenter` 与 `faceDirection` 的稳定帧结果（不是单帧抖动）。
+- 反馈目标：让 Rin 在 `left / right / up / down / center` 切换时给出可见、可解释的反馈。
+- 反馈内容：
+- 轻量消息（toast）：由本地模板池生成，不依赖 LLM。
+- Live2D 反馈：使用已有 motion/expression fallback 链，不改底层渲染器。
+- 状态观测：
+- `subjectPosition`
+- `lastStableSubjectPosition`
+- `subjectResponseState`（`idle/following_left/following_right/looking_up/looking_down/centered/gated`）
+- `lastSubjectResponseEvent`
+- `subjectResponseCooldownUntil`
+
+### 为什么不是严格视线测量
+- 模块仅根据主体在人脸框中的相对位置做 gaze-like feedback。
+- 不做瞳孔级别或视线向量级别估计。
+- 目标是自然交互演示，而非严格视线测量。
+
+### Contextual Vision Feedback Engine
+- 文案来源是本地模板池 `apps/stage-tamagotchi/src/renderer/utils/vision-feedback-messages.ts`。
+- 模板事件覆盖：
+- `subject_position_left/right/up/down/center`
+- `subject_returned`
+- `subject_absent`
+- `subject_gated`
+- `subject_matched`
+- `subject_uncertain`
+- `subject_dwelled_left/right/center`
+- 模板选择支持 displayName 插值，且同一事件连续两次不会返回相同句子。
+- 全部文案本地生成，不调用远程 API，不写入主聊天历史。
+
+### Feedback Intensity
+- `minimal`：
+- 主要更新状态，不做方向类 toast，Live2D 反馈极轻或不触发。
+- `balanced`（默认）：
+- 方向变化触发短反馈；`subject_returned / subject_matched` 更强。
+- `expressive`：
+- 方向变化、回中和 dwell 都可触发更活跃反馈（仍受冷却限制）。
+
+### 防打扰策略
+- 事件级冷却：方向类默认 5s，`returned/matched` 10s，dwell 14s。
+- quiet mode 抑制：不触发 normal/strong 反馈，仅更新状态。
+- gate blocked（unmatched/multiple_faces/locked/no_face/uncertain）：
+- 不触发 motion/expression，记录 gated 类型反馈，避免刷屏。
+- dwell 反馈：主体在同一稳定方向停留约 7s 才触发一次，随后受更长冷却保护。
+
+### Face Gate 约束（主体位置响应）
+- `gate disabled`：允许 subject-position response。
+- `gate enabled + matched`：允许 subject-position response。
+- `gate enabled + unmatched/no_face/multiple_faces/uncertain/gated/locked`：
+- 仍可显示检测到的方向（调试可见）。
+- 不触发 Rin motion / expression。
+- 不触发主体位置 toast。
+- 事件记录为 `Subject position detected but gated.`
+- `multiple_faces` 场景始终禁止放行，不会随意选择一个主体响应。
+
 ## Face Gate 状态机
 - gate 层状态：
 - `disabled`：门控未开启，允许视觉反馈。
@@ -74,7 +130,9 @@
 - 录入 profile：单人脸、质量合格时可录入成功。
 - 刷新后解锁：需要 passphrase 才能恢复 unlocked。
 - matched 手势反馈：gate enabled + matched 时触发 pet feedback。
+- matched 主体位置反馈：gate enabled + matched 时，左右上下与回中会触发可见反馈。
 - multiple_faces：状态进入 locked/multiple_faces，禁止反馈。
+- unmatched/no_face：主体位置事件只显示 gated/idle，不触发 Rin 反馈。
 - Delete Profile：确认后清空档案，状态回到未录入。
 - 权限拒绝恢复：拒绝权限后显示 error，再次允许后可重试 Start Camera。
 - Stop Camera 资源释放：track stop 计数与诊断信息更新。
@@ -100,9 +158,13 @@
 ## 演示步骤（5 分钟）
 1. 打开主界面，展示“视觉交互”入口与 Vision Diagnostics，并等待 runtime 进入 ready/partial_ready。
 2. Start Camera，说明 camera / permission / runtime / MediaPipe / OpenCV 状态。
-3. 依次做 `open_palm`、`victory`、`thumbs_up`，展示 Rin 形象反馈。
-4. 开启 Face Gate，演示未解锁或多脸时“detected but gated”。
-5. 在录入页展示加密档案、解锁、Delete Profile（带确认）与删除后状态复位，并演示 Retry/Reset Runtime。
+3. 在 Subject-position response 区域切换 `minimal / balanced / expressive`，观察反馈强度变化。
+4. 单人脸场景左右上下移动并回到中心，展示 contextual feedback 与 Live2D fallback 响应。
+5. 暂时离开画面再返回，展示 `subject_absent / subject_returned` 反馈策略。
+6. 保持一个方向稳定停留（约 7 秒），展示 dwell 反馈只触发一次且不刷屏。
+7. 开启 Face Gate，演示 matched 才响应；unmatched/multiple_faces/no_face/locked 为 gated。
+8. 再做 `open_palm`、`victory`、`thumbs_up`，展示手势反馈仍为可选实验路径。
+9. 在录入页展示加密档案、解锁、Delete Profile（带确认）与删除后状态复位，并演示 Retry/Reset Runtime。
 
 ## EMFILE 风险与 Workaround
 - 建议先提升文件句柄上限再启动 dev：

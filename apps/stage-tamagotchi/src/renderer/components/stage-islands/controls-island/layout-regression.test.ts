@@ -238,9 +238,8 @@ describe('controls island layout regression locks', () => {
   it('keeps top grid structure and button count stable after opening vision panel', async () => {
     const { container, unmount } = mountControlsIsland()
 
-    const allButtons = Array.from(container.querySelectorAll('button'))
-    const expandButton = allButtons[0]
-    expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
+    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
     const topGrid = container.querySelector('[data-testid="controls-top-grid"]') as HTMLDivElement | null
@@ -278,9 +277,8 @@ describe('controls island layout regression locks', () => {
   it('keeps close button reachable after vision panel opens', async () => {
     const { container, unmount } = mountControlsIsland()
 
-    const allButtons = Array.from(container.querySelectorAll('button'))
-    const expandButton = allButtons[0]
-    expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
+    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
     const visionButton = container.querySelector('[data-testid="controls-vision-toggle"]') as HTMLButtonElement | null

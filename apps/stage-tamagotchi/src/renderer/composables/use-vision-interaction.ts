@@ -20,6 +20,7 @@ export type VisionMediaPipeStatus = 'idle' | 'loading' | 'ready' | 'failed'
 export type VisionFacePresence = 'present' | 'absent' | 'unknown'
 export type VisionFaceDirection = 'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'
 export type VisionGesture = 'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'
+export type VisionSubjectResponseState = 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
 
 export type VisionInteractionEventType
   = | 'quiet_mode_requested'
@@ -38,6 +39,8 @@ export type VisionInteractionEventType
     | 'user_moved_right'
     | 'user_moved_up'
     | 'user_moved_down'
+    | 'user_centered'
+    | 'subject_position_gated'
 
 export interface VisionInteractionEvent {
   id: number
@@ -45,6 +48,15 @@ export interface VisionInteractionEvent {
   message: string
   at: number
   toastMessage?: string
+  subjectPosition?: VisionFaceDirection
+}
+
+export interface VisionSubjectResponseEvent {
+  direction: VisionFaceDirection
+  state: VisionSubjectResponseState
+  at: number
+  message: string
+  gated: boolean
 }
 
 export interface VisionInteractionOptions {
@@ -60,6 +72,7 @@ export interface VisionInteractionOptions {
   maxInferenceStallMs?: number
   faceGateWelcomeCooldownMs?: number
   autoUnlockFaceProfile?: boolean
+  subjectResponseCooldownMs?: number
 }
 
 export type VisionModelWarmupStatus = 'idle' | 'warming' | 'ready' | 'fallback_remote'
@@ -99,6 +112,7 @@ interface EmitEventOptions {
   isAutomatic?: boolean
   markAsPrompt?: boolean
   skipQuietMute?: boolean
+  subjectPosition?: VisionFaceDirection
 }
 
 const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
@@ -114,6 +128,7 @@ const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
   maxInferenceStallMs: 1_200,
   faceGateWelcomeCooldownMs: 8_000,
   autoUnlockFaceProfile: true,
+  subjectResponseCooldownMs: 3_500,
 }
 
 const DISPLAY_NAME_LOCAL_STORAGE_KEY = 'airi.vision-experiment.display-name'
@@ -168,6 +183,12 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   const facePresence = ref<VisionFacePresence>('unknown')
   const faceDirection = ref<VisionFaceDirection>('unknown')
   const faceCenter = ref<{ x: number, y: number } | null>(null)
+  const subjectPosition = ref<VisionFaceDirection>('unknown')
+  const lastStableSubjectPosition = ref<VisionFaceDirection>('unknown')
+  const subjectPositionChangedAt = ref<number | null>(null)
+  const subjectResponseState = ref<VisionSubjectResponseState>('idle')
+  const lastSubjectResponseEvent = ref<VisionSubjectResponseEvent | null>(null)
+  const subjectResponseCooldownUntil = ref(0)
   const lastGesture = ref<VisionGesture>('none')
   const lastEvent = ref<VisionInteractionEvent | null>(null)
   const errorMessage = ref('')
@@ -416,6 +437,11 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   }
 
   const canTriggerInteractiveFeedback = computed(() => {
+    if (!localFaceGate.gateEnabled.value)
+      return true
+    return localFaceGate.gateState.value === 'enabled'
+  })
+  const canTriggerSubjectPositionResponse = computed(() => {
     if (!localFaceGate.gateEnabled.value)
       return true
     return localFaceGate.gateState.value === 'enabled'
@@ -751,6 +777,12 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     candidateDirection = 'unknown'
     candidateDirectionFrames = 0
     lastStableFaceDirection.value = 'unknown'
+    subjectPosition.value = 'unknown'
+    lastStableSubjectPosition.value = 'unknown'
+    subjectPositionChangedAt.value = null
+    subjectResponseState.value = 'idle'
+    lastSubjectResponseEvent.value = null
+    subjectResponseCooldownUntil.value = 0
 
     lastGesture.value = 'none'
     facePresence.value = 'unknown'
@@ -1022,6 +1054,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       message: options.message,
       at: options.nowMs,
       toastMessage: shouldMuteToast ? undefined : options.toastMessage,
+      subjectPosition: options.subjectPosition,
     }
 
     if (options.markAsPrompt) {
@@ -1074,7 +1107,31 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     return dy < 0 ? 'up' : 'down'
   }
 
-  function applyFaceDirection(center: { x: number, y: number } | null, nowMs: number, allowFeedback: boolean) {
+  function mapSubjectResponseState(direction: VisionFaceDirection): VisionSubjectResponseState {
+    if (direction === 'left')
+      return 'following_left'
+    if (direction === 'right')
+      return 'following_right'
+    if (direction === 'up')
+      return 'looking_up'
+    if (direction === 'down')
+      return 'looking_down'
+    if (direction === 'center')
+      return 'centered'
+    return 'idle'
+  }
+
+  function updateSubjectResponseEvent(event: VisionSubjectResponseEvent) {
+    lastSubjectResponseEvent.value = event
+    subjectResponseState.value = event.state
+    subjectPosition.value = event.direction
+    subjectPositionChangedAt.value = event.at
+  }
+
+  function applyFaceDirection(center: { x: number, y: number } | null, nowMs: number, options: {
+    allowFeedback: boolean
+    gateBlockingActive: boolean
+  }) {
     faceCenter.value = center
     const rawDirection = directionFromFaceCenter(center)
     if (rawDirection === candidateDirection) {
@@ -1092,22 +1149,92 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
     const previousDirection = faceDirection.value
     faceDirection.value = rawDirection
+    lastStableFaceDirection.value = rawDirection
+    subjectPosition.value = rawDirection
 
-    if (!allowFeedback) {
-      lastStableFaceDirection.value = rawDirection
+    if (rawDirection === 'unknown') {
+      subjectResponseState.value = options.gateBlockingActive ? 'gated' : 'idle'
       return
     }
 
-    if (rawDirection === 'left' && previousDirection !== 'left')
-      emitEvent({ type: 'user_moved_left', message: 'User moved left', nowMs, isAutomatic: true })
-    else if (rawDirection === 'right' && previousDirection !== 'right')
-      emitEvent({ type: 'user_moved_right', message: 'User moved right', nowMs, isAutomatic: true })
-    else if (rawDirection === 'up' && previousDirection !== 'up')
-      emitEvent({ type: 'user_moved_up', message: 'User moved up', nowMs, isAutomatic: true })
-    else if (rawDirection === 'down' && previousDirection !== 'down')
-      emitEvent({ type: 'user_moved_down', message: 'User moved down', nowMs, isAutomatic: true })
+    if (!options.allowFeedback) {
+      if (options.gateBlockingActive) {
+        const gatedMessage = 'Subject position detected but gated.'
+        updateSubjectResponseEvent({
+          direction: rawDirection,
+          state: 'gated',
+          at: nowMs,
+          message: gatedMessage,
+          gated: true,
+        })
+        emitEvent({
+          type: 'subject_position_gated',
+          message: gatedMessage,
+          toastMessage: gatedMessage,
+          nowMs,
+          cooldownMs: runtimeOptions.subjectResponseCooldownMs,
+          cooldownKey: `subject_position_gated:${rawDirection}`,
+          isAutomatic: true,
+          subjectPosition: rawDirection,
+        })
+      }
+      else {
+        subjectResponseState.value = 'idle'
+      }
+      lastStableSubjectPosition.value = rawDirection
+      return
+    }
 
-    lastStableFaceDirection.value = rawDirection
+    const isSameStableDirection = lastStableSubjectPosition.value === rawDirection
+    if (isSameStableDirection && nowMs < subjectResponseCooldownUntil.value)
+      return
+    if (isSameStableDirection)
+      return
+
+    let eventType: VisionInteractionEventType = 'user_centered'
+    let eventMessage = 'Back to center.'
+    if (rawDirection === 'left') {
+      eventType = 'user_moved_left'
+      eventMessage = 'I noticed you moved left.'
+    }
+    else if (rawDirection === 'right') {
+      eventType = 'user_moved_right'
+      eventMessage = 'I noticed you moved right.'
+    }
+    else if (rawDirection === 'up') {
+      eventType = 'user_moved_up'
+      eventMessage = 'Looking up?'
+    }
+    else if (rawDirection === 'down') {
+      eventType = 'user_moved_down'
+      eventMessage = 'Looking down?'
+    }
+
+    if (rawDirection === previousDirection)
+      return
+
+    const emitted = emitEvent({
+      type: eventType,
+      message: eventMessage,
+      toastMessage: eventMessage,
+      nowMs,
+      cooldownMs: runtimeOptions.subjectResponseCooldownMs,
+      cooldownKey: `subject_position:${rawDirection}`,
+      isAutomatic: true,
+      subjectPosition: rawDirection,
+    })
+    if (!emitted)
+      return
+
+    lastStableSubjectPosition.value = rawDirection
+    subjectResponseCooldownUntil.value = nowMs + runtimeOptions.subjectResponseCooldownMs
+    updateSubjectResponseEvent({
+      direction: rawDirection,
+      state: mapSubjectResponseState(rawDirection),
+      at: nowMs,
+      message: eventMessage,
+      gated: false,
+    })
   }
 
   async function applyFacePresence(faceResult: FaceLandmarkerResult, nowMs: number) {
@@ -1129,10 +1256,14 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     })
 
     const allowFeedback = !localFaceGate.gateEnabled.value || localFaceGate.gateState.value === 'enabled'
+    const gateBlockingActive = localFaceGate.gateEnabled.value && localFaceGate.gateState.value !== 'enabled'
 
     const hasSingleFace = faceLandmarks.length === 1
     const center = hasSingleFace ? computeFaceCenter(primaryLandmarks) : null
-    applyFaceDirection(center, nowMs, allowFeedback)
+    applyFaceDirection(center, nowMs, {
+      allowFeedback: allowFeedback && hasSingleFace,
+      gateBlockingActive: gateBlockingActive && hasSingleFace,
+    })
 
     if (localFaceGate.gateEnabled.value && allowFeedback && localFaceGate.consumeJustMatchedWelcome(nowMs, runtimeOptions.faceGateWelcomeCooldownMs)) {
       const name = localFaceGate.unlockedDisplayName.value || displayName.value
@@ -1970,6 +2101,12 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     facePresence,
     faceCenter,
     faceDirection,
+    subjectPosition,
+    lastStableSubjectPosition,
+    subjectPositionChangedAt,
+    subjectResponseState,
+    lastSubjectResponseEvent,
+    subjectResponseCooldownUntil,
     lastGesture,
     lastEvent,
     errorMessage,
@@ -2006,6 +2143,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     encryptedProfile,
     openCvFaceQuality,
     canTriggerInteractiveFeedback,
+    canTriggerSubjectPositionResponse,
     attachVideoElement,
     start,
     stop,

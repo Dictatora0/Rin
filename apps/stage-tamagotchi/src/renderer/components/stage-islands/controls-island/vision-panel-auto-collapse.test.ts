@@ -239,9 +239,8 @@ describe('controls island vision panel interaction flow', () => {
   it('keeps vision panel mounted after mouse leaves for 2s and does not trigger stop', async () => {
     const { container, unmount } = mountControlsIsland()
 
-    const allButtons = Array.from(container.querySelectorAll('button'))
-    const expandButton = allButtons[0]
-    expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
+    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
     const cameraButton = findButtonByTooltipText(container, '打开视觉交互')
@@ -258,6 +257,28 @@ describe('controls island vision panel interaction flow', () => {
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
     expect(mocks.visionUnmountStop).toHaveBeenCalledTimes(0)
     expect(mocks.closeWindow).toHaveBeenCalledTimes(0)
+
+    unmount()
+  })
+
+  it('keeps vision runtime mounted when collapsing controls drawer manually', async () => {
+    const { container, unmount } = mountControlsIsland()
+
+    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
+    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    const cameraButton = findButtonByTooltipText(container, '打开视觉交互')
+    cameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+
+    const collapseButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.collapse')
+    collapseButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(mocks.visionUnmountStop).toHaveBeenCalledTimes(0)
 
     unmount()
   })

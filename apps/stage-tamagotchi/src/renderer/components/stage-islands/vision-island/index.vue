@@ -32,6 +32,12 @@ const {
   facePresence,
   faceCenter,
   faceDirection,
+  subjectPosition,
+  lastStableSubjectPosition,
+  subjectPositionChangedAt,
+  subjectResponseState: interactionSubjectResponseState,
+  lastSubjectResponseEvent: interactionLastSubjectResponseEvent,
+  subjectResponseCooldownUntil,
   lastGesture,
   lastEvent,
   errorMessage,
@@ -49,6 +55,7 @@ const {
   localFaceGate,
   openCvFaceQuality,
   canTriggerInteractiveFeedback,
+  canTriggerSubjectPositionResponse,
   maxInferenceStallMs,
   lastInferenceAt,
   modelWarmupStatus,
@@ -79,8 +86,20 @@ const {
 })
 const {
   triggerVisionPetFeedback,
+  triggerContextualVisionFeedback,
+  feedbackIntensity,
+  setFeedbackIntensity,
+  lastFeedbackType,
+  lastFeedbackMessage,
+  lastFeedbackLevel,
+  nextAllowedFeedbackIn,
+  feedbackSuppressedByQuiet,
+  feedbackBlockedByGate,
   petFeedbackState,
   lastPetFeedback,
+  subjectResponseState: petSubjectResponseState,
+  lastSubjectResponseEvent: petLastSubjectResponseEvent,
+  subjectResponseCooldownUntil: petSubjectResponseCooldownUntil,
   isQuietVisualMode,
   quietRemainingMs: petQuietRemainingMs,
   celebrationCount: petCelebrationCount,
@@ -92,10 +111,17 @@ const maxInferenceStallInput = ref(String(maxInferenceStallMs.value))
 const prewarming = ref(false)
 const BACKGROUND_WARMUP_DELAY_MS = 1_200
 const BACKGROUND_WARMUP_IDLE_TIMEOUT_MS = 2_000
+const SUBJECT_DWELL_THRESHOLD_MS = 7_000
 let scheduledWarmupTimerId: number | null = null
 let scheduledIdleCallbackId: number | null = null
+let subjectDwellTimerId: number | null = null
 const quietRemainingSeconds = computed(() => Math.ceil(quietRemainingMs.value / 1000))
 const petQuietRemainingSeconds = computed(() => Math.ceil(petQuietRemainingMs.value / 1000))
+const feedbackIntensityOptions = [
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'expressive', label: 'Expressive' },
+] as const
 
 const faceCenterText = computed(() => {
   if (!faceCenter.value)
@@ -276,6 +302,104 @@ const shouldShowPetFeedbackGatedHint = computed(() => {
   if (petFeedbackState.value === 'gated')
     return true
   return lastEvent.value?.type === 'detected_but_gated'
+    || lastEvent.value?.type === 'subject_position_gated'
+})
+const subjectPositionText = computed(() => {
+  const map: Record<string, string> = {
+    left: 'left',
+    right: 'right',
+    up: 'up',
+    down: 'down',
+    center: 'center',
+    unknown: 'unknown',
+  }
+  return map[subjectPosition.value] ?? subjectPosition.value
+})
+const stableSubjectPositionText = computed(() => {
+  const map: Record<string, string> = {
+    left: 'left',
+    right: 'right',
+    up: 'up',
+    down: 'down',
+    center: 'center',
+    unknown: 'unknown',
+  }
+  return map[lastStableSubjectPosition.value] ?? lastStableSubjectPosition.value
+})
+const interactionSubjectResponseStateText = computed(() => {
+  const map: Record<string, string> = {
+    idle: 'idle',
+    following_left: 'following_left',
+    following_right: 'following_right',
+    looking_up: 'looking_up',
+    looking_down: 'looking_down',
+    centered: 'centered',
+    gated: 'gated',
+  }
+  return map[interactionSubjectResponseState.value] ?? interactionSubjectResponseState.value
+})
+const petSubjectResponseStateText = computed(() => {
+  const map: Record<string, string> = {
+    idle: 'idle',
+    following_left: 'following_left',
+    following_right: 'following_right',
+    looking_up: 'looking_up',
+    looking_down: 'looking_down',
+    centered: 'centered',
+    gated: 'gated',
+  }
+  return map[petSubjectResponseState.value] ?? petSubjectResponseState.value
+})
+const subjectResponseGateText = computed(() => {
+  return canTriggerSubjectPositionResponse.value ? 'allowed' : 'gated'
+})
+const subjectResponseCooldownSeconds = computed(() => {
+  const now = Date.now()
+  const interactionRemainingMs = Math.max(0, subjectResponseCooldownUntil.value - now)
+  const petRemainingMs = Math.max(0, petSubjectResponseCooldownUntil.value - now)
+  const remainingMs = Math.max(interactionRemainingMs, petRemainingMs)
+  return Math.ceil(remainingMs / 1000)
+})
+const subjectPositionChangedText = computed(() => {
+  if (!subjectPositionChangedAt.value)
+    return 'none'
+  return new Date(subjectPositionChangedAt.value).toLocaleTimeString()
+})
+const lastSubjectResponseSummary = computed(() => {
+  if (interactionLastSubjectResponseEvent.value) {
+    const when = new Date(interactionLastSubjectResponseEvent.value.at).toLocaleTimeString()
+    return `${interactionLastSubjectResponseEvent.value.message} (${when})`
+  }
+  if (petLastSubjectResponseEvent.value) {
+    const when = new Date(petLastSubjectResponseEvent.value.at).toLocaleTimeString()
+    return `${petLastSubjectResponseEvent.value.summary} (${when})`
+  }
+  return 'none'
+})
+const lastContextualFeedbackTypeText = computed(() => {
+  return lastFeedbackType.value ?? 'none'
+})
+const lastContextualFeedbackMessageText = computed(() => {
+  if (!lastFeedbackMessage.value)
+    return 'none'
+  return lastFeedbackMessage.value
+})
+const contextualFeedbackLevelText = computed(() => {
+  return lastFeedbackLevel.value
+})
+const nextAllowedFeedbackSeconds = computed(() => {
+  return Math.ceil(nextAllowedFeedbackIn.value / 1000)
+})
+const dwellStatusText = computed(() => {
+  if (!lastFeedbackType.value)
+    return 'none'
+  if (lastFeedbackType.value === 'subject_dwelled_left')
+    return 'dwelled_left'
+  if (lastFeedbackType.value === 'subject_dwelled_right')
+    return 'dwelled_right'
+  if (lastFeedbackType.value === 'subject_dwelled_center')
+    return 'dwelled_center'
+  return 'inactive'
 })
 const visionDiagnosticsLastError = computed(() => {
   if (errorMessage.value)
@@ -315,14 +439,37 @@ watch(maxInferenceStallInput, (value) => {
 watch(lastEvent, (event) => {
   if (!event)
     return
-  if (event.toastMessage)
+  if (event.toastMessage && !isContextualInteractionEvent(event.type))
     toast.message(event.toastMessage)
   applyPetFeedbackForEvent(event)
 })
 
 watch(isEnabled, (enabled) => {
-  if (!enabled)
+  if (!enabled) {
+    clearSubjectDwellTimer()
     clearPetFeedback()
+  }
+})
+
+watch(
+  [lastStableSubjectPosition, subjectPosition, facePresence, canTriggerSubjectPositionResponse],
+  () => {
+    scheduleSubjectDwellFeedback()
+  },
+)
+
+watch(() => localFaceGate.profileStatus.value, (status) => {
+  if (status !== 'uncertain')
+    return
+  triggerContextualVisionFeedback('subject_uncertain', {
+    allowVisualFeedback: canTriggerSubjectPositionResponse.value,
+    gateEnabled: gateEnabled.value,
+    gateState: localFaceGate.gateState.value,
+    direction: subjectPosition.value,
+    displayName: matchedDisplayName.value || undefined,
+  })
+  if (petLastSubjectResponseEvent.value?.toastMessage)
+    toast.message(petLastSubjectResponseEvent.value.toastMessage)
 })
 
 onMounted(() => {
@@ -335,6 +482,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearScheduledWarmup()
+  clearSubjectDwellTimer()
 })
 
 function toggleCamera() {
@@ -437,6 +585,83 @@ function clearScheduledWarmup() {
   }
 }
 
+function clearSubjectDwellTimer() {
+  if (subjectDwellTimerId === null)
+    return
+  clearTimeout(subjectDwellTimerId)
+  subjectDwellTimerId = null
+}
+
+function isContextualInteractionEvent(eventType: VisionInteractionEvent['type']) {
+  return eventType === 'user_moved_left'
+    || eventType === 'user_moved_right'
+    || eventType === 'user_moved_up'
+    || eventType === 'user_moved_down'
+    || eventType === 'user_centered'
+    || eventType === 'subject_position_gated'
+    || eventType === 'subject_matched'
+    || eventType === 'welcome_back'
+    || eventType === 'user_away'
+    || eventType === 'detected_but_gated'
+}
+
+function emitLastContextualToastForEvent(sourceEventId: number) {
+  const event = petLastSubjectResponseEvent.value
+  if (!event)
+    return
+  if (event.sourceEventId !== sourceEventId)
+    return
+  if (!event.toastMessage)
+    return
+  toast.message(event.toastMessage)
+}
+
+function onFeedbackIntensityChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  if (value !== 'minimal' && value !== 'balanced' && value !== 'expressive')
+    return
+  setFeedbackIntensity(value)
+}
+
+function scheduleSubjectDwellFeedback() {
+  clearSubjectDwellTimer()
+  const stablePosition = lastStableSubjectPosition.value
+  const shouldTrackDwell = stablePosition === 'left'
+    || stablePosition === 'right'
+    || stablePosition === 'center'
+
+  if (!shouldTrackDwell)
+    return
+  if (facePresence.value !== 'present')
+    return
+  if (subjectPosition.value !== stablePosition)
+    return
+
+  const eventType = stablePosition === 'left'
+    ? 'subject_dwelled_left'
+    : stablePosition === 'right'
+      ? 'subject_dwelled_right'
+      : 'subject_dwelled_center'
+
+  subjectDwellTimerId = window.setTimeout(() => {
+    subjectDwellTimerId = null
+    if (facePresence.value !== 'present')
+      return
+    if (lastStableSubjectPosition.value !== stablePosition)
+      return
+
+    triggerContextualVisionFeedback(eventType, {
+      allowVisualFeedback: canTriggerSubjectPositionResponse.value,
+      gateEnabled: gateEnabled.value,
+      gateState: localFaceGate.gateState.value,
+      direction: stablePosition,
+      displayName: matchedDisplayName.value || undefined,
+    })
+    if (petLastSubjectResponseEvent.value?.toastMessage)
+      toast.message(petLastSubjectResponseEvent.value.toastMessage)
+  }, SUBJECT_DWELL_THRESHOLD_MS)
+}
+
 function scheduleRuntimeWarmup(options: {
   delayMs: number
   trackLoadingState: boolean
@@ -496,7 +721,7 @@ function createPetFeedbackOptions(event: VisionInteractionEvent) {
     gateEnabled: gateEnabled.value,
     gateState: localFaceGate.gateState.value,
     sourceEventId: event.id,
-    summary: event.message,
+    displayName: matchedDisplayName.value || undefined,
   }
 }
 
@@ -528,16 +753,97 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
     return
   }
 
-  if (event.type === 'subject_matched' || event.type === 'welcome_back') {
-    triggerVisionPetFeedback('face_return', createPetFeedbackOptions(event))
+  if (event.type === 'subject_matched') {
+    triggerContextualVisionFeedback('subject_matched', {
+      allowVisualFeedback: canTriggerSubjectPositionResponse.value,
+      gateEnabled: gateEnabled.value,
+      gateState: localFaceGate.gateState.value,
+      sourceEventId: event.id,
+      direction: subjectPosition.value,
+      displayName: matchedDisplayName.value || undefined,
+    })
+    emitLastContextualToastForEvent(event.id)
     return
   }
 
-  if (event.type === 'user_moved_left' || event.type === 'user_moved_right' || event.type === 'user_moved_up' || event.type === 'user_moved_down') {
-    triggerVisionPetFeedback('face_direction_change', {
-      ...createPetFeedbackOptions(event),
-      faceDirection: directionFromEventType(event.type),
+  if (event.type === 'welcome_back') {
+    triggerContextualVisionFeedback('subject_returned', {
+      allowVisualFeedback: canTriggerSubjectPositionResponse.value,
+      gateEnabled: gateEnabled.value,
+      gateState: localFaceGate.gateState.value,
+      sourceEventId: event.id,
+      direction: subjectPosition.value,
+      displayName: matchedDisplayName.value || undefined,
     })
+    emitLastContextualToastForEvent(event.id)
+    return
+  }
+
+  if (event.type === 'user_away') {
+    triggerContextualVisionFeedback('subject_absent', {
+      allowVisualFeedback: canTriggerSubjectPositionResponse.value,
+      gateEnabled: gateEnabled.value,
+      gateState: localFaceGate.gateState.value,
+      sourceEventId: event.id,
+      direction: subjectPosition.value,
+      displayName: matchedDisplayName.value || undefined,
+    })
+    emitLastContextualToastForEvent(event.id)
+    return
+  }
+
+  if (event.type === 'user_moved_left') {
+    triggerContextualVisionFeedback('subject_moved_left', {
+      ...createPetFeedbackOptions(event),
+      direction: event.subjectPosition ?? directionFromEventType(event.type),
+    })
+    emitLastContextualToastForEvent(event.id)
+    return
+  }
+
+  if (event.type === 'user_moved_right') {
+    triggerContextualVisionFeedback('subject_moved_right', {
+      ...createPetFeedbackOptions(event),
+      direction: event.subjectPosition ?? directionFromEventType(event.type),
+    })
+    emitLastContextualToastForEvent(event.id)
+    return
+  }
+
+  if (event.type === 'user_moved_up') {
+    triggerContextualVisionFeedback('subject_moved_up', {
+      ...createPetFeedbackOptions(event),
+      direction: event.subjectPosition ?? directionFromEventType(event.type),
+    })
+    emitLastContextualToastForEvent(event.id)
+    return
+  }
+
+  if (event.type === 'user_moved_down') {
+    triggerContextualVisionFeedback('subject_moved_down', {
+      ...createPetFeedbackOptions(event),
+      direction: event.subjectPosition ?? directionFromEventType(event.type),
+    })
+    emitLastContextualToastForEvent(event.id)
+    return
+  }
+
+  if (event.type === 'user_centered') {
+    triggerContextualVisionFeedback('subject_centered', {
+      ...createPetFeedbackOptions(event),
+      direction: event.subjectPosition ?? directionFromEventType(event.type),
+    })
+    emitLastContextualToastForEvent(event.id)
+    return
+  }
+
+  if (event.type === 'subject_position_gated') {
+    triggerContextualVisionFeedback('subject_gated', {
+      ...createPetFeedbackOptions(event),
+      direction: event.subjectPosition ?? 'unknown',
+      allowVisualFeedback: false,
+    })
+    emitLastContextualToastForEvent(event.id)
     return
   }
 
@@ -662,6 +968,60 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           <div>最近推理：{{ lastInferenceText }}</div>
           <div>交互安静模式：{{ isVisionQuiet ? `进行中（${quietRemainingSeconds}秒）` : '未开启' }}</div>
           <div>本地庆祝计数：{{ localCelebrationCount }}</div>
+        </div>
+
+        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            Subject-position response
+          </div>
+          <label :class="['mb-2 flex items-center gap-2']">
+            <span>Feedback intensity:</span>
+            <select
+              :value="feedbackIntensity"
+              :class="[
+                'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
+                'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
+              ]"
+              @change="onFeedbackIntensityChange"
+            >
+              <option
+                v-for="option in feedbackIntensityOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <div>faceCenter: {{ faceCenterText }}</div>
+          <div>faceDirection: {{ faceDirectionText }}</div>
+          <div>subjectPosition: {{ subjectPositionText }}</div>
+          <div>stableSubjectPosition: {{ stableSubjectPositionText }}</div>
+          <div>subjectResponseState: {{ interactionSubjectResponseStateText }}</div>
+          <div>petSubjectResponseState: {{ petSubjectResponseStateText }}</div>
+          <div>subjectResponseGate: {{ subjectResponseGateText }}</div>
+          <div>subjectResponseCooldownSec: {{ subjectResponseCooldownSeconds }}</div>
+          <div>lastFeedbackType: {{ lastContextualFeedbackTypeText }}</div>
+          <div>lastFeedbackMessage: {{ lastContextualFeedbackMessageText }}</div>
+          <div>feedbackLevel: {{ contextualFeedbackLevelText }}</div>
+          <div>nextAllowedFeedbackIn: {{ nextAllowedFeedbackSeconds }}</div>
+          <div>dwellStatus: {{ dwellStatusText }}</div>
+          <div>quietSuppressed: {{ feedbackSuppressedByQuiet ? 'yes' : 'no' }}</div>
+          <div>gateBlocked: {{ feedbackBlockedByGate ? 'yes' : 'no' }}</div>
+          <div>subjectPositionChangedAt: {{ subjectPositionChangedText }}</div>
+          <div>lastSubjectResponseEvent: {{ lastSubjectResponseSummary }}</div>
+          <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+            Rin reacts only to the matched subject.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Rin reacts with short local feedback.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Feedback intensity controls how expressive Rin is.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            This is gaze-like feedback, not strict gaze measurement.
+          </div>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">

@@ -72,8 +72,10 @@ watch(isOutsideAfter2seconds, (outside) => {
 
 watch(expanded, (isExpanded) => {
   if (!isExpanded) {
+    const keepVisionPanelOverlay = visionPanelVisible.value
     blockingOverlays.clear()
-    visionPanelVisible.value = false
+    if (keepVisionPanelOverlay)
+      blockingOverlays.add('vision-panel')
   }
 })
 
@@ -150,7 +152,7 @@ function toggleVisionPanel() {
         leave-to-class="opacity-0 translate-y-8 scale-90 blur-sm"
       >
         <div
-          v-if="expanded"
+          v-show="expanded"
           border="1 neutral-200 dark:neutral-800"
           mb-2 flex max-h="[74vh]" flex-col gap-2 overflow-y-auto rounded-2xl p-2 backdrop-blur-xl
           class="bg-neutral-100/80 shadow-2xl shadow-black/20 dark:bg-neutral-900/80"

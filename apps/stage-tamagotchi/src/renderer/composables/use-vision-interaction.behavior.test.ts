@@ -553,6 +553,100 @@ describe('useVisionInteraction behavior locks', () => {
     app.unmount()
   })
 
+  it('emits subject-position response only after stable direction changes and prevents same-direction spam', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness()
+
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.8, 0.5)], count: 1 })
+    await runNextAnimationFrame(200, videoElement, 1)
+    expect(interaction.faceDirection.value).toBe('unknown')
+    expect(interaction.lastSubjectResponseEvent.value).toBeNull()
+    expect(interaction.lastEvent.value).toBeNull()
+
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.8, 0.5)], count: 2 })
+    await runNextAnimationFrame(400, videoElement, 2)
+    await runNextAnimationFrame(600, videoElement, 3)
+    expect(interaction.faceDirection.value).toBe('left')
+    expect(interaction.lastStableSubjectPosition.value).toBe('left')
+    expect(interaction.subjectResponseState.value).toBe('following_left')
+    expect(interaction.lastEvent.value?.type).toBe('user_moved_left')
+    expect(interaction.lastEvent.value?.subjectPosition).toBe('left')
+    const leftEventId = interaction.lastEvent.value?.id ?? -1
+
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.8, 0.5)], count: 3 })
+    await runNextAnimationFrame(800, videoElement, 4)
+    await runNextAnimationFrame(1_000, videoElement, 5)
+    await runNextAnimationFrame(1_200, videoElement, 6)
+    expect(interaction.lastEvent.value?.id).toBe(leftEventId)
+
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.2, 0.5)], count: 3 })
+    await runNextAnimationFrame(1_400, videoElement, 7)
+    await runNextAnimationFrame(1_600, videoElement, 8)
+    await runNextAnimationFrame(1_800, videoElement, 9)
+    expect(interaction.faceDirection.value).toBe('right')
+    expect(interaction.lastStableSubjectPosition.value).toBe('right')
+    expect(interaction.subjectResponseState.value).toBe('following_right')
+    expect(interaction.lastEvent.value?.type).toBe('user_moved_right')
+    expect(interaction.lastEvent.value?.subjectPosition).toBe('right')
+
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.5, 0.5)], count: 3 })
+    await runNextAnimationFrame(2_000, videoElement, 10)
+    await runNextAnimationFrame(2_200, videoElement, 11)
+    await runNextAnimationFrame(2_400, videoElement, 12)
+    expect(interaction.faceDirection.value).toBe('center')
+    expect(interaction.lastStableSubjectPosition.value).toBe('center')
+    expect(interaction.subjectResponseState.value).toBe('centered')
+    expect(interaction.lastEvent.value?.type).toBe('user_centered')
+    expect(interaction.lastEvent.value?.subjectPosition).toBe('center')
+
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.8, 0.5)], count: 3 })
+    await runNextAnimationFrame(2_600, videoElement, 13)
+    await runNextAnimationFrame(2_800, videoElement, 14)
+    await runNextAnimationFrame(3_000, videoElement, 15)
+    expect(interaction.faceDirection.value).toBe('left')
+    expect(interaction.lastEvent.value?.type).toBe('user_centered')
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('blocks subject-position response under gate lock and skips response for multiple/no face', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness()
+
+    gateEnabledRef.value = true
+    gateStateRef.value = 'locked'
+    gateProfileStatusRef.value = 'unmatched'
+
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.8, 0.5)], count: 3 })
+    await runNextAnimationFrame(200, videoElement, 1)
+    await runNextAnimationFrame(400, videoElement, 2)
+    await runNextAnimationFrame(600, videoElement, 3)
+    expect(interaction.canTriggerSubjectPositionResponse.value).toBe(false)
+    expect(interaction.lastEvent.value?.type).toBe('subject_position_gated')
+    expect(interaction.lastEvent.value?.message).toBe('Subject position detected but gated.')
+    expect(interaction.lastEvent.value?.subjectPosition).toBe('left')
+    expect(interaction.subjectResponseState.value).toBe('gated')
+
+    const gatedEventId = interaction.lastEvent.value?.id ?? -1
+    gateProfileStatusRef.value = 'multiple_faces'
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.8, 0.5), createFaceAt(0.2, 0.5)], count: 3 })
+    await runNextAnimationFrame(800, videoElement, 4)
+    await runNextAnimationFrame(1_000, videoElement, 5)
+    await runNextAnimationFrame(1_200, videoElement, 6)
+    expect(interaction.faceDirection.value).toBe('unknown')
+    expect(interaction.lastEvent.value?.id).toBe(gatedEventId)
+
+    gateProfileStatusRef.value = 'no_face'
+    queueFrames({ gesture: 'None', face: [], count: 3 })
+    await runNextAnimationFrame(1_400, videoElement, 7)
+    await runNextAnimationFrame(1_600, videoElement, 8)
+    await runNextAnimationFrame(1_800, videoElement, 9)
+    expect(interaction.faceDirection.value).toBe('unknown')
+    expect(interaction.lastEvent.value?.id).toBe(gatedEventId)
+
+    await interaction.stop()
+    app.unmount()
+  })
+
   it('respects gate integration for allowed and gated gestures', async () => {
     const { interaction, videoElement, app } = await setupInteractionHarness()
 

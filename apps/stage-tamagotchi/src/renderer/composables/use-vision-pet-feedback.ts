@@ -11,7 +11,9 @@ import {
 } from '@proj-airi/stage-ui-live2d'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { storeToRefs } from 'pinia'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+
+import { pickVisionFeedbackMessage } from '../utils/vision-feedback-messages'
 
 type VisionPetFeedbackEventType
   = | 'open_palm'
@@ -22,6 +24,24 @@ type VisionPetFeedbackEventType
     | 'gated'
 
 type VisionPetFeedbackState = 'idle' | 'quiet' | 'celebrating' | 'acknowledged' | 'gated'
+type VisionSubjectPosition = Exclude<VisionFaceDirection, 'unknown'>
+type VisionSubjectResponseState = 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
+export type VisionFeedbackIntensity = 'minimal' | 'balanced' | 'expressive'
+export type VisionFeedbackLevel = 'subtle' | 'normal' | 'strong'
+export type VisionContextualFeedbackEventType
+  = | 'subject_moved_left'
+    | 'subject_moved_right'
+    | 'subject_moved_up'
+    | 'subject_moved_down'
+    | 'subject_centered'
+    | 'subject_returned'
+    | 'subject_absent'
+    | 'subject_matched'
+    | 'subject_gated'
+    | 'subject_uncertain'
+    | 'subject_dwelled_left'
+    | 'subject_dwelled_right'
+    | 'subject_dwelled_center'
 
 interface VisionPetFeedbackRecord {
   eventType: VisionPetFeedbackEventType
@@ -36,12 +56,48 @@ interface VisionPetFeedbackRecord {
   summary: string
 }
 
+interface VisionSubjectResponseRecord {
+  eventType: VisionContextualFeedbackEventType
+  direction: VisionSubjectPosition
+  state: VisionSubjectResponseState
+  at: number
+  sourceEventId?: number
+  motion?: string
+  expression?: string
+  gated: boolean
+  suppressedByQuiet: boolean
+  feedbackLevel: VisionFeedbackLevel
+  toastMessage?: string
+  summary: string
+}
+
 interface TriggerVisionPetFeedbackOptions {
   allowVisualFeedback?: boolean
   gateEnabled?: boolean
   gateState?: LocalFaceGateState
   sourceEventId?: number
   faceDirection?: VisionFaceDirection
+  summary?: string
+  force?: boolean
+}
+
+interface TriggerSubjectPositionFeedbackOptions {
+  allowVisualFeedback?: boolean
+  gateEnabled?: boolean
+  gateState?: LocalFaceGateState
+  sourceEventId?: number
+  summary?: string
+  force?: boolean
+  displayName?: string
+}
+
+interface TriggerContextualVisionFeedbackOptions {
+  allowVisualFeedback?: boolean
+  gateEnabled?: boolean
+  gateState?: LocalFaceGateState
+  sourceEventId?: number
+  direction?: VisionFaceDirection
+  displayName?: string
   summary?: string
   force?: boolean
 }
@@ -54,6 +110,16 @@ interface UseVisionPetFeedbackOptions {
   feedbackCooldownMs?: number
   victoryCooldownMs?: number
   live2dMotionCooldownMs?: number
+  subjectResponseCooldownMs?: number
+  subjectResponseVisualMs?: number
+  subjectReturnedCooldownMs?: number
+  subjectMatchedCooldownMs?: number
+  subjectAbsentCooldownMs?: number
+  subjectGatedCooldownMs?: number
+  subjectUncertainCooldownMs?: number
+  subjectDwellCooldownMs?: number
+  feedbackMessageCooldownMs?: number
+  random?: () => number
 }
 
 const DEFAULT_OPTIONS: Required<UseVisionPetFeedbackOptions> = {
@@ -64,6 +130,46 @@ const DEFAULT_OPTIONS: Required<UseVisionPetFeedbackOptions> = {
   feedbackCooldownMs: 2_000,
   victoryCooldownMs: 3_000,
   live2dMotionCooldownMs: 1_100,
+  subjectResponseCooldownMs: 3_500,
+  subjectResponseVisualMs: 1_400,
+  subjectReturnedCooldownMs: 10_000,
+  subjectMatchedCooldownMs: 10_000,
+  subjectAbsentCooldownMs: 8_000,
+  subjectGatedCooldownMs: 5_000,
+  subjectUncertainCooldownMs: 8_000,
+  subjectDwellCooldownMs: 14_000,
+  feedbackMessageCooldownMs: 5_000,
+  random: Math.random,
+}
+
+const FEEDBACK_INTENSITY_STORAGE_KEY = 'airi.vision-experiment.feedback-intensity.v1'
+
+function normalizeFeedbackIntensity(value: string | null): VisionFeedbackIntensity {
+  if (value === 'minimal' || value === 'balanced' || value === 'expressive')
+    return value
+  return 'balanced'
+}
+
+function loadFeedbackIntensity() {
+  if (typeof localStorage === 'undefined')
+    return 'balanced' as const
+  try {
+    return normalizeFeedbackIntensity(localStorage.getItem(FEEDBACK_INTENSITY_STORAGE_KEY))
+  }
+  catch {
+    return 'balanced' as const
+  }
+}
+
+function persistFeedbackIntensity(intensity: VisionFeedbackIntensity) {
+  if (typeof localStorage === 'undefined')
+    return
+  try {
+    localStorage.setItem(FEEDBACK_INTENSITY_STORAGE_KEY, intensity)
+  }
+  catch {
+    // ignore storage write failures
+  }
 }
 
 /**
@@ -95,10 +201,22 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
 
   const petFeedbackState = ref<VisionPetFeedbackState>('idle')
   const lastPetFeedback = ref<VisionPetFeedbackRecord | null>(null)
+  const subjectResponseState = ref<VisionSubjectResponseState>('idle')
+  const lastSubjectResponseEvent = ref<VisionSubjectResponseRecord | null>(null)
+  const subjectResponseCooldownUntil = ref(0)
+  const lastSubjectStableDirection = ref<VisionFaceDirection>('unknown')
   const quietVisualUntil = ref(0)
   const quietRemainingMs = ref(0)
   const celebrationCount = ref(0)
   const isQuietVisualMode = computed(() => quietRemainingMs.value > 0)
+  const feedbackIntensity = ref<VisionFeedbackIntensity>(loadFeedbackIntensity())
+  const lastFeedbackType = ref<VisionContextualFeedbackEventType | null>(null)
+  const lastFeedbackMessage = ref('')
+  const lastFeedbackLevel = ref<VisionFeedbackLevel>('subtle')
+  const lastFeedbackAt = ref<number | null>(null)
+  const nextAllowedFeedbackAt = ref(0)
+  const feedbackSuppressedByQuiet = ref(false)
+  const feedbackBlockedByGate = ref(false)
 
   const lastTriggeredAt = ref<Record<VisionPetFeedbackEventType, number>>({
     open_palm: Number.NEGATIVE_INFINITY,
@@ -109,8 +227,42 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     gated: Number.NEGATIVE_INFINITY,
   })
   const lastMotionTriggeredAt = ref(Number.NEGATIVE_INFINITY)
+  const contextualLastTriggeredAt = ref<Record<VisionContextualFeedbackEventType, number>>({
+    subject_moved_left: Number.NEGATIVE_INFINITY,
+    subject_moved_right: Number.NEGATIVE_INFINITY,
+    subject_moved_up: Number.NEGATIVE_INFINITY,
+    subject_moved_down: Number.NEGATIVE_INFINITY,
+    subject_centered: Number.NEGATIVE_INFINITY,
+    subject_returned: Number.NEGATIVE_INFINITY,
+    subject_absent: Number.NEGATIVE_INFINITY,
+    subject_matched: Number.NEGATIVE_INFINITY,
+    subject_gated: Number.NEGATIVE_INFINITY,
+    subject_uncertain: Number.NEGATIVE_INFINITY,
+    subject_dwelled_left: Number.NEGATIVE_INFINITY,
+    subject_dwelled_right: Number.NEGATIVE_INFINITY,
+    subject_dwelled_center: Number.NEGATIVE_INFINITY,
+  })
+  const previousMessageByEventType = ref<Record<VisionContextualFeedbackEventType, string | null>>({
+    subject_moved_left: null,
+    subject_moved_right: null,
+    subject_moved_up: null,
+    subject_moved_down: null,
+    subject_centered: null,
+    subject_returned: null,
+    subject_absent: null,
+    subject_matched: null,
+    subject_gated: null,
+    subject_uncertain: null,
+    subject_dwelled_left: null,
+    subject_dwelled_right: null,
+    subject_dwelled_center: null,
+  })
   let stateResetTimer: ReturnType<typeof setTimeout> | null = null
   let quietTickerId: ReturnType<typeof setInterval> | null = null
+
+  const nextAllowedFeedbackIn = computed(() => {
+    return Math.max(0, nextAllowedFeedbackAt.value - Date.now())
+  })
 
   function startQuietTicker() {
     if (quietTickerId !== null || typeof window === 'undefined')
@@ -169,7 +321,16 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       petFeedbackState.value = 'idle'
   }
 
-  function shouldAllowVisualFeedback(options?: TriggerVisionPetFeedbackOptions) {
+  function setFeedbackIntensity(nextIntensity: VisionFeedbackIntensity) {
+    feedbackIntensity.value = nextIntensity
+    persistFeedbackIntensity(nextIntensity)
+  }
+
+  watch(feedbackIntensity, (nextIntensity) => {
+    persistFeedbackIntensity(nextIntensity)
+  }, { immediate: true })
+
+  function shouldAllowVisualFeedback(options?: TriggerVisionPetFeedbackOptions | TriggerContextualVisionFeedbackOptions) {
     if (options?.allowVisualFeedback !== undefined)
       return options.allowVisualFeedback
     if (options?.gateEnabled === undefined)
@@ -293,6 +454,314 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
 
   function commitFeedbackRecord(record: VisionPetFeedbackRecord) {
     lastPetFeedback.value = record
+  }
+
+  function mapSubjectResponseState(direction: VisionSubjectPosition): VisionSubjectResponseState {
+    if (direction === 'left')
+      return 'following_left'
+    if (direction === 'right')
+      return 'following_right'
+    if (direction === 'up')
+      return 'looking_up'
+    if (direction === 'down')
+      return 'looking_down'
+    return 'centered'
+  }
+
+  function directionFromContextualEvent(eventType: VisionContextualFeedbackEventType): VisionSubjectPosition {
+    if (eventType === 'subject_moved_left' || eventType === 'subject_dwelled_left')
+      return 'left'
+    if (eventType === 'subject_moved_right' || eventType === 'subject_dwelled_right')
+      return 'right'
+    if (eventType === 'subject_moved_up')
+      return 'up'
+    if (eventType === 'subject_moved_down')
+      return 'down'
+    return 'center'
+  }
+
+  function templateTypeFromContextualEvent(eventType: VisionContextualFeedbackEventType) {
+    if (eventType === 'subject_moved_left')
+      return 'subject_position_left' as const
+    if (eventType === 'subject_moved_right')
+      return 'subject_position_right' as const
+    if (eventType === 'subject_moved_up')
+      return 'subject_position_up' as const
+    if (eventType === 'subject_moved_down')
+      return 'subject_position_down' as const
+    if (eventType === 'subject_centered')
+      return 'subject_position_center' as const
+    if (eventType === 'subject_returned')
+      return 'subject_returned' as const
+    if (eventType === 'subject_absent')
+      return 'subject_absent' as const
+    if (eventType === 'subject_matched')
+      return 'subject_matched' as const
+    if (eventType === 'subject_uncertain')
+      return 'subject_uncertain' as const
+    if (eventType === 'subject_dwelled_left')
+      return 'subject_dwelled_left' as const
+    if (eventType === 'subject_dwelled_right')
+      return 'subject_dwelled_right' as const
+    if (eventType === 'subject_dwelled_center')
+      return 'subject_dwelled_center' as const
+    return 'subject_gated' as const
+  }
+
+  function getContextualCooldownMs(eventType: VisionContextualFeedbackEventType) {
+    if (eventType === 'subject_returned')
+      return runtimeOptions.subjectReturnedCooldownMs
+    if (eventType === 'subject_matched')
+      return runtimeOptions.subjectMatchedCooldownMs
+    if (eventType === 'subject_absent')
+      return runtimeOptions.subjectAbsentCooldownMs
+    if (eventType === 'subject_gated')
+      return runtimeOptions.subjectGatedCooldownMs
+    if (eventType === 'subject_uncertain')
+      return runtimeOptions.subjectUncertainCooldownMs
+    if (eventType === 'subject_dwelled_left' || eventType === 'subject_dwelled_right' || eventType === 'subject_dwelled_center')
+      return runtimeOptions.subjectDwellCooldownMs
+    return runtimeOptions.feedbackMessageCooldownMs
+  }
+
+  function resolveFeedbackLevel(eventType: VisionContextualFeedbackEventType, intensity: VisionFeedbackIntensity) {
+    if (intensity === 'minimal') {
+      if (eventType === 'subject_returned' || eventType === 'subject_matched')
+        return 'subtle' as const
+      return null
+    }
+
+    if (intensity === 'balanced') {
+      if (eventType === 'subject_dwelled_left' || eventType === 'subject_dwelled_right')
+        return null
+      if (eventType === 'subject_returned' || eventType === 'subject_matched')
+        return 'strong' as const
+      if (eventType === 'subject_absent' || eventType === 'subject_uncertain')
+        return 'subtle' as const
+      return 'normal' as const
+    }
+
+    if (eventType === 'subject_returned' || eventType === 'subject_matched')
+      return 'strong' as const
+    if (eventType === 'subject_absent' || eventType === 'subject_uncertain')
+      return 'subtle' as const
+    return 'normal' as const
+  }
+
+  function resolveSubjectResponseMotionCandidates(direction: VisionSubjectPosition, level: VisionFeedbackLevel) {
+    if (level === 'subtle') {
+      return [
+        EmotionNeutralMotionName,
+        'Idle',
+      ]
+    }
+
+    if (direction === 'left' || direction === 'right') {
+      if (level === 'strong') {
+        return [
+          'Curious',
+          EmotionHappyMotionName,
+          EmotionThinkMotionName,
+          EmotionNeutralMotionName,
+          'Idle',
+        ]
+      }
+      return [
+        'Curious',
+        EmotionThinkMotionName,
+        'Think',
+        EmotionNeutralMotionName,
+        'Idle',
+      ]
+    }
+
+    if (direction === 'up' || direction === 'down') {
+      if (level === 'strong') {
+        return [
+          EmotionHappyMotionName,
+          EmotionThinkMotionName,
+          'Think',
+          EmotionNeutralMotionName,
+          'Idle',
+        ]
+      }
+      return [
+        EmotionThinkMotionName,
+        'Think',
+        EmotionNeutralMotionName,
+        'Idle',
+      ]
+    }
+
+    if (level === 'strong') {
+      return [
+        EmotionHappyMotionName,
+        'Happy',
+        'Curious',
+        EmotionNeutralMotionName,
+        'Idle',
+      ]
+    }
+
+    return [
+      EmotionHappyMotionName,
+      'Happy',
+      EmotionNeutralMotionName,
+      'Idle',
+    ]
+  }
+
+  function resolveSubjectResponseExpressionCandidates(direction: VisionSubjectPosition, level: VisionFeedbackLevel) {
+    if (level === 'subtle')
+      return ['normal', 'neutral']
+    if (direction === 'left' || direction === 'right') {
+      return level === 'strong'
+        ? ['curious', 'smile', 'normal', 'neutral']
+        : ['curious', 'normal', 'neutral']
+    }
+    if (direction === 'center') {
+      return level === 'strong'
+        ? ['smile', 'happy', 'normal']
+        : ['smile', 'normal', 'happy']
+    }
+    return ['normal', 'neutral']
+  }
+
+  function shouldAllowContextualToast(eventType: VisionContextualFeedbackEventType, level: VisionFeedbackLevel) {
+    if (feedbackIntensity.value === 'minimal')
+      return eventType === 'subject_returned' || eventType === 'subject_matched'
+    if (feedbackIntensity.value === 'balanced')
+      return level !== 'subtle' || eventType === 'subject_returned' || eventType === 'subject_matched'
+    return true
+  }
+
+  function resolveContextualState(eventType: VisionContextualFeedbackEventType, direction: VisionSubjectPosition) {
+    if (eventType === 'subject_gated')
+      return 'gated' as const
+    if (eventType === 'subject_absent')
+      return 'idle' as const
+    if (eventType === 'subject_uncertain')
+      return 'idle' as const
+    return mapSubjectResponseState(direction)
+  }
+
+  function isContextualInCooldown(eventType: VisionContextualFeedbackEventType, nowMs: number, force = false) {
+    if (force)
+      return false
+    const cooldownMs = getContextualCooldownMs(eventType)
+    const lastAt = contextualLastTriggeredAt.value[eventType]
+    return nowMs - lastAt < cooldownMs
+  }
+
+  function triggerContextualVisionFeedback(
+    eventType: VisionContextualFeedbackEventType,
+    options?: TriggerContextualVisionFeedbackOptions,
+  ) {
+    const nowMs = Date.now()
+    const isGateBlocked = !shouldAllowVisualFeedback(options)
+    feedbackBlockedByGate.value = isGateBlocked
+    feedbackSuppressedByQuiet.value = false
+
+    const direction = options?.direction && options.direction !== 'unknown'
+      ? options.direction
+      : directionFromContextualEvent(eventType)
+    const nextEventType = isGateBlocked ? 'subject_gated' : eventType
+    if (isContextualInCooldown(nextEventType, nowMs, options?.force))
+      return false
+    const feedbackLevel = resolveFeedbackLevel(nextEventType, feedbackIntensity.value)
+    const templateType = templateTypeFromContextualEvent(nextEventType)
+    const previousMessage = previousMessageByEventType.value[nextEventType]
+    const summary = options?.summary ?? pickVisionFeedbackMessage(templateType, {
+      displayName: options?.displayName,
+      previousMessage,
+      random: runtimeOptions.random,
+    })
+    previousMessageByEventType.value[nextEventType] = summary
+
+    const suppressedByQuiet = isQuietVisualMode.value || feedbackLevel === null
+    feedbackSuppressedByQuiet.value = isQuietVisualMode.value
+    const nextLevel: VisionFeedbackLevel = feedbackLevel ?? 'subtle'
+    const shouldRunVisualEffects = !isGateBlocked && !suppressedByQuiet && feedbackLevel !== null
+    const motionCandidates = shouldRunVisualEffects
+      ? resolveSubjectResponseMotionCandidates(direction, nextLevel)
+      : []
+    const expressionCandidates = shouldRunVisualEffects
+      ? resolveSubjectResponseExpressionCandidates(direction, nextLevel)
+      : []
+    const motion = shouldRunVisualEffects
+      ? triggerMotionWithFallback(motionCandidates)
+      : undefined
+    const expression = shouldRunVisualEffects
+      ? triggerExpressionWithFallback(expressionCandidates, runtimeOptions.subjectResponseVisualMs)
+      : undefined
+
+    const shouldToast = !suppressedByQuiet
+      && feedbackLevel !== null
+      && shouldAllowContextualToast(nextEventType, nextLevel)
+
+    const state = resolveContextualState(nextEventType, direction)
+    subjectResponseState.value = state
+    subjectResponseCooldownUntil.value = nowMs + runtimeOptions.subjectResponseCooldownMs
+    lastSubjectStableDirection.value = direction
+    lastSubjectResponseEvent.value = {
+      eventType: nextEventType,
+      direction,
+      state,
+      at: nowMs,
+      sourceEventId: options?.sourceEventId,
+      motion,
+      expression,
+      gated: isGateBlocked,
+      suppressedByQuiet,
+      feedbackLevel: nextLevel,
+      toastMessage: shouldToast ? summary : undefined,
+      summary,
+    }
+
+    contextualLastTriggeredAt.value[nextEventType] = nowMs
+    const cooldownMs = getContextualCooldownMs(nextEventType)
+    nextAllowedFeedbackAt.value = nowMs + cooldownMs
+    lastFeedbackType.value = nextEventType
+    lastFeedbackMessage.value = summary
+    lastFeedbackLevel.value = nextLevel
+    lastFeedbackAt.value = nowMs
+
+    if (isGateBlocked || nextEventType === 'subject_gated')
+      setTransientState('gated', runtimeOptions.gatedVisualMs)
+    else if (isQuietVisualMode.value)
+      petFeedbackState.value = 'quiet'
+
+    return true
+  }
+
+  function triggerSubjectPositionFeedback(
+    direction: VisionFaceDirection,
+    options?: TriggerSubjectPositionFeedbackOptions,
+  ) {
+    if (direction === 'unknown')
+      return false
+
+    const eventType: VisionContextualFeedbackEventType
+      = direction === 'left'
+        ? 'subject_moved_left'
+        : direction === 'right'
+          ? 'subject_moved_right'
+          : direction === 'up'
+            ? 'subject_moved_up'
+            : direction === 'down'
+              ? 'subject_moved_down'
+              : 'subject_centered'
+
+    return triggerContextualVisionFeedback(eventType, {
+      allowVisualFeedback: options?.allowVisualFeedback,
+      gateEnabled: options?.gateEnabled,
+      gateState: options?.gateState,
+      sourceEventId: options?.sourceEventId,
+      direction,
+      displayName: options?.displayName,
+      summary: options?.summary,
+      force: options?.force,
+    })
   }
 
   function recordGatedFeedback(nowMs: number, options?: TriggerVisionPetFeedbackOptions) {
@@ -459,7 +928,18 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     quietVisualUntil.value = 0
     quietRemainingMs.value = 0
     petFeedbackState.value = 'idle'
+    subjectResponseState.value = 'idle'
+    subjectResponseCooldownUntil.value = 0
+    lastSubjectStableDirection.value = 'unknown'
     lastPetFeedback.value = null
+    lastSubjectResponseEvent.value = null
+    lastFeedbackType.value = null
+    lastFeedbackMessage.value = ''
+    lastFeedbackLevel.value = 'subtle'
+    lastFeedbackAt.value = null
+    nextAllowedFeedbackAt.value = 0
+    feedbackSuppressedByQuiet.value = false
+    feedbackBlockedByGate.value = false
     celebrationCount.value = 0
   }
 
@@ -470,8 +950,23 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
 
   return {
     triggerVisionPetFeedback,
+    triggerSubjectPositionFeedback,
+    triggerContextualVisionFeedback,
+    feedbackIntensity,
+    setFeedbackIntensity,
+    lastFeedbackType,
+    lastFeedbackMessage,
+    lastFeedbackLevel,
+    lastFeedbackAt,
+    nextAllowedFeedbackAt,
+    nextAllowedFeedbackIn,
+    feedbackSuppressedByQuiet,
+    feedbackBlockedByGate,
     petFeedbackState,
     lastPetFeedback,
+    subjectResponseState,
+    lastSubjectResponseEvent,
+    subjectResponseCooldownUntil,
     isQuietVisualMode,
     quietVisualUntil,
     quietRemainingMs,

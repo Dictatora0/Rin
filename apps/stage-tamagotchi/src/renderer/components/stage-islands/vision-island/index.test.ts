@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => ({
   unlockFaceProfile: vi.fn(async () => ({ ok: true as const, profile: null as never })),
 
   triggerVisionPetFeedback: vi.fn(() => true),
+  triggerSubjectPositionFeedback: vi.fn(() => true),
+  triggerContextualVisionFeedback: vi.fn(() => true),
+  setFeedbackIntensity: vi.fn(() => {}),
   cancelQuietVisualMode: vi.fn(() => {}),
   clearPetFeedback: vi.fn(() => {}),
 
@@ -45,6 +48,18 @@ function createInteractionState() {
     facePresence: ref<'present' | 'absent' | 'unknown'>('unknown'),
     faceCenter: ref<{ x: number, y: number } | null>(null),
     faceDirection: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
+    subjectPosition: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
+    lastStableSubjectPosition: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
+    subjectPositionChangedAt: ref<number | null>(null),
+    subjectResponseState: ref<'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'>('idle'),
+    lastSubjectResponseEvent: ref<{
+      direction: 'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'
+      state: 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
+      at: number
+      message: string
+      gated: boolean
+    } | null>(null),
+    subjectResponseCooldownUntil: ref(0),
     lastGesture: ref<'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'>('none'),
     lastEvent: ref<{
       id: number
@@ -52,6 +67,7 @@ function createInteractionState() {
       message: string
       at: number
       toastMessage?: string
+      subjectPosition?: 'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'
     } | null>(null),
     errorMessage: ref(''),
     quietRemainingMs: ref(0),
@@ -71,6 +87,7 @@ function createInteractionState() {
       errorMessage: ref(''),
     },
     canTriggerInteractiveFeedback: ref(true),
+    canTriggerSubjectPositionResponse: ref(true),
     maxInferenceStallMs: ref(1_200),
     lastInferenceAt: ref<number | null>(null),
     modelWarmupStatus: ref<'idle' | 'warming' | 'ready' | 'fallback_remote'>('idle'),
@@ -107,8 +124,30 @@ function createInteractionState() {
 function createPetFeedbackState() {
   return {
     triggerVisionPetFeedback: mocks.triggerVisionPetFeedback,
+    triggerSubjectPositionFeedback: mocks.triggerSubjectPositionFeedback,
+    triggerContextualVisionFeedback: mocks.triggerContextualVisionFeedback,
+    feedbackIntensity: ref<'minimal' | 'balanced' | 'expressive'>('balanced'),
+    setFeedbackIntensity: mocks.setFeedbackIntensity,
+    lastFeedbackType: ref<string | null>(null),
+    lastFeedbackMessage: ref(''),
+    lastFeedbackLevel: ref<'subtle' | 'normal' | 'strong'>('subtle'),
+    lastFeedbackAt: ref<number | null>(null),
+    nextAllowedFeedbackAt: ref(0),
+    nextAllowedFeedbackIn: ref(0),
+    feedbackSuppressedByQuiet: ref(false),
+    feedbackBlockedByGate: ref(false),
     petFeedbackState: ref<'idle' | 'quiet' | 'celebrating' | 'acknowledged' | 'gated'>('idle'),
     lastPetFeedback: ref<{ summary: string, at: number } | null>(null),
+    subjectResponseState: ref<'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'>('idle'),
+    lastSubjectResponseEvent: ref<{
+      direction: 'left' | 'center' | 'right' | 'up' | 'down'
+      state: 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
+      at: number
+      summary: string
+      gated: boolean
+      suppressedByQuiet: boolean
+    } | null>(null),
+    subjectResponseCooldownUntil: ref(0),
     isQuietVisualMode: ref(false),
     quietRemainingMs: ref(0),
     celebrationCount: ref(0),
@@ -206,6 +245,9 @@ describe('visionIsland UI behavior', () => {
     mocks.setRememberFaceProfileOnDevice.mockReset()
     mocks.unlockFaceProfile.mockReset()
     mocks.triggerVisionPetFeedback.mockReset()
+    mocks.triggerSubjectPositionFeedback.mockReset()
+    mocks.triggerContextualVisionFeedback.mockReset()
+    mocks.setFeedbackIntensity.mockReset()
     mocks.cancelQuietVisualMode.mockReset()
     mocks.clearPetFeedback.mockReset()
     mocks.routerPush.mockReset()
@@ -245,6 +287,16 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('MediaPipe: idle')
     expect(text).toContain('OpenCV: ready')
     expect(text).toContain('lastError: none')
+    expect(text).toContain('Subject-position response')
+    expect(text).toContain('subjectPosition: unknown')
+    expect(text).toContain('stableSubjectPosition: unknown')
+    expect(text).toContain('subjectResponseState: idle')
+    expect(text).toContain('subjectResponseGate: allowed')
+    expect(text).toContain('Feedback intensity:')
+    expect(text).toContain('lastFeedbackType: none')
+    expect(text).toContain('lastFeedbackMessage: none')
+    expect(text).toContain('This is gaze-like feedback, not strict gaze measurement.')
+    expect(text.includes('eye tracking')).toBe(false)
     expect(mocks.warmupVisionRuntime).toHaveBeenCalledTimes(0)
     await vi.advanceTimersByTimeAsync(1_200)
     await Promise.resolve()
@@ -302,6 +354,7 @@ describe('visionIsland UI behavior', () => {
     mocks.interactionState.localFaceGate.gateState.value = 'locked'
     mocks.interactionState.localFaceGate.profileStatus.value = 'multiple_faces'
     mocks.interactionState.canTriggerInteractiveFeedback.value = false
+    mocks.interactionState.canTriggerSubjectPositionResponse.value = false
     mocks.interactionState.profileStatus.value = 'encrypted'
     mocks.interactionState.cameraPermissionState.value = 'denied'
     mocks.interactionState.mediaPipeStatus.value = 'failed'
@@ -336,12 +389,90 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('OpenCV: fallback')
     expect(text).toContain('faceGate: locked / multiple_faces')
     expect(text).toContain('lastError: Vision prewarm failed')
+    expect(text).toContain('subjectResponseGate: gated')
     expect(mocks.triggerVisionPetFeedback).toHaveBeenCalledWith('gated', expect.objectContaining({
       allowVisualFeedback: false,
       gateEnabled: true,
       gateState: 'locked',
       sourceEventId: 71,
     }))
+
+    unmount()
+  })
+
+  it('routes stable subject-position events to subject response feedback handler', async () => {
+    const { container, unmount } = mountVisionIsland()
+    await nextTick()
+
+    mocks.triggerContextualVisionFeedback.mockClear()
+    mocks.interactionState.lastEvent.value = {
+      id: 901,
+      type: 'user_moved_left',
+      message: 'I noticed you moved left.',
+      at: Date.now(),
+      subjectPosition: 'left',
+    }
+    await nextTick()
+
+    expect(mocks.triggerContextualVisionFeedback).toHaveBeenCalledTimes(1)
+    expect(mocks.triggerContextualVisionFeedback).toHaveBeenCalledWith('subject_moved_left', expect.objectContaining({
+      allowVisualFeedback: true,
+      gateEnabled: false,
+      gateState: 'disabled',
+      sourceEventId: 901,
+      direction: 'left',
+    }))
+
+    mocks.triggerContextualVisionFeedback.mockClear()
+    mocks.interactionState.lastEvent.value = {
+      id: 902,
+      type: 'subject_position_gated',
+      message: 'Subject position detected but gated.',
+      at: Date.now(),
+      subjectPosition: 'right',
+    }
+    await nextTick()
+
+    expect(mocks.triggerContextualVisionFeedback).toHaveBeenCalledTimes(1)
+    expect(mocks.triggerContextualVisionFeedback).toHaveBeenCalledWith('subject_gated', expect.objectContaining({
+      allowVisualFeedback: false,
+      sourceEventId: 902,
+      direction: 'right',
+    }))
+
+    expect(container.textContent ?? '').toContain('Subject-position response')
+    unmount()
+  })
+
+  it('updates feedback intensity via select and renders contextual feedback diagnostics', async () => {
+    const { container, unmount } = mountVisionIsland()
+    await nextTick()
+
+    const intensitySelect = container.querySelector('select')
+    if (!intensitySelect)
+      throw new Error('feedback intensity select not found')
+
+    intensitySelect.value = 'expressive'
+    intensitySelect.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+
+    expect(mocks.setFeedbackIntensity).toHaveBeenCalledTimes(1)
+    expect(mocks.setFeedbackIntensity).toHaveBeenCalledWith('expressive')
+
+    mocks.petFeedbackState.lastFeedbackType.value = 'subject_moved_right'
+    mocks.petFeedbackState.lastFeedbackMessage.value = 'Right side detected.'
+    mocks.petFeedbackState.lastFeedbackLevel.value = 'normal'
+    mocks.petFeedbackState.feedbackSuppressedByQuiet.value = true
+    mocks.petFeedbackState.feedbackBlockedByGate.value = false
+    mocks.petFeedbackState.nextAllowedFeedbackIn.value = 2_400
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('lastFeedbackType: subject_moved_right')
+    expect(text).toContain('lastFeedbackMessage: Right side detected.')
+    expect(text).toContain('feedbackLevel: normal')
+    expect(text).toContain('quietSuppressed: yes')
+    expect(text).toContain('gateBlocked: no')
 
     unmount()
   })
