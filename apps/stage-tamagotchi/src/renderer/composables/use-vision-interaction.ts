@@ -1,5 +1,7 @@
 import type { Category, FaceLandmarkerResult, GestureRecognizerResult, NormalizedLandmark } from '@mediapipe/tasks-vision'
 
+import type { GestureQualityPoint, GestureQualityState } from '../utils/gesture-quality'
+import type { GestureCandidateGesture, GestureMachineGesture, GestureMachineState } from '../utils/gesture-state-machine'
 import type { FaceSampleQuality, VisionFaceProfilePayload, VisionFaceProfileSample } from './use-encrypted-face-profile'
 import type { VisionRuntimeWarmupOptions } from './use-vision-runtime'
 
@@ -10,6 +12,17 @@ import { isElectronWindow } from '@proj-airi/stage-shared'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 
 import { electronSecureStoreDelete, electronSecureStoreGet, electronSecureStoreSet } from '../../shared/eventa'
+import { verifyGestureGeometry } from '../utils/gesture-geometry'
+import {
+  assessGestureQuality,
+  DEFAULT_GESTURE_QUALITY_THRESHOLDS,
+
+} from '../utils/gesture-quality'
+import {
+  createGestureStateMachine,
+  DEFAULT_GESTURE_STATE_MACHINE_CONFIG,
+
+} from '../utils/gesture-state-machine'
 import { useEncryptedFaceProfile } from './use-encrypted-face-profile'
 import { createLandmarkDescriptor, useLocalFaceGate } from './use-local-face-gate'
 import { useVisionRuntime } from './use-vision-runtime'
@@ -20,6 +33,7 @@ export type VisionMediaPipeStatus = 'idle' | 'loading' | 'ready' | 'failed'
 export type VisionFacePresence = 'present' | 'absent' | 'unknown'
 export type VisionFaceDirection = 'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'
 export type VisionGesture = 'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'
+export type VisionGestureQualityState = GestureQualityState
 export type VisionSubjectResponseState = 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
 
 export type VisionInteractionEventType
@@ -115,6 +129,13 @@ interface EmitEventOptions {
   subjectPosition?: VisionFaceDirection
 }
 
+interface GestureTopCandidate {
+  gesture: GestureCandidateGesture
+  confidence: number
+  landmarks: NormalizedLandmark[] | null
+  handedness: 'left' | 'right' | 'unknown'
+}
+
 const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
   stableFrames: 3,
   gestureStableFrames: 2,
@@ -133,33 +154,15 @@ const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
 
 const DISPLAY_NAME_LOCAL_STORAGE_KEY = 'airi.vision-experiment.display-name'
 const GATE_ENABLED_STORAGE_KEY = 'airi.vision-experiment.local-face-gate-enabled.v1'
+const GESTURE_CONTROLS_ENABLED_STORAGE_KEY = 'airi.vision-experiment.gesture-controls-enabled.v1'
 const INFERENCE_ERROR_LOG_COOLDOWN_MS = 1_500
 const TIMESTAMP_MISMATCH_RECOVERY_COOLDOWN_MS = 3_000
 const QUALITY_EVALUATION_INTERVAL_MS = 400
 const UI_YIELD_INTERVAL_MS = 240
 const FACE_PROFILE_AUTO_UNLOCK_STORE_KEY = 'vision.face-profile.auto-unlock.passphrase.v1'
-const GESTURE_HIGH_CONFIDENCE_THRESHOLD = 0.72
 const ENABLE_VISION_VERBOSE_DEBUG_LOGS = import.meta.env.DEV
   && import.meta.env.VITE_VISION_DEBUG_LOGS === 'true'
 
-const HAND_LANDMARK_INDEX = {
-  wrist: 0,
-  thumbMcp: 2,
-  thumbIp: 3,
-  thumbTip: 4,
-  indexMcp: 5,
-  indexPip: 6,
-  indexTip: 8,
-  middleMcp: 9,
-  middlePip: 10,
-  middleTip: 12,
-  ringMcp: 13,
-  ringPip: 14,
-  ringTip: 16,
-  pinkyMcp: 17,
-  pinkyPip: 18,
-  pinkyTip: 20,
-} as const
 const CAMERA_VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   width: { ideal: 960, max: 1280 },
   height: { ideal: 540, max: 720 },
@@ -171,7 +174,6 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     ...DEFAULT_OPTIONS,
     ...options,
   }
-  const effectiveGestureStableFrames = Math.max(1, Math.round(runtimeOptions.gestureStableFrames))
   const effectiveGestureInferenceIntervalMs = Math.max(40, Math.round(runtimeOptions.gestureInferenceIntervalMs))
   const effectiveGestureScoreThreshold = Math.min(0.9, Math.max(0.05, runtimeOptions.gestureScoreThreshold))
   const visionRuntime = useVisionRuntime()
@@ -190,6 +192,21 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   const lastSubjectResponseEvent = ref<VisionSubjectResponseEvent | null>(null)
   const subjectResponseCooldownUntil = ref(0)
   const lastGesture = ref<VisionGesture>('none')
+  const gestureControlsEnabled = ref(loadGestureControlsEnabled())
+  const candidateGesture = ref<GestureCandidateGesture>('none')
+  const stableGesture = ref<GestureCandidateGesture>('none')
+  const gestureState = ref<GestureMachineState>('idle')
+  const gestureConfidence = ref(0)
+  const gestureVoteCount = ref(0)
+  const gestureVoteWindowSize = ref(DEFAULT_GESTURE_STATE_MACHINE_CONFIG.voting.windowSize)
+  const geometryPassRate = ref(0)
+  const gestureQualityState = ref<VisionGestureQualityState>('unknown')
+  const handSizeRatio = ref(0)
+  const handInsideGuideArea = ref(false)
+  const holdProgressMs = ref(0)
+  const holdDurationMs = ref(0)
+  const cooldownRemainingMs = ref(0)
+  const releaseRequired = ref(false)
   const lastEvent = ref<VisionInteractionEvent | null>(null)
   const errorMessage = ref('')
   const lastInferenceAt = ref<number | null>(null)
@@ -255,6 +272,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   const encryptedProfile = useEncryptedFaceProfile()
   const openCvFaceQuality = visionRuntime.getOpenCVRuntime()
+  const gestureStateMachine = createGestureStateMachine(DEFAULT_GESTURE_STATE_MACHINE_CONFIG)
   const localFaceGate = useLocalFaceGate({
     stableFrames: runtimeOptions.stableFrames,
   })
@@ -297,11 +315,11 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   let absentFrameStreak = 0
   let stablePresence: Exclude<VisionFacePresence, 'unknown'> | null = null
 
-  let candidateGesture: VisionGesture = 'none'
-  let candidateGestureFrames = 0
-
   let candidateDirection: VisionFaceDirection = 'unknown'
   let candidateDirectionFrames = 0
+
+  let previousGestureHandCenter: GestureQualityPoint | null = null
+  let previousGestureHandTimestampMs: number | null = null
 
   const cooldownByEventKey = new Map<string, number>()
   let isStoppingTracksIntentionally = false
@@ -486,6 +504,17 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     }
   }
 
+  function loadGestureControlsEnabled() {
+    if (typeof localStorage === 'undefined')
+      return false
+    try {
+      return localStorage.getItem(GESTURE_CONTROLS_ENABLED_STORAGE_KEY) === 'true'
+    }
+    catch {
+      return false
+    }
+  }
+
   function persistGateEnabled(enabled: boolean) {
     if (typeof localStorage === 'undefined')
       return
@@ -494,6 +523,17 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     }
     catch {
       // ignore
+    }
+  }
+
+  function persistGestureControlsEnabled(enabled: boolean) {
+    if (typeof localStorage === 'undefined')
+      return
+    try {
+      localStorage.setItem(GESTURE_CONTROLS_ENABLED_STORAGE_KEY, enabled ? 'true' : 'false')
+    }
+    catch {
+      // ignore storage write failures
     }
   }
 
@@ -518,6 +558,13 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     gateEnabled.value = enabled
     localFaceGate.setGateEnabled(enabled)
     persistGateEnabled(enabled)
+  }
+
+  function setGestureControlsEnabled(enabled: boolean) {
+    gestureControlsEnabled.value = enabled
+    persistGestureControlsEnabled(enabled)
+    if (!enabled)
+      resetGesturePipelineState()
   }
 
   function getSecureStoreInvokes() {
@@ -766,13 +813,31 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     video.load()
   }
 
+  function resetGesturePipelineState() {
+    gestureStateMachine.reset()
+    const diagnostics = gestureStateMachine.getDiagnostics()
+    candidateGesture.value = diagnostics.candidateGesture
+    stableGesture.value = diagnostics.stableGesture
+    gestureState.value = diagnostics.gestureState
+    gestureConfidence.value = diagnostics.gestureConfidence
+    gestureVoteCount.value = diagnostics.gestureVotes
+    gestureVoteWindowSize.value = diagnostics.windowSize
+    geometryPassRate.value = diagnostics.geometryPassRate
+    gestureQualityState.value = diagnostics.qualityState
+    handSizeRatio.value = 0
+    handInsideGuideArea.value = false
+    holdProgressMs.value = diagnostics.holdProgressMs
+    holdDurationMs.value = diagnostics.holdDurationMs
+    cooldownRemainingMs.value = diagnostics.cooldownRemainingMs
+    releaseRequired.value = diagnostics.releaseRequired
+    previousGestureHandCenter = null
+    previousGestureHandTimestampMs = null
+  }
+
   function resetFrameState() {
     presentFrameStreak = 0
     absentFrameStreak = 0
     stablePresence = null
-
-    candidateGesture = 'none'
-    candidateGestureFrames = 0
 
     candidateDirection = 'unknown'
     candidateDirectionFrames = 0
@@ -797,6 +862,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     cachedQualityMetrics = null
     lastGestureInferenceAtMs = Number.NEGATIVE_INFINITY
     lastUiYieldAtMs = Number.NEGATIVE_INFINITY
+    resetGesturePipelineState()
     localFaceGate.resetForCameraStop()
   }
 
@@ -877,105 +943,6 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     return 'unknown'
   }
 
-  function distance2d(a: NormalizedLandmark, b: NormalizedLandmark) {
-    const dx = a.x - b.x
-    const dy = a.y - b.y
-    return Math.hypot(dx, dy)
-  }
-
-  function isFingerExtended(landmarks: NormalizedLandmark[], tip: number, pip: number, mcp: number) {
-    const tipPoint = landmarks[tip]
-    const pipPoint = landmarks[pip]
-    const mcpPoint = landmarks[mcp]
-    if (!tipPoint || !pipPoint || !mcpPoint)
-      return false
-    return tipPoint.y < pipPoint.y && pipPoint.y < mcpPoint.y
-  }
-
-  function isFingerCurled(landmarks: NormalizedLandmark[], tip: number, pip: number, mcp: number) {
-    const tipPoint = landmarks[tip]
-    const pipPoint = landmarks[pip]
-    const mcpPoint = landmarks[mcp]
-    if (!tipPoint || !pipPoint || !mcpPoint)
-      return false
-    return tipPoint.y > pipPoint.y && pipPoint.y > mcpPoint.y
-  }
-
-  function detectGestureFromLandmarks(
-    landmarks: NormalizedLandmark[] | undefined,
-    handednessLabel: string | null | undefined,
-  ): VisionGesture {
-    if (!landmarks || landmarks.length < 21)
-      return 'unknown'
-
-    const wrist = landmarks[HAND_LANDMARK_INDEX.wrist]
-    const thumbTip = landmarks[HAND_LANDMARK_INDEX.thumbTip]
-    const thumbMcp = landmarks[HAND_LANDMARK_INDEX.thumbMcp]
-    const thumbIp = landmarks[HAND_LANDMARK_INDEX.thumbIp]
-    const indexMcp = landmarks[HAND_LANDMARK_INDEX.indexMcp]
-    const indexTip = landmarks[HAND_LANDMARK_INDEX.indexTip]
-    const middleTip = landmarks[HAND_LANDMARK_INDEX.middleTip]
-    const ringTip = landmarks[HAND_LANDMARK_INDEX.ringTip]
-    const pinkyTip = landmarks[HAND_LANDMARK_INDEX.pinkyTip]
-    if (!wrist || !thumbTip || !thumbMcp || !thumbIp || !indexMcp || !indexTip || !middleTip || !ringTip || !pinkyTip)
-      return 'unknown'
-
-    const normalizedHandedness = normalizeHandednessLabel(handednessLabel)
-    const thumbRaisedByY = thumbTip.y < thumbIp.y && thumbIp.y < thumbMcp.y
-    const thumbExtendedByX = normalizedHandedness === 'right'
-      ? thumbTip.x < thumbMcp.x
-      : normalizedHandedness === 'left'
-        ? thumbTip.x > thumbMcp.x
-        : false
-    const thumbExtendedByDistance = distance2d(thumbTip, indexMcp) > (distance2d(thumbMcp, indexMcp) * 1.08)
-    const thumbExtended = thumbRaisedByY || thumbExtendedByX || thumbExtendedByDistance
-
-    const indexExtended = isFingerExtended(landmarks, HAND_LANDMARK_INDEX.indexTip, HAND_LANDMARK_INDEX.indexPip, HAND_LANDMARK_INDEX.indexMcp)
-    const middleExtended = isFingerExtended(landmarks, HAND_LANDMARK_INDEX.middleTip, HAND_LANDMARK_INDEX.middlePip, HAND_LANDMARK_INDEX.middleMcp)
-    const ringExtended = isFingerExtended(landmarks, HAND_LANDMARK_INDEX.ringTip, HAND_LANDMARK_INDEX.ringPip, HAND_LANDMARK_INDEX.ringMcp)
-    const pinkyExtended = isFingerExtended(landmarks, HAND_LANDMARK_INDEX.pinkyTip, HAND_LANDMARK_INDEX.pinkyPip, HAND_LANDMARK_INDEX.pinkyMcp)
-
-    const indexCurled = isFingerCurled(landmarks, HAND_LANDMARK_INDEX.indexTip, HAND_LANDMARK_INDEX.indexPip, HAND_LANDMARK_INDEX.indexMcp)
-    const middleCurled = isFingerCurled(landmarks, HAND_LANDMARK_INDEX.middleTip, HAND_LANDMARK_INDEX.middlePip, HAND_LANDMARK_INDEX.middleMcp)
-    const ringCurled = isFingerCurled(landmarks, HAND_LANDMARK_INDEX.ringTip, HAND_LANDMARK_INDEX.ringPip, HAND_LANDMARK_INDEX.ringMcp)
-    const pinkyCurled = isFingerCurled(landmarks, HAND_LANDMARK_INDEX.pinkyTip, HAND_LANDMARK_INDEX.pinkyPip, HAND_LANDMARK_INDEX.pinkyMcp)
-
-    const indexSpread = distance2d(indexTip, middleTip)
-    const indexToWrist = distance2d(indexTip, wrist)
-    const middleToWrist = distance2d(middleTip, wrist)
-    const ringToWrist = distance2d(ringTip, wrist)
-    const pinkyToWrist = distance2d(pinkyTip, wrist)
-
-    const isOpenPalm = thumbExtended
-      && indexExtended
-      && middleExtended
-      && ringExtended
-      && pinkyExtended
-    if (isOpenPalm)
-      return 'open_palm'
-
-    const isVictory = indexExtended
-      && middleExtended
-      && !ringExtended
-      && !pinkyExtended
-      && (ringCurled || ringToWrist < middleToWrist)
-      && (pinkyCurled || pinkyToWrist < middleToWrist)
-      && indexSpread > 0.05
-    if (isVictory)
-      return 'victory'
-
-    const isThumbsUp = thumbExtended
-      && thumbRaisedByY
-      && (indexCurled || indexToWrist < (middleToWrist * 0.95))
-      && (middleCurled || middleToWrist < (ringToWrist * 1.05))
-      && !ringExtended
-      && !pinkyExtended
-    if (isThumbsUp)
-      return 'thumbs_up'
-
-    return 'unknown'
-  }
-
   function logGestureDebug(message: string, payload: Record<string, unknown>) {
     if (!ENABLE_VISION_VERBOSE_DEBUG_LOGS)
       return
@@ -987,52 +954,86 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     return !canTriggerInteractiveFeedback.value
   }
 
-  function extractTopGesture(result: GestureRecognizerResult): VisionGesture {
-    const categories = (result.gestures?.[0] ?? []) as Category[]
-    const landmarkGesture = detectGestureFromLandmarks(
-      result.landmarks?.[0],
-      result.handedness?.[0]?.[0]?.categoryName ?? result.handednesses?.[0]?.[0]?.categoryName,
-    )
+  function isTriggerGesture(gesture: GestureCandidateGesture): gesture is GestureMachineGesture {
+    return gesture === 'open_palm' || gesture === 'victory' || gesture === 'thumbs_up'
+  }
 
-    let mlGesture: VisionGesture | null = null
-    let mlGestureScore = Number.NEGATIVE_INFINITY
-    let sawNoneCandidate = false
-    let sawUnknownCandidate = false
+  function extractTopGestureCandidate(result: GestureRecognizerResult): GestureTopCandidate {
+    const gestureRows = Array.isArray(result.gestures) ? result.gestures : []
+    const landmarkRows = Array.isArray(result.landmarks) ? result.landmarks : []
+    const handednessRows = (Array.isArray(result.handedness) ? result.handedness : result.handednesses) ?? []
 
-    for (const category of categories) {
-      const normalized = normalizeGestureName(category.categoryName)
-      const score = Number.isFinite(category.score) ? Number(category.score) : 1
-      if (score < effectiveGestureScoreThreshold)
-        continue
+    let bestCandidate: GestureTopCandidate | null = null
+    let sawNone = false
+    let sawUnknown = false
+    let firstHandLandmarks: NormalizedLandmark[] | null = null
+    let firstHandedness: 'left' | 'right' | 'unknown' = 'unknown'
+    let fallbackConfidence = 0
 
-      if (normalized === 'none') {
-        sawNoneCandidate = true
-        continue
+    for (let handIndex = 0; handIndex < Math.max(gestureRows.length, 1); handIndex += 1) {
+      const categories = (gestureRows[handIndex] ?? []) as Category[]
+      const landmarks = landmarkRows[handIndex] ?? null
+      const handedness = normalizeHandednessLabel(
+        handednessRows[handIndex]?.[0]?.categoryName ?? null,
+      )
+
+      if (handIndex === 0) {
+        firstHandLandmarks = landmarks
+        firstHandedness = handedness
       }
-      if (normalized === 'unknown') {
-        sawUnknownCandidate = true
-        continue
+
+      for (const category of categories) {
+        const normalized = normalizeGestureName(category.categoryName)
+        const score = Number.isFinite(category.score) ? Number(category.score) : 0
+        if (score < effectiveGestureScoreThreshold)
+          continue
+
+        if (normalized === 'none') {
+          sawNone = true
+          fallbackConfidence = Math.max(fallbackConfidence, score)
+          continue
+        }
+        if (normalized === 'unknown') {
+          sawUnknown = true
+          fallbackConfidence = Math.max(fallbackConfidence, score)
+          continue
+        }
+
+        const nextCandidate: GestureTopCandidate = {
+          gesture: normalized,
+          confidence: score,
+          landmarks,
+          handedness,
+        }
+        if (!bestCandidate || nextCandidate.confidence > bestCandidate.confidence)
+          bestCandidate = nextCandidate
       }
-      mlGesture = normalized
-      mlGestureScore = score
-      break
     }
 
-    if (mlGesture) {
-      if (landmarkGesture === mlGesture)
-        return mlGesture
-      if (landmarkGesture !== 'unknown' && landmarkGesture !== 'none' && mlGestureScore < GESTURE_HIGH_CONFIDENCE_THRESHOLD)
-        return landmarkGesture
-      return mlGesture
+    if (bestCandidate)
+      return bestCandidate
+    if (sawNone) {
+      return {
+        gesture: 'none',
+        confidence: fallbackConfidence,
+        landmarks: firstHandLandmarks,
+        handedness: firstHandedness,
+      }
     }
-
-    if (landmarkGesture !== 'unknown' && landmarkGesture !== 'none')
-      return landmarkGesture
-    if (sawNoneCandidate)
-      return 'none'
-    if (sawUnknownCandidate)
-      return 'unknown'
-    return 'none'
+    if (sawUnknown) {
+      return {
+        gesture: 'unknown',
+        confidence: fallbackConfidence,
+        landmarks: firstHandLandmarks,
+        handedness: firstHandedness,
+      }
+    }
+    return {
+      gesture: 'none',
+      confidence: 0,
+      landmarks: firstHandLandmarks,
+      handedness: firstHandedness,
+    }
   }
 
   function canEmitEvent(key: string, nowMs: number, cooldownMs: number) {
@@ -1503,22 +1504,81 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     acknowledgePrompt(nowMs)
   }
 
-  function applyGesture(gesture: VisionGesture, nowMs: number) {
-    if (gesture === candidateGesture) {
-      candidateGestureFrames += 1
+  function applyGestureCandidate(candidate: GestureTopCandidate, nowMs: number) {
+    const qualityAssessment = assessGestureQuality({
+      landmarks: candidate.landmarks,
+      confidence: candidate.confidence,
+      nowMs,
+      previousHandCenter: previousGestureHandCenter,
+      previousTimestampMs: previousGestureHandTimestampMs,
+      thresholds: DEFAULT_GESTURE_QUALITY_THRESHOLDS,
+    })
+
+    if (qualityAssessment.handCenter) {
+      previousGestureHandCenter = qualityAssessment.handCenter
+      previousGestureHandTimestampMs = nowMs
     }
     else {
-      candidateGesture = gesture
-      candidateGestureFrames = 1
+      previousGestureHandCenter = null
+      previousGestureHandTimestampMs = null
     }
 
-    logGestureDebug('raw gesture sample', {
+    const geometryPass = isTriggerGesture(candidate.gesture)
+      ? verifyGestureGeometry(candidate.gesture, candidate.landmarks, {
+          handedness: candidate.handedness,
+        })
+      : false
+
+    const stateResult = gestureStateMachine.ingest({
       nowMs,
-      rawGesture: gesture,
-      candidateGesture,
-      candidateGestureFrames,
-      requiredStableFrames: effectiveGestureStableFrames,
-      lastGesture: lastGesture.value,
+      candidateGesture: candidate.gesture,
+      confidence: qualityAssessment.gestureConfidence,
+      geometryPass,
+      qualityState: qualityAssessment.qualityState,
+    })
+
+    const diagnostics = stateResult.diagnostics
+    candidateGesture.value = diagnostics.candidateGesture
+    stableGesture.value = diagnostics.stableGesture
+    gestureState.value = diagnostics.gestureState
+    gestureConfidence.value = diagnostics.gestureConfidence
+    gestureVoteCount.value = diagnostics.gestureVotes
+    gestureVoteWindowSize.value = diagnostics.windowSize
+    geometryPassRate.value = diagnostics.geometryPassRate
+    gestureQualityState.value = diagnostics.qualityState
+    handSizeRatio.value = qualityAssessment.handSizeRatio
+    handInsideGuideArea.value = qualityAssessment.handInsideGuideArea
+    holdProgressMs.value = diagnostics.holdProgressMs
+    holdDurationMs.value = diagnostics.holdDurationMs
+    cooldownRemainingMs.value = diagnostics.cooldownRemainingMs
+    releaseRequired.value = diagnostics.releaseRequired
+
+    if (diagnostics.stableGesture !== 'none') {
+      lastGesture.value = diagnostics.stableGesture
+    }
+    else if (diagnostics.candidateGesture === 'unknown') {
+      lastGesture.value = 'unknown'
+    }
+    else {
+      lastGesture.value = 'none'
+    }
+
+    logGestureDebug('gesture sample processed', {
+      nowMs,
+      candidateGesture: diagnostics.candidateGesture,
+      stableGesture: diagnostics.stableGesture,
+      state: diagnostics.gestureState,
+      votes: diagnostics.gestureVotes,
+      windowSize: diagnostics.windowSize,
+      gestureConfidence: Number(diagnostics.gestureConfidence.toFixed(3)),
+      geometryPassRate: Number(diagnostics.geometryPassRate.toFixed(3)),
+      qualityState: diagnostics.qualityState,
+      handSizeRatio: Number(qualityAssessment.handSizeRatio.toFixed(4)),
+      handInsideGuideArea: qualityAssessment.handInsideGuideArea,
+      holdProgressMs: diagnostics.holdProgressMs,
+      holdDurationMs: diagnostics.holdDurationMs,
+      cooldownRemainingMs: diagnostics.cooldownRemainingMs,
+      releaseRequired: diagnostics.releaseRequired,
       gateEnabled: localFaceGate.gateEnabled.value,
       gateState: localFaceGate.gateState.value,
       profileStatus: localFaceGate.profileStatus.value,
@@ -1526,24 +1586,14 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       faceGateStatusText: faceGateStatusText.value,
     })
 
-    if (candidateGestureFrames < effectiveGestureStableFrames)
+    if (!stateResult.triggeredGesture)
       return
-    if (gesture === 'none') {
-      lastGesture.value = 'none'
-      return
-    }
-    if (gesture === 'unknown') {
-      lastGesture.value = 'unknown'
-      return
-    }
-    if (lastGesture.value === gesture)
-      return
-    lastGesture.value = gesture
-    if (gesture === 'open_palm')
+
+    if (stateResult.triggeredGesture === 'open_palm')
       handleOpenPalm(nowMs)
-    else if (gesture === 'victory')
+    else if (stateResult.triggeredGesture === 'victory')
       handleVictory(nowMs)
-    else if (gesture === 'thumbs_up')
+    else
       handleThumbsUp(nowMs)
   }
 
@@ -1665,10 +1715,10 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
         const faceResult = activeFaceLandmarker.detectForVideo(video, frameTimestampMs)
         await applyFacePresence(faceResult, frameTimestampMs)
-        if ((wallNowMs - lastGestureInferenceAtMs) >= effectiveGestureInferenceIntervalMs) {
+        if (gestureControlsEnabled.value && (wallNowMs - lastGestureInferenceAtMs) >= effectiveGestureInferenceIntervalMs) {
           const gestureResult = activeGestureRecognizer.recognizeForVideo(video, frameTimestampMs)
-          const topGesture = extractTopGesture(gestureResult)
-          applyGesture(topGesture, frameTimestampMs)
+          const topGesture = extractTopGestureCandidate(gestureResult)
+          applyGestureCandidate(topGesture, frameTimestampMs)
           lastGestureInferenceAtMs = wallNowMs
         }
         lastInferenceAt.value = Date.now()
@@ -2108,6 +2158,21 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     lastSubjectResponseEvent,
     subjectResponseCooldownUntil,
     lastGesture,
+    gestureControlsEnabled,
+    candidateGesture,
+    stableGesture,
+    gestureState,
+    gestureConfidence,
+    gestureVoteCount,
+    gestureVoteWindowSize,
+    geometryPassRate,
+    gestureQualityState,
+    handSizeRatio,
+    handInsideGuideArea,
+    holdProgressMs,
+    holdDurationMs,
+    cooldownRemainingMs,
+    releaseRequired,
     lastEvent,
     errorMessage,
     visionQuietUntil,
@@ -2149,6 +2214,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     stop,
     setDisplayName,
     setFaceGateEnabled,
+    setGestureControlsEnabled,
     setMaxInferenceStallMs,
     enrollLocalFaceProfile,
     unlockFaceProfile,

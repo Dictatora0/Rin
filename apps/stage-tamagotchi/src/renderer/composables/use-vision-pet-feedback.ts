@@ -28,6 +28,7 @@ type VisionSubjectPosition = Exclude<VisionFaceDirection, 'unknown'>
 type VisionSubjectResponseState = 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
 export type VisionFeedbackIntensity = 'minimal' | 'balanced' | 'expressive'
 export type VisionFeedbackLevel = 'subtle' | 'normal' | 'strong'
+export type VisionContextualFeedbackPriority = 'low' | 'normal' | 'high'
 export type VisionContextualFeedbackEventType
   = | 'subject_moved_left'
     | 'subject_moved_right'
@@ -67,6 +68,7 @@ interface VisionSubjectResponseRecord {
   gated: boolean
   suppressedByQuiet: boolean
   feedbackLevel: VisionFeedbackLevel
+  feedbackPriority: VisionContextualFeedbackPriority
   toastMessage?: string
   summary: string
 }
@@ -119,6 +121,8 @@ interface UseVisionPetFeedbackOptions {
   subjectUncertainCooldownMs?: number
   subjectDwellCooldownMs?: number
   feedbackMessageCooldownMs?: number
+  directionToastCooldownMs?: number
+  highPriorityToastHoldMs?: number
   random?: () => number
 }
 
@@ -139,6 +143,8 @@ const DEFAULT_OPTIONS: Required<UseVisionPetFeedbackOptions> = {
   subjectUncertainCooldownMs: 8_000,
   subjectDwellCooldownMs: 14_000,
   feedbackMessageCooldownMs: 5_000,
+  directionToastCooldownMs: 2_500,
+  highPriorityToastHoldMs: 3_000,
   random: Math.random,
 }
 
@@ -213,6 +219,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
   const lastFeedbackType = ref<VisionContextualFeedbackEventType | null>(null)
   const lastFeedbackMessage = ref('')
   const lastFeedbackLevel = ref<VisionFeedbackLevel>('subtle')
+  const lastFeedbackPriority = ref<VisionContextualFeedbackPriority>('low')
   const lastFeedbackAt = ref<number | null>(null)
   const nextAllowedFeedbackAt = ref(0)
   const feedbackSuppressedByQuiet = ref(false)
@@ -226,6 +233,8 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     face_direction_change: Number.NEGATIVE_INFINITY,
     gated: Number.NEGATIVE_INFINITY,
   })
+  const lastDirectionalToastAt = ref(Number.NEGATIVE_INFINITY)
+  const highPriorityToastUntil = ref(Number.NEGATIVE_INFINITY)
   const lastMotionTriggeredAt = ref(Number.NEGATIVE_INFINITY)
   const contextualLastTriggeredAt = ref<Record<VisionContextualFeedbackEventType, number>>({
     subject_moved_left: Number.NEGATIVE_INFINITY,
@@ -645,6 +654,25 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     return mapSubjectResponseState(direction)
   }
 
+  function resolveContextualFeedbackPriority(eventType: VisionContextualFeedbackEventType): VisionContextualFeedbackPriority {
+    if (eventType === 'subject_returned' || eventType === 'subject_matched')
+      return 'high'
+    if (eventType === 'subject_gated' || eventType === 'subject_absent' || eventType === 'subject_uncertain')
+      return 'normal'
+    return 'low'
+  }
+
+  function isDirectionalContextualEvent(eventType: VisionContextualFeedbackEventType) {
+    return eventType === 'subject_moved_left'
+      || eventType === 'subject_moved_right'
+      || eventType === 'subject_moved_up'
+      || eventType === 'subject_moved_down'
+      || eventType === 'subject_centered'
+      || eventType === 'subject_dwelled_left'
+      || eventType === 'subject_dwelled_right'
+      || eventType === 'subject_dwelled_center'
+  }
+
   function isContextualInCooldown(eventType: VisionContextualFeedbackEventType, nowMs: number, force = false) {
     if (force)
       return false
@@ -666,6 +694,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       ? options.direction
       : directionFromContextualEvent(eventType)
     const nextEventType = isGateBlocked ? 'subject_gated' : eventType
+    const feedbackPriority = resolveContextualFeedbackPriority(nextEventType)
     if (isContextualInCooldown(nextEventType, nowMs, options?.force))
       return false
     const feedbackLevel = resolveFeedbackLevel(nextEventType, feedbackIntensity.value)
@@ -695,9 +724,20 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       ? triggerExpressionWithFallback(expressionCandidates, runtimeOptions.subjectResponseVisualMs)
       : undefined
 
-    const shouldToast = !suppressedByQuiet
+    let shouldToast = !suppressedByQuiet
       && feedbackLevel !== null
       && shouldAllowContextualToast(nextEventType, nextLevel)
+    if (shouldToast && feedbackPriority === 'low' && nowMs < highPriorityToastUntil.value)
+      shouldToast = false
+    if (shouldToast && isDirectionalContextualEvent(nextEventType)) {
+      const inDirectionalToastCooldown = (nowMs - lastDirectionalToastAt.value) < runtimeOptions.directionToastCooldownMs
+      if (inDirectionalToastCooldown)
+        shouldToast = false
+      else
+        lastDirectionalToastAt.value = nowMs
+    }
+    if (shouldToast && feedbackPriority === 'high')
+      highPriorityToastUntil.value = nowMs + runtimeOptions.highPriorityToastHoldMs
 
     const state = resolveContextualState(nextEventType, direction)
     subjectResponseState.value = state
@@ -714,6 +754,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       gated: isGateBlocked,
       suppressedByQuiet,
       feedbackLevel: nextLevel,
+      feedbackPriority,
       toastMessage: shouldToast ? summary : undefined,
       summary,
     }
@@ -724,6 +765,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     lastFeedbackType.value = nextEventType
     lastFeedbackMessage.value = summary
     lastFeedbackLevel.value = nextLevel
+    lastFeedbackPriority.value = feedbackPriority
     lastFeedbackAt.value = nowMs
 
     if (isGateBlocked || nextEventType === 'subject_gated')
@@ -936,10 +978,13 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     lastFeedbackType.value = null
     lastFeedbackMessage.value = ''
     lastFeedbackLevel.value = 'subtle'
+    lastFeedbackPriority.value = 'low'
     lastFeedbackAt.value = null
     nextAllowedFeedbackAt.value = 0
     feedbackSuppressedByQuiet.value = false
     feedbackBlockedByGate.value = false
+    lastDirectionalToastAt.value = Number.NEGATIVE_INFINITY
+    highPriorityToastUntil.value = Number.NEGATIVE_INFINITY
     celebrationCount.value = 0
   }
 
@@ -957,6 +1002,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     lastFeedbackType,
     lastFeedbackMessage,
     lastFeedbackLevel,
+    lastFeedbackPriority,
     lastFeedbackAt,
     nextAllowedFeedbackAt,
     nextAllowedFeedbackIn,

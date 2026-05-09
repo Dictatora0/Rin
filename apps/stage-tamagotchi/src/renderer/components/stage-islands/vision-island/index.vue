@@ -39,6 +39,21 @@ const {
   lastSubjectResponseEvent: interactionLastSubjectResponseEvent,
   subjectResponseCooldownUntil,
   lastGesture,
+  gestureControlsEnabled,
+  candidateGesture,
+  stableGesture,
+  gestureState,
+  gestureConfidence,
+  gestureVoteCount,
+  gestureVoteWindowSize,
+  geometryPassRate,
+  gestureQualityState,
+  handSizeRatio,
+  handInsideGuideArea,
+  holdProgressMs,
+  holdDurationMs,
+  cooldownRemainingMs,
+  releaseRequired,
   lastEvent,
   errorMessage,
   quietRemainingMs,
@@ -73,6 +88,7 @@ const {
   retryVisionRuntime,
   resetVisionRuntime,
   setFaceGateEnabled,
+  setGestureControlsEnabled,
   setMaxInferenceStallMs,
   setRememberFaceProfileOnDevice,
   unlockFaceProfile,
@@ -92,6 +108,7 @@ const {
   lastFeedbackType,
   lastFeedbackMessage,
   lastFeedbackLevel,
+  lastFeedbackPriority,
   nextAllowedFeedbackIn,
   feedbackSuppressedByQuiet,
   feedbackBlockedByGate,
@@ -212,6 +229,30 @@ const gestureText = computed(() => {
     unknown: '未知',
   }
   return map[lastGesture.value] ?? lastGesture.value
+})
+const gestureConfidenceText = computed(() => gestureConfidence.value.toFixed(2))
+const gestureVoteText = computed(() => `${gestureVoteCount.value}/${gestureVoteWindowSize.value}`)
+const geometryPassRateText = computed(() => geometryPassRate.value.toFixed(2))
+const handSizeRatioText = computed(() => handSizeRatio.value.toFixed(3))
+const holdProgressText = computed(() => `${Math.round(holdProgressMs.value)}ms / ${Math.round(holdDurationMs.value)}ms`)
+const cooldownRemainingText = computed(() => `${Math.max(0, Math.round(cooldownRemainingMs.value))}ms`)
+const showAdvancedGestureDiagnostics = computed(() => gestureControlsEnabled.value)
+const gestureCalibrationHint = computed(() => {
+  if (!gestureControlsEnabled.value)
+    return 'Enable experimental gesture controls to view diagnostics.'
+  if (releaseRequired.value)
+    return 'Release your hand to trigger again.'
+  if (gestureQualityState.value === 'too_far')
+    return 'Move your hand closer.'
+  if (gestureQualityState.value === 'out_of_frame')
+    return 'Keep your hand inside the guide area.'
+  if (gestureQualityState.value === 'too_fast')
+    return 'Hold the gesture steady.'
+  if (gestureQualityState.value === 'low_confidence')
+    return 'Better lighting may help.'
+  if (gestureState.value === 'candidate' || gestureState.value === 'stable')
+    return 'Hold the gesture steady.'
+  return 'Gesture input looks good.'
 })
 
 const profileStatusText = computed(() => {
@@ -387,6 +428,9 @@ const lastContextualFeedbackMessageText = computed(() => {
 const contextualFeedbackLevelText = computed(() => {
   return lastFeedbackLevel.value
 })
+const contextualFeedbackPriorityText = computed(() => {
+  return lastFeedbackPriority.value
+})
 const nextAllowedFeedbackSeconds = computed(() => {
   return Math.ceil(nextAllowedFeedbackIn.value / 1000)
 })
@@ -495,6 +539,11 @@ function toggleCamera() {
 
 function toggleGate() {
   setFaceGateEnabled(!gateEnabled.value)
+}
+
+function toggleGestureControls(event: Event) {
+  const enabled = (event.target as HTMLInputElement).checked
+  setGestureControlsEnabled(enabled)
 }
 
 function openEnrollmentPage() {
@@ -917,9 +966,65 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
             手势映射
           </div>
+          <div :class="['mb-1 text-neutral-500 dark:text-neutral-400']">
+            Optional experimental controls (default off)
+          </div>
           <div>Open Palm: quiet Rin visually</div>
           <div>Victory: trigger Rin celebration</div>
           <div>Thumbs Up: acknowledge current prompt</div>
+        </div>
+
+        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            Advanced / Experimental Gesture Controls
+          </div>
+          <label :class="['mb-2 flex items-center gap-2']">
+            <input
+              type="checkbox"
+              :checked="gestureControlsEnabled"
+              @change="toggleGestureControls"
+            >
+            <span>Enable experimental gesture controls</span>
+          </label>
+          <div>gestureEnabled: {{ gestureControlsEnabled ? 'true' : 'false' }}</div>
+          <div v-if="showAdvancedGestureDiagnostics">
+            <div>candidateGesture: {{ candidateGesture }}</div>
+            <div>stableGesture: {{ stableGesture }}</div>
+            <div>gestureState: {{ gestureState }}</div>
+            <div>gestureConfidence: {{ gestureConfidenceText }}</div>
+            <div>gestureVotes: {{ gestureVoteText }}</div>
+            <div>geometryPassRate: {{ geometryPassRateText }}</div>
+            <div>gestureQualityState: {{ gestureQualityState }}</div>
+            <div>handSize: {{ handSizeRatioText }}</div>
+            <div>handInsideGuideArea: {{ handInsideGuideArea ? 'true' : 'false' }}</div>
+            <div>holdProgress: {{ holdProgressText }}</div>
+            <div>cooldownRemainingMs: {{ cooldownRemainingText }}</div>
+            <div>releaseRequired: {{ releaseRequired ? 'true' : 'false' }}</div>
+            <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+              {{ gestureCalibrationHint }}
+            </div>
+            <div :class="['text-neutral-500 dark:text-neutral-400']">
+              Move your hand closer.
+            </div>
+            <div :class="['text-neutral-500 dark:text-neutral-400']">
+              Keep your hand inside the guide area.
+            </div>
+            <div :class="['text-neutral-500 dark:text-neutral-400']">
+              Hold the gesture steady.
+            </div>
+            <div :class="['text-neutral-500 dark:text-neutral-400']">
+              Release your hand to trigger again.
+            </div>
+            <div :class="['text-neutral-500 dark:text-neutral-400']">
+              Better lighting may help.
+            </div>
+          </div>
+          <div
+            v-else
+            :class="['text-neutral-500 dark:text-neutral-400']"
+          >
+            Experimental gesture controls are currently disabled.
+          </div>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
@@ -1004,6 +1109,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           <div>lastFeedbackType: {{ lastContextualFeedbackTypeText }}</div>
           <div>lastFeedbackMessage: {{ lastContextualFeedbackMessageText }}</div>
           <div>feedbackLevel: {{ contextualFeedbackLevelText }}</div>
+          <div>feedbackPriority: {{ contextualFeedbackPriorityText }}</div>
           <div>nextAllowedFeedbackIn: {{ nextAllowedFeedbackSeconds }}</div>
           <div>dwellStatus: {{ dwellStatusText }}</div>
           <div>quietSuppressed: {{ feedbackSuppressedByQuiet ? 'yes' : 'no' }}</div>

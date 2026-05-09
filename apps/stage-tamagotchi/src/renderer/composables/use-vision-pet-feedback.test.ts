@@ -485,6 +485,95 @@ describe('useVisionPetFeedback', () => {
     unmount()
   })
 
+  it('suppresses rapid directional toasts while keeping directional state updates', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      directionToastCooldownMs: 2_500,
+      feedbackMessageCooldownMs: 300,
+    })
+
+    const movedLeft = feedback.triggerContextualVisionFeedback('subject_moved_left', {
+      allowVisualFeedback: true,
+      direction: 'left',
+    })
+    expect(movedLeft).toBe(true)
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBe('I noticed you moved left.')
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBe('Think')
+    expect(feedback.lastSubjectResponseEvent.value?.state).toBe('following_left')
+
+    const movedRightImmediately = feedback.triggerContextualVisionFeedback('subject_moved_right', {
+      allowVisualFeedback: true,
+      direction: 'right',
+    })
+    expect(movedRightImmediately).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_moved_right')
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('I noticed you moved right.')
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.expression).toBe('normal')
+    expect(feedback.lastSubjectResponseEvent.value?.state).toBe('following_right')
+
+    vi.advanceTimersByTime(2_600)
+    const centeredAfterDirectionalToastCooldown = feedback.triggerContextualVisionFeedback('subject_centered', {
+      allowVisualFeedback: true,
+      direction: 'center',
+    })
+    expect(centeredAfterDirectionalToastCooldown).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_centered')
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBe('Back to center.')
+    unmount()
+  })
+
+  it('prioritizes returned and matched toasts over noisy directional changes', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      directionToastCooldownMs: 2_500,
+      feedbackMessageCooldownMs: 300,
+      highPriorityToastHoldMs: 3_000,
+    })
+
+    const movedLeft = feedback.triggerContextualVisionFeedback('subject_moved_left', {
+      allowVisualFeedback: true,
+      direction: 'left',
+      displayName: 'Rin',
+    })
+    expect(movedLeft).toBe(true)
+    expect(feedback.lastFeedbackPriority.value).toBe('low')
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBe('Rin, you moved left.')
+
+    const returned = feedback.triggerContextualVisionFeedback('subject_returned', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(returned).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_returned')
+    expect(feedback.lastFeedbackPriority.value).toBe('high')
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBe('Welcome back, Rin.')
+    expect(feedback.lastSubjectResponseEvent.value?.feedbackPriority).toBe('high')
+
+    const movedRightDuringHighPriorityHold = feedback.triggerContextualVisionFeedback('subject_moved_right', {
+      allowVisualFeedback: true,
+      direction: 'right',
+      displayName: 'Rin',
+    })
+    expect(movedRightDuringHighPriorityHold).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_moved_right')
+    expect(feedback.lastFeedbackPriority.value).toBe('low')
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('Rin, you moved right.')
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBeUndefined()
+
+    const matchedDuringDirectionalNoise = feedback.triggerContextualVisionFeedback('subject_matched', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(matchedDuringDirectionalNoise).toBe(true)
+    expect(feedback.lastFeedbackType.value).toBe('subject_matched')
+    expect(feedback.lastFeedbackPriority.value).toBe('high')
+    expect(feedback.lastSubjectResponseEvent.value?.feedbackPriority).toBe('high')
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBe('Matched subject confirmed, Rin.')
+    unmount()
+  })
+
   it('supports feedback intensity levels and persists intensity across composable recreation', () => {
     const { feedback, unmount } = createFeedbackHarness()
     expect(feedback.feedbackIntensity.value).toBe('balanced')

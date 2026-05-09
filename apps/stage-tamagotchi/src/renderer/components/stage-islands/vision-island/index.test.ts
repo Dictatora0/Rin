@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   retryVisionRuntime: vi.fn(async () => {}),
   resetVisionRuntime: vi.fn(async () => {}),
   setFaceGateEnabled: vi.fn(() => {}),
+  setGestureControlsEnabled: vi.fn(() => {}),
   setMaxInferenceStallMs: vi.fn(() => {}),
   setRememberFaceProfileOnDevice: vi.fn(async () => true),
   unlockFaceProfile: vi.fn(async () => ({ ok: true as const, profile: null as never })),
@@ -61,6 +62,21 @@ function createInteractionState() {
     } | null>(null),
     subjectResponseCooldownUntil: ref(0),
     lastGesture: ref<'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'>('none'),
+    gestureControlsEnabled: ref(false),
+    candidateGesture: ref<'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'>('none'),
+    stableGesture: ref<'none' | 'open_palm' | 'victory' | 'thumbs_up'>('none'),
+    gestureState: ref<'idle' | 'candidate' | 'stable' | 'armed' | 'triggered' | 'cooldown' | 'waiting_release'>('idle'),
+    gestureConfidence: ref(0),
+    gestureVoteCount: ref(0),
+    gestureVoteWindowSize: ref(10),
+    geometryPassRate: ref(0),
+    gestureQualityState: ref<'good' | 'too_far' | 'out_of_frame' | 'too_fast' | 'low_confidence' | 'unknown'>('unknown'),
+    handSizeRatio: ref(0),
+    handInsideGuideArea: ref(false),
+    holdProgressMs: ref(0),
+    holdDurationMs: ref(0),
+    cooldownRemainingMs: ref(0),
+    releaseRequired: ref(false),
     lastEvent: ref<{
       id: number
       type: string
@@ -115,6 +131,7 @@ function createInteractionState() {
     retryVisionRuntime: mocks.retryVisionRuntime,
     resetVisionRuntime: mocks.resetVisionRuntime,
     setFaceGateEnabled: mocks.setFaceGateEnabled,
+    setGestureControlsEnabled: mocks.setGestureControlsEnabled,
     setMaxInferenceStallMs: mocks.setMaxInferenceStallMs,
     setRememberFaceProfileOnDevice: mocks.setRememberFaceProfileOnDevice,
     unlockFaceProfile: mocks.unlockFaceProfile,
@@ -131,6 +148,7 @@ function createPetFeedbackState() {
     lastFeedbackType: ref<string | null>(null),
     lastFeedbackMessage: ref(''),
     lastFeedbackLevel: ref<'subtle' | 'normal' | 'strong'>('subtle'),
+    lastFeedbackPriority: ref<'low' | 'normal' | 'high'>('low'),
     lastFeedbackAt: ref<number | null>(null),
     nextAllowedFeedbackAt: ref(0),
     nextAllowedFeedbackIn: ref(0),
@@ -241,6 +259,7 @@ describe('visionIsland UI behavior', () => {
     mocks.retryVisionRuntime.mockReset()
     mocks.resetVisionRuntime.mockReset()
     mocks.setFaceGateEnabled.mockReset()
+    mocks.setGestureControlsEnabled.mockReset()
     mocks.setMaxInferenceStallMs.mockReset()
     mocks.setRememberFaceProfileOnDevice.mockReset()
     mocks.unlockFaceProfile.mockReset()
@@ -273,6 +292,10 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('Open Palm: quiet Rin visually')
     expect(text).toContain('Victory: trigger Rin celebration')
     expect(text).toContain('Thumbs Up: acknowledge current prompt')
+    expect(text).toContain('Advanced / Experimental Gesture Controls')
+    expect(text).toContain('gestureEnabled: false')
+    expect(text).toContain('Experimental gesture controls are currently disabled.')
+    expect(text.includes('candidateGesture:')).toBe(false)
     expect(text).toContain('本地人脸门控')
     expect(text).toContain('摄像头默认关闭。')
     expect(text).toContain('识别仅在本地运行。')
@@ -295,6 +318,7 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('Feedback intensity:')
     expect(text).toContain('lastFeedbackType: none')
     expect(text).toContain('lastFeedbackMessage: none')
+    expect(text).toContain('feedbackPriority: low')
     expect(text).toContain('This is gaze-like feedback, not strict gaze measurement.')
     expect(text.includes('eye tracking')).toBe(false)
     expect(mocks.warmupVisionRuntime).toHaveBeenCalledTimes(0)
@@ -342,6 +366,64 @@ describe('visionIsland UI behavior', () => {
 
     await clickButton(container, '打开人脸录入页')
     expect(mocks.routerPush).toHaveBeenCalledWith('/vision-enrollment')
+
+    unmount()
+  })
+
+  it('toggles experimental gesture controls and shows diagnostics only when enabled', async () => {
+    const { container, unmount } = mountVisionIsland()
+    await nextTick()
+
+    expect(container.textContent ?? '').toContain('gestureEnabled: false')
+    expect(container.textContent ?? '').not.toContain('gestureQualityState:')
+
+    const gestureToggle = container.querySelector('input[type="checkbox"]')
+    if (!gestureToggle) {
+      throw new Error('experimental gesture toggle not found')
+    }(gestureToggle as HTMLInputElement).checked = true
+    gestureToggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+
+    expect(mocks.setGestureControlsEnabled).toHaveBeenCalledTimes(1)
+    expect(mocks.setGestureControlsEnabled).toHaveBeenCalledWith(true)
+
+    mocks.interactionState.gestureControlsEnabled.value = true
+    mocks.interactionState.candidateGesture.value = 'victory'
+    mocks.interactionState.stableGesture.value = 'victory'
+    mocks.interactionState.gestureState.value = 'stable'
+    mocks.interactionState.gestureConfidence.value = 0.83
+    mocks.interactionState.gestureVoteCount.value = 7
+    mocks.interactionState.gestureVoteWindowSize.value = 10
+    mocks.interactionState.geometryPassRate.value = 0.8
+    mocks.interactionState.gestureQualityState.value = 'good'
+    mocks.interactionState.handSizeRatio.value = 0.032
+    mocks.interactionState.handInsideGuideArea.value = true
+    mocks.interactionState.holdProgressMs.value = 420
+    mocks.interactionState.holdDurationMs.value = 500
+    mocks.interactionState.cooldownRemainingMs.value = 2600
+    mocks.interactionState.releaseRequired.value = true
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('gestureEnabled: true')
+    expect(text).toContain('candidateGesture: victory')
+    expect(text).toContain('stableGesture: victory')
+    expect(text).toContain('gestureState: stable')
+    expect(text).toContain('gestureVotes: 7/10')
+    expect(text).toContain('gestureQualityState: good')
+    expect(text).toContain('releaseRequired: true')
+    expect(text).toContain('Move your hand closer.')
+    expect(text).toContain('Keep your hand inside the guide area.')
+    expect(text).toContain('Hold the gesture steady.')
+    expect(text).toContain('Release your hand to trigger again.')
+    expect(text).toContain('Better lighting may help.')
+    expect(text.includes('eye tracking')).toBe(false)
+
+    ;(gestureToggle as HTMLInputElement).checked = false
+    gestureToggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+
+    expect(mocks.setGestureControlsEnabled).toHaveBeenCalledWith(false)
 
     unmount()
   })
@@ -462,6 +544,7 @@ describe('visionIsland UI behavior', () => {
     mocks.petFeedbackState.lastFeedbackType.value = 'subject_moved_right'
     mocks.petFeedbackState.lastFeedbackMessage.value = 'Right side detected.'
     mocks.petFeedbackState.lastFeedbackLevel.value = 'normal'
+    mocks.petFeedbackState.lastFeedbackPriority.value = 'low'
     mocks.petFeedbackState.feedbackSuppressedByQuiet.value = true
     mocks.petFeedbackState.feedbackBlockedByGate.value = false
     mocks.petFeedbackState.nextAllowedFeedbackIn.value = 2_400
@@ -471,6 +554,7 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('lastFeedbackType: subject_moved_right')
     expect(text).toContain('lastFeedbackMessage: Right side detected.')
     expect(text).toContain('feedbackLevel: normal')
+    expect(text).toContain('feedbackPriority: low')
     expect(text).toContain('quietSuppressed: yes')
     expect(text).toContain('gateBlocked: no')
 

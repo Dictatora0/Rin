@@ -22,6 +22,52 @@
 - `victory`: celebrate completed moment
 - `thumbs_up`: acknowledge current prompt
 
+## Optional Experimental Gesture Controls（默认关闭）
+- 手势识别保持为 optional experimental controls，默认关闭。
+- 用户在 Vision Island 的 `Advanced / Experimental Gesture Controls` 手动开启后，才会运行手势推理链路。
+- 关闭时隐藏高级诊断，只保留开关入口；不影响 facePresence / subject-position response 主链路。
+
+### 手势稳健识别链路（v2）
+- 输入质量门控（quality gate）：
+- `handSizeRatio`、`handInsideGuideArea`、`landmarkCompleteness`、`gestureConfidence`、`handMotionSpeed`
+- `qualityState`: `good | too_far | out_of_frame | too_fast | low_confidence | unknown`
+- 保守几何校验（geometry verifier）：
+- `verifyOpenPalm`
+- `verifyVictory`
+- `verifyThumbsUp`
+- 滑动窗口投票（sliding window voting）：
+- `windowSize=10`
+- `minVotes=7`
+- `minAverageConfidence=0.75`
+- `minGeometryPassRate=0.7`
+- 仅 `qualityState=good` 的帧参与投票。
+- 手势状态机（state machine）：
+- `idle -> candidate -> stable -> armed -> triggered -> cooldown -> waiting_release -> idle`
+- `open_palm`: hold 600ms, cooldown 3000ms
+- `victory`: hold 500ms, cooldown 4000ms
+- `thumbs_up`: hold 500ms, cooldown 3000ms
+- release-to-retrigger：
+- 触发后必须先释放手势（回到 none/unknown）才能再次触发同一手势，避免连续抖动触发。
+
+### 校准反馈（Calibration Feedback）
+- Vision Island 会显示：
+- `candidateGesture` / `stableGesture` / `gestureState`
+- `gestureVotes` / `geometryPassRate` / `gestureQualityState`
+- `handSize` / `handInsideGuideArea`
+- `holdProgress` / `cooldownRemainingMs` / `releaseRequired`
+- 校准提示：
+- `Move your hand closer.`
+- `Keep your hand inside the guide area.`
+- `Hold the gesture steady.`
+- `Release your hand to trigger again.`
+- `Better lighting may help.`
+
+### 使用建议（真机）
+- 保持手势在画面中央有效区域内。
+- 光线尽量均匀，避免逆光和强背光。
+- 手势保持至少 0.5 秒。
+- 触发后先放下手，再做下一次触发。
+
 ## Subject-position response（主体位置响应）
 - 响应来源：`faceCenter` 与 `faceDirection` 的稳定帧结果（不是单帧抖动）。
 - 反馈目标：让 Rin 在 `left / right / up / down / center` 切换时给出可见、可解释的反馈。
@@ -63,6 +109,8 @@
 
 ### 防打扰策略
 - 事件级冷却：方向类默认 5s，`returned/matched` 10s，dwell 14s。
+- 方向提示全局节流：方向在短时间快速切换时仅更新状态，不重复弹 toast（默认 2.5s）。
+- 事件优先级：`subject_returned` / `subject_matched` 视为高优先级，方向噪声期间优先保留这类提示；高优先级提示后会短暂抑制低优先级方向提示，避免被刷屏淹没。
 - quiet mode 抑制：不触发 normal/strong 反馈，仅更新状态。
 - gate blocked（unmatched/multiple_faces/locked/no_face/uncertain）：
 - 不触发 motion/expression，记录 gated 类型反馈，避免刷屏。

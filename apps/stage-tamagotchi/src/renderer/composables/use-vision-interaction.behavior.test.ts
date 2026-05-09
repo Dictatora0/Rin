@@ -47,6 +47,15 @@ const interactionBehaviorHarness = vi.hoisted(() => {
   }
 })
 
+const gestureRecognizerRuntimeHarness = vi.hoisted(() => {
+  const recognizeForVideoMock = vi.fn(() => {
+    return queuedGestureResults.shift() ?? ({ gestures: [[{ categoryName: 'None' }]] } as any)
+  })
+  return {
+    recognizeForVideoMock,
+  }
+})
+
 const {
   openCvStatusRef,
   openCvErrorMessageRef,
@@ -55,6 +64,7 @@ const {
   resetOpenCvRuntimeMock,
   evaluateFaceQualityMock,
 } = interactionBehaviorHarness
+const { recognizeForVideoMock } = gestureRecognizerRuntimeHarness
 
 const evaluateFrameMock = vi.fn(() => ({ status: 'no_face' as const }))
 const consumeJustMatchedWelcomeMock = vi.fn(() => false)
@@ -64,9 +74,47 @@ function createFaceLandmarkerResult(landmarks: NormalizedLandmark[][]): FaceLand
   return { faceLandmarks: landmarks } as FaceLandmarkerResult
 }
 
+function createOpenPalmHandLandmarks(): NormalizedLandmark[] {
+  return [
+    { x: 0.5, y: 0.85, z: 0.01, visibility: 0 }, // wrist
+    { x: 0.42, y: 0.78, z: 0.01, visibility: 0 },
+    { x: 0.37, y: 0.72, z: 0.01, visibility: 0 }, // thumb mcp
+    { x: 0.32, y: 0.60, z: 0.01, visibility: 0 }, // thumb ip
+    { x: 0.26, y: 0.46, z: 0.01, visibility: 0 }, // thumb tip
+    { x: 0.44, y: 0.69, z: 0.01, visibility: 0 }, // index mcp
+    { x: 0.43, y: 0.55, z: 0.01, visibility: 0 }, // index pip
+    { x: 0.42, y: 0.44, z: 0.01, visibility: 0 },
+    { x: 0.40, y: 0.34, z: 0.01, visibility: 0 }, // index tip
+    { x: 0.52, y: 0.69, z: 0.01, visibility: 0 }, // middle mcp
+    { x: 0.52, y: 0.53, z: 0.01, visibility: 0 }, // middle pip
+    { x: 0.52, y: 0.42, z: 0.01, visibility: 0 },
+    { x: 0.52, y: 0.31, z: 0.01, visibility: 0 }, // middle tip
+    { x: 0.60, y: 0.70, z: 0.01, visibility: 0 }, // ring mcp
+    { x: 0.61, y: 0.57, z: 0.01, visibility: 0 }, // ring pip
+    { x: 0.62, y: 0.47, z: 0.01, visibility: 0 },
+    { x: 0.63, y: 0.36, z: 0.01, visibility: 0 }, // ring tip
+    { x: 0.68, y: 0.71, z: 0.01, visibility: 0 }, // pinky mcp
+    { x: 0.70, y: 0.60, z: 0.01, visibility: 0 }, // pinky pip
+    { x: 0.71, y: 0.51, z: 0.01, visibility: 0 },
+    { x: 0.72, y: 0.41, z: 0.01, visibility: 0 }, // pinky tip
+  ]
+}
+
 function createGestureRecognizerResult(categoryName: string): GestureRecognizerResult {
+  const normalized = categoryName.trim().toLowerCase()
+  const score = normalized === 'none' ? 0.99 : 0.92
+  const handLandmarks = normalized === 'open_palm'
+    ? [createOpenPalmHandLandmarks()]
+    : normalized === 'victory'
+      ? [createVictoryHandLandmarks()]
+      : normalized === 'thumb_up' || normalized === 'thumbs_up'
+        ? [createThumbsUpHandLandmarks()]
+        : []
+
   return {
-    gestures: [[{ categoryName }]],
+    gestures: [[{ categoryName, score }]],
+    landmarks: handLandmarks,
+    handedness: handLandmarks.length ? [[{ categoryName: 'Right', score: 0.99 } as any]] : [],
   } as GestureRecognizerResult
 }
 
@@ -123,29 +171,55 @@ function queueFramesWithGestureCandidates(options: {
 }
 
 function createVictoryHandLandmarks(): NormalizedLandmark[] {
-  const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.7, z: 0.01, visibility: 0 } as NormalizedLandmark))
-  points[0] = { x: 0.5, y: 0.82, z: 0.01, visibility: 0 } // wrist
-  points[1] = { x: 0.44, y: 0.78, z: 0.01, visibility: 0 }
-  points[2] = { x: 0.41, y: 0.73, z: 0.01, visibility: 0 } // thumb mcp
-  points[3] = { x: 0.38, y: 0.68, z: 0.01, visibility: 0 } // thumb ip
-  points[4] = { x: 0.34, y: 0.63, z: 0.01, visibility: 0 } // thumb tip
-  points[5] = { x: 0.45, y: 0.67, z: 0.01, visibility: 0 } // index mcp
-  points[6] = { x: 0.44, y: 0.53, z: 0.01, visibility: 0 } // index pip
-  points[7] = { x: 0.43, y: 0.45, z: 0.01, visibility: 0 }
-  points[8] = { x: 0.42, y: 0.36, z: 0.01, visibility: 0 } // index tip
-  points[9] = { x: 0.52, y: 0.68, z: 0.01, visibility: 0 } // middle mcp
-  points[10] = { x: 0.53, y: 0.54, z: 0.01, visibility: 0 } // middle pip
-  points[11] = { x: 0.54, y: 0.45, z: 0.01, visibility: 0 }
-  points[12] = { x: 0.55, y: 0.35, z: 0.01, visibility: 0 } // middle tip
-  points[13] = { x: 0.58, y: 0.69, z: 0.01, visibility: 0 } // ring mcp
-  points[14] = { x: 0.60, y: 0.73, z: 0.01, visibility: 0 } // ring pip
-  points[15] = { x: 0.61, y: 0.76, z: 0.01, visibility: 0 }
-  points[16] = { x: 0.62, y: 0.79, z: 0.01, visibility: 0 } // ring tip
-  points[17] = { x: 0.64, y: 0.70, z: 0.01, visibility: 0 } // pinky mcp
-  points[18] = { x: 0.66, y: 0.74, z: 0.01, visibility: 0 } // pinky pip
-  points[19] = { x: 0.67, y: 0.77, z: 0.01, visibility: 0 }
-  points[20] = { x: 0.68, y: 0.80, z: 0.01, visibility: 0 } // pinky tip
+  const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.72, z: 0.01, visibility: 0 } as NormalizedLandmark))
+  points[0] = { x: 0.5, y: 0.85, z: 0.01, visibility: 0 } // wrist
+  points[1] = { x: 0.43, y: 0.79, z: 0.01, visibility: 0 }
+  points[2] = { x: 0.38, y: 0.74, z: 0.01, visibility: 0 } // thumb mcp
+  points[3] = { x: 0.34, y: 0.68, z: 0.01, visibility: 0 } // thumb ip
+  points[4] = { x: 0.30, y: 0.63, z: 0.01, visibility: 0 } // thumb tip
+  points[5] = { x: 0.35, y: 0.68, z: 0.01, visibility: 0 } // index mcp
+  points[6] = { x: 0.30, y: 0.52, z: 0.01, visibility: 0 } // index pip
+  points[7] = { x: 0.27, y: 0.43, z: 0.01, visibility: 0 }
+  points[8] = { x: 0.24, y: 0.33, z: 0.01, visibility: 0 } // index tip
+  points[9] = { x: 0.65, y: 0.68, z: 0.01, visibility: 0 } // middle mcp
+  points[10] = { x: 0.70, y: 0.52, z: 0.01, visibility: 0 } // middle pip
+  points[11] = { x: 0.73, y: 0.43, z: 0.01, visibility: 0 }
+  points[12] = { x: 0.76, y: 0.33, z: 0.01, visibility: 0 } // middle tip
+  points[13] = { x: 0.58, y: 0.70, z: 0.01, visibility: 0 } // ring mcp
+  points[14] = { x: 0.60, y: 0.76, z: 0.01, visibility: 0 } // ring pip
+  points[15] = { x: 0.61, y: 0.80, z: 0.01, visibility: 0 }
+  points[16] = { x: 0.62, y: 0.84, z: 0.01, visibility: 0 } // ring tip
+  points[17] = { x: 0.66, y: 0.72, z: 0.01, visibility: 0 } // pinky mcp
+  points[18] = { x: 0.69, y: 0.78, z: 0.01, visibility: 0 } // pinky pip
+  points[19] = { x: 0.71, y: 0.82, z: 0.01, visibility: 0 }
+  points[20] = { x: 0.72, y: 0.86, z: 0.01, visibility: 0 } // pinky tip
   return points
+}
+
+function createThumbsUpHandLandmarks(): NormalizedLandmark[] {
+  return [
+    { x: 0.5, y: 0.85, z: 0.01, visibility: 0 }, // wrist
+    { x: 0.44, y: 0.78, z: 0.01, visibility: 0 },
+    { x: 0.40, y: 0.72, z: 0.01, visibility: 0 }, // thumb mcp
+    { x: 0.34, y: 0.58, z: 0.01, visibility: 0 }, // thumb ip
+    { x: 0.27, y: 0.40, z: 0.01, visibility: 0 }, // thumb tip
+    { x: 0.46, y: 0.69, z: 0.01, visibility: 0 }, // index mcp
+    { x: 0.46, y: 0.75, z: 0.01, visibility: 0 }, // index pip
+    { x: 0.46, y: 0.79, z: 0.01, visibility: 0 },
+    { x: 0.46, y: 0.83, z: 0.01, visibility: 0 }, // index tip
+    { x: 0.53, y: 0.69, z: 0.01, visibility: 0 }, // middle mcp
+    { x: 0.53, y: 0.76, z: 0.01, visibility: 0 }, // middle pip
+    { x: 0.53, y: 0.80, z: 0.01, visibility: 0 },
+    { x: 0.53, y: 0.84, z: 0.01, visibility: 0 }, // middle tip
+    { x: 0.60, y: 0.70, z: 0.01, visibility: 0 }, // ring mcp
+    { x: 0.61, y: 0.77, z: 0.01, visibility: 0 }, // ring pip
+    { x: 0.62, y: 0.81, z: 0.01, visibility: 0 },
+    { x: 0.63, y: 0.85, z: 0.01, visibility: 0 }, // ring tip
+    { x: 0.67, y: 0.72, z: 0.01, visibility: 0 }, // pinky mcp
+    { x: 0.69, y: 0.78, z: 0.01, visibility: 0 }, // pinky pip
+    { x: 0.70, y: 0.83, z: 0.01, visibility: 0 },
+    { x: 0.71, y: 0.87, z: 0.01, visibility: 0 }, // pinky tip
+  ]
 }
 
 vi.mock('@mediapipe/tasks-vision', () => {
@@ -166,9 +240,7 @@ vi.mock('@mediapipe/tasks-vision', () => {
     },
     GestureRecognizer: {
       createFromOptions: vi.fn(async () => ({
-        recognizeForVideo: vi.fn(() => {
-          return queuedGestureResults.shift() ?? createGestureRecognizerResult('None')
-        }),
+        recognizeForVideo: recognizeForVideoMock,
         close: vi.fn(() => {}),
       })),
     },
@@ -291,6 +363,7 @@ function resetInteractionMocks() {
   })
   saveEncryptedProfileMock.mockReset()
   saveEncryptedProfileMock.mockResolvedValue({ ok: true })
+  recognizeForVideoMock.mockClear()
 }
 
 async function runNextAnimationFrame(nowMs: number, video: HTMLVideoElement, timeSeconds: number) {
@@ -305,7 +378,34 @@ async function runNextAnimationFrame(nowMs: number, video: HTMLVideoElement, tim
   await framePromise
 }
 
-async function setupInteractionHarness(options?: Parameters<typeof useVisionInteraction>[0]) {
+async function runQueuedFrames(options: {
+  video: HTMLVideoElement
+  gesture: string
+  face: NormalizedLandmark[][]
+  count: number
+  startNowMs: number
+  startTimeSeconds: number
+  stepMs?: number
+}) {
+  queueFrames({
+    gesture: options.gesture,
+    face: options.face,
+    count: options.count,
+  })
+
+  const stepMs = options.stepMs ?? 200
+  for (let index = 0; index < options.count; index += 1) {
+    await runNextAnimationFrame(
+      options.startNowMs + (stepMs * index),
+      options.video,
+      options.startTimeSeconds + index,
+    )
+  }
+}
+
+async function setupInteractionHarness(
+  options?: Parameters<typeof useVisionInteraction>[0] & { gestureControlsEnabled?: boolean },
+) {
   const { stream, videoTrack } = createMockStream()
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
@@ -323,6 +423,7 @@ async function setupInteractionHarness(options?: Parameters<typeof useVisionInte
         gestureInferenceIntervalMs: options?.gestureInferenceIntervalMs ?? 180,
         loopIntervalMs: options?.loopIntervalMs ?? 120,
       })
+      interaction.setGestureControlsEnabled(options?.gestureControlsEnabled ?? true)
       interaction.attachVideoElement(videoElement)
       return () => h('div')
     },
@@ -366,28 +467,46 @@ describe('useVisionInteraction behavior locks', () => {
     vi.unstubAllGlobals()
   })
 
-  it('reacts on the second stable frame when fast gesture mode is enabled', async () => {
+  it('reacts after robust vote + hold when fast gesture mode is enabled', async () => {
     const { interaction, videoElement, app } = await setupInteractionHarness({
       gestureStableFrames: 2,
       gestureInferenceIntervalMs: 80,
       loopIntervalMs: 80,
     })
 
-    queueFrames({
+    await runQueuedFrames({
+      video: videoElement,
       gesture: 'Open_Palm',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 13,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+      stepMs: 120,
+    })
+    expect(interaction.lastEvent.value?.type).toBe('quiet_mode_requested')
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('does not run gesture inference when experimental gesture controls are disabled', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+      gestureInferenceIntervalMs: 80,
+      loopIntervalMs: 80,
+    })
+
+    queueFrames({
+      gesture: 'Victory',
       face: [createFaceAt(0.5, 0.5)],
       count: 1,
     })
     await runNextAnimationFrame(200, videoElement, 1)
-    expect(interaction.lastEvent.value).toBeNull()
 
-    queueFrames({
-      gesture: 'Open_Palm',
-      face: [createFaceAt(0.5, 0.5)],
-      count: 1,
-    })
-    await runNextAnimationFrame(320, videoElement, 2)
-    expect(interaction.lastEvent.value?.type).toBe('quiet_mode_requested')
+    expect(recognizeForVideoMock).toHaveBeenCalledTimes(0)
+    expect(interaction.lastGesture.value).toBe('none')
+    expect(interaction.gestureState.value).toBe('idle')
+    expect(interaction.lastEvent.value).toBeNull()
 
     await interaction.stop()
     app.unmount()
@@ -420,52 +539,46 @@ describe('useVisionInteraction behavior locks', () => {
   it('requires stable gesture frames and enforces gesture cooldowns', async () => {
     const { interaction, videoElement, app } = await setupInteractionHarness()
 
-    queueFrames({
+    await runQueuedFrames({
+      video: videoElement,
       gesture: 'Open_Palm',
       face: [createFaceAt(0.5, 0.5)],
-      count: 2,
+      count: 12,
+      startNowMs: 200,
+      startTimeSeconds: 1,
     })
-    await runNextAnimationFrame(200, videoElement, 1)
-    await runNextAnimationFrame(400, videoElement, 2)
-    expect(interaction.lastEvent.value).toBeNull()
-
-    queueFrames({
-      gesture: 'Open_Palm',
-      face: [createFaceAt(0.5, 0.5)],
-      count: 1,
-    })
-    await runNextAnimationFrame(600, videoElement, 3)
     expect(interaction.lastEvent.value?.type).toBe('quiet_mode_requested')
     const firstEventId = interaction.lastEvent.value?.id ?? -1
 
-    queueFrames({ gesture: 'None', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(800, videoElement, 4)
-    await runNextAnimationFrame(1_000, videoElement, 5)
-    await runNextAnimationFrame(1_200, videoElement, 6)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 3,
+      startNowMs: 2_200,
+      startTimeSeconds: 11,
+    })
 
-    queueFrames({ gesture: 'Open_Palm', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(1_400, videoElement, 7)
-    await runNextAnimationFrame(1_600, videoElement, 8)
-    await runNextAnimationFrame(1_800, videoElement, 9)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Open_Palm',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 12,
+      startNowMs: 2_800,
+      startTimeSeconds: 14,
+    })
     expect(interaction.lastEvent.value?.id).toBe(firstEventId)
 
-    queueFrames({ gesture: 'None', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(2_000, videoElement, 10)
-    await runNextAnimationFrame(2_200, videoElement, 11)
-    await runNextAnimationFrame(2_400, videoElement, 12)
-
-    queueFrames({ gesture: 'Open_Palm', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(3_200, videoElement, 13)
-    await runNextAnimationFrame(3_400, videoElement, 14)
-    await runNextAnimationFrame(3_600, videoElement, 15)
-    expect(interaction.lastEvent.value?.type).toBe('quiet_mode_requested')
-    expect((interaction.lastEvent.value?.id ?? -1)).toBeGreaterThan(firstEventId)
-
-    queueFrames({ gesture: 'Unknown', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(3_800, videoElement, 16)
-    await runNextAnimationFrame(4_000, videoElement, 17)
-    await runNextAnimationFrame(4_200, videoElement, 18)
-    expect(interaction.lastGesture.value).toBe('unknown')
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Unknown',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 3,
+      startNowMs: 5_400,
+      startTimeSeconds: 27,
+    })
+    expect(interaction.lastGesture.value).toBe('open_palm')
+    expect(interaction.lastEvent.value?.id).toBe(firstEventId)
     expect(interaction.lastEvent.value?.type).not.toBe('completion_celebration')
 
     await interaction.stop()
@@ -652,90 +765,101 @@ describe('useVisionInteraction behavior locks', () => {
 
     gateEnabledRef.value = false
     gateStateRef.value = 'disabled'
-    queueFrames({ gesture: 'Victory', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(200, videoElement, 1)
-    await runNextAnimationFrame(400, videoElement, 2)
-    await runNextAnimationFrame(600, videoElement, 3)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Victory',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 12,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
     expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
     expect(interaction.localCelebrationCount.value).toBe(1)
 
-    queueFrames({ gesture: 'None', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(800, videoElement, 4)
-    await runNextAnimationFrame(1_000, videoElement, 5)
-    await runNextAnimationFrame(1_200, videoElement, 6)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 3,
+      startNowMs: 2_200,
+      startTimeSeconds: 11,
+    })
 
     gateEnabledRef.value = true
     gateStateRef.value = 'enabled'
-    queueFrames({ gesture: 'Victory', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(3_200, videoElement, 7)
-    await runNextAnimationFrame(3_400, videoElement, 8)
-    await runNextAnimationFrame(3_600, videoElement, 9)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Victory',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 12,
+      startNowMs: 6_400,
+      startTimeSeconds: 14,
+    })
     expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
     expect(interaction.localCelebrationCount.value).toBe(2)
 
-    queueFrames({ gesture: 'None', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(3_800, videoElement, 10)
-    await runNextAnimationFrame(4_000, videoElement, 11)
-    await runNextAnimationFrame(4_200, videoElement, 12)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 3,
+      startNowMs: 8_600,
+      startTimeSeconds: 24,
+    })
 
     gateEnabledRef.value = true
     gateStateRef.value = 'gated'
-    queueFrames({ gesture: 'Victory', face: [createFaceAt(0.5, 0.5), createFaceAt(0.2, 0.5)], count: 3 })
-    await runNextAnimationFrame(6_600, videoElement, 13)
-    await runNextAnimationFrame(6_800, videoElement, 14)
-    await runNextAnimationFrame(7_000, videoElement, 15)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Victory',
+      face: [createFaceAt(0.5, 0.5), createFaceAt(0.2, 0.5)],
+      count: 12,
+      startNowMs: 12_200,
+      startTimeSeconds: 27,
+    })
     expect(interaction.lastEvent.value?.type).toBe('detected_but_gated')
     expect(interaction.lastEvent.value?.message).toBe('Victory detected but gated')
     expect(interaction.localCelebrationCount.value).toBe(2)
 
     gateStateRef.value = 'locked'
-    queueFrames({ gesture: 'Open_Palm', face: [], count: 3 })
-    await runNextAnimationFrame(9_400, videoElement, 16)
-    await runNextAnimationFrame(9_600, videoElement, 17)
-    await runNextAnimationFrame(9_800, videoElement, 18)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [],
+      count: 10,
+      startNowMs: 14_400,
+      startTimeSeconds: 37,
+    })
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Open_Palm',
+      face: [],
+      count: 12,
+      startNowMs: 16_600,
+      startTimeSeconds: 47,
+    })
     expect(interaction.lastEvent.value?.type).toBe('detected_but_gated')
-    expect(interaction.lastEvent.value?.message).toBe('Open palm detected but gated')
+    expect(interaction.lastEvent.value?.message).toContain('gated')
     expect(interaction.localCelebrationCount.value).toBe(2)
 
     await interaction.stop()
     app.unmount()
   })
 
-  it('acknowledges current prompt once on thumbs_up and then emits nothing_to_confirm', async () => {
+  it('triggers nothing_to_confirm on thumbs_up when there is no active prompt', async () => {
     const { interaction, videoElement, app } = await setupInteractionHarness()
 
-    queueFrames({ gesture: 'Victory', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(200, videoElement, 1)
-    await runNextAnimationFrame(400, videoElement, 2)
-    await runNextAnimationFrame(600, videoElement, 3)
-    expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
-    const celebrationEventId = interaction.lastEvent.value?.id
-    expect(celebrationEventId).not.toBeUndefined()
-    expect(interaction.activePrompt.value).toBe('Completion celebration')
-
-    queueFrames({ gesture: 'None', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(800, videoElement, 4)
-    await runNextAnimationFrame(1_000, videoElement, 5)
-    await runNextAnimationFrame(1_200, videoElement, 6)
-
-    queueFrames({ gesture: 'Thumb_Up', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(3_200, videoElement, 7)
-    await runNextAnimationFrame(3_400, videoElement, 8)
-    await runNextAnimationFrame(3_600, videoElement, 9)
-    expect(interaction.lastEvent.value?.type).toBe('acknowledged')
-    expect(interaction.acknowledgedEventId.value).toBe(celebrationEventId)
-    expect(interaction.activePrompt.value).toBe('')
-
-    queueFrames({ gesture: 'None', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(3_800, videoElement, 10)
-    await runNextAnimationFrame(4_000, videoElement, 11)
-    await runNextAnimationFrame(4_200, videoElement, 12)
-
-    queueFrames({ gesture: 'Thumb_Up', face: [createFaceAt(0.5, 0.5)], count: 3 })
-    await runNextAnimationFrame(6_400, videoElement, 13)
-    await runNextAnimationFrame(6_600, videoElement, 14)
-    await runNextAnimationFrame(6_800, videoElement, 15)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Thumb_Up',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 12,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
     expect(interaction.lastEvent.value?.type).toBe('nothing_to_confirm')
+    expect(interaction.acknowledgedEventId.value).toBeNull()
+    expect(interaction.activePrompt.value).toBe('')
 
     await interaction.stop()
     app.unmount()
@@ -755,19 +879,23 @@ describe('useVisionInteraction behavior locks', () => {
     const { interaction, videoElement, app } = await setupInteractionHarness()
     const stableFace = [createFaceAt(0.5, 0.5)]
 
-    queueFrames({ gesture: 'Victory', face: stableFace, count: 3 })
-    await runNextAnimationFrame(200, videoElement, 1)
-    await runNextAnimationFrame(400, videoElement, 2)
-    await runNextAnimationFrame(600, videoElement, 3)
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Victory',
+      face: stableFace,
+      count: 12,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
 
     expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
     expect(interaction.lastGesture.value).toBe('victory')
     expect(interaction.localCelebrationCount.value).toBe(1)
     expect(interaction.openCvFaceQuality.status.value).toBe('fallback')
     expect(initializeOpenCvMock).toHaveBeenCalledTimes(0)
-    expect(evaluateFaceQualityMock).toHaveBeenCalledTimes(2)
+    expect(evaluateFaceQualityMock).toHaveBeenCalledTimes(6)
     expect(evaluateFaceQualityMock).toHaveBeenNthCalledWith(1, videoElement, stableFace[0])
-    expect(evaluateFaceQualityMock).toHaveBeenNthCalledWith(2, videoElement, stableFace[0])
+    expect(evaluateFaceQualityMock).toHaveBeenNthCalledWith(6, videoElement, stableFace[0])
 
     await interaction.stop()
     app.unmount()
@@ -778,15 +906,16 @@ describe('useVisionInteraction behavior locks', () => {
 
     queueFramesWithGestureCandidates({
       candidates: [
-        { categoryName: 'None', score: 0.71 },
-        { categoryName: 'Victory', score: 0.63 },
+        { categoryName: 'None', score: 0.95 },
+        { categoryName: 'Victory', score: 0.83 },
       ],
       face: [createFaceAt(0.5, 0.5)],
-      count: 3,
+      handLandmarks: [createVictoryHandLandmarks()],
+      handedness: 'Right',
+      count: 12,
     })
-    await runNextAnimationFrame(200, videoElement, 1)
-    await runNextAnimationFrame(400, videoElement, 2)
-    await runNextAnimationFrame(600, videoElement, 3)
+    for (let index = 0; index < 12; index += 1)
+      await runNextAnimationFrame(200 + (200 * index), videoElement, index + 1)
 
     expect(interaction.lastGesture.value).toBe('victory')
     expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
@@ -796,25 +925,24 @@ describe('useVisionInteraction behavior locks', () => {
     app.unmount()
   })
 
-  it('uses landmark heuristic fallback when category candidates are None but hand shape is Victory', async () => {
+  it('does not promote none-only classifier output even when landmarks resemble victory', async () => {
     const { interaction, videoElement, app } = await setupInteractionHarness()
 
     queueFramesWithGestureCandidates({
       candidates: [
-        { categoryName: 'None', score: 0.61 },
+        { categoryName: 'None', score: 0.91 },
       ],
       face: [createFaceAt(0.5, 0.5)],
       handLandmarks: [createVictoryHandLandmarks()],
       handedness: 'Right',
-      count: 3,
+      count: 12,
     })
-    await runNextAnimationFrame(200, videoElement, 1)
-    await runNextAnimationFrame(400, videoElement, 2)
-    await runNextAnimationFrame(600, videoElement, 3)
+    for (let index = 0; index < 12; index += 1)
+      await runNextAnimationFrame(200 + (200 * index), videoElement, index + 1)
 
-    expect(interaction.lastGesture.value).toBe('victory')
-    expect(interaction.lastEvent.value?.type).toBe('completion_celebration')
-    expect(interaction.localCelebrationCount.value).toBe(1)
+    expect(interaction.lastGesture.value).toBe('none')
+    expect(interaction.lastEvent.value?.type).toBe('user_centered')
+    expect(interaction.localCelebrationCount.value).toBe(0)
 
     await interaction.stop()
     app.unmount()
