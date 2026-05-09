@@ -38,6 +38,18 @@ const {
   subjectResponseState: interactionSubjectResponseState,
   lastSubjectResponseEvent: interactionLastSubjectResponseEvent,
   subjectResponseCooldownUntil,
+  enableExpressionSignals,
+  expressionSignal,
+  expressionSignalCandidate,
+  stableExpressionSignal,
+  expressionSignalStableFrames,
+  expressionSignalConfidence,
+  expressionSignalReason,
+  expressionSignalSource,
+  expressionSignalChangedAt,
+  expressionSignalCooldownUntil,
+  expressionSignalFeedbackAllowed,
+  expressionSignalUnavailable,
   lastGesture,
   gestureControlsEnabled,
   candidateGesture,
@@ -89,6 +101,7 @@ const {
   resetVisionRuntime,
   setFaceGateEnabled,
   setGestureControlsEnabled,
+  setExpressionSignalsEnabled,
   setMaxInferenceStallMs,
   setRememberFaceProfileOnDevice,
   unlockFaceProfile,
@@ -102,6 +115,7 @@ const {
 })
 const {
   triggerVisionPetFeedback,
+  triggerExpressionSignalFeedback,
   triggerContextualVisionFeedback,
   feedbackIntensity,
   setFeedbackIntensity,
@@ -163,6 +177,18 @@ const feedbackVariantOptions = [
   { value: 'a', label: 'A' },
   { value: 'b', label: 'B' },
 ] as const
+const expressionSignalConfidenceText = computed(() => expressionSignalConfidence.value.toFixed(2))
+const expressionSignalCooldownRemainingMs = computed(() => {
+  return Math.max(0, expressionSignalCooldownUntil.value - Date.now())
+})
+const expressionSignalCooldownRemainingSeconds = computed(() => {
+  return Math.ceil(expressionSignalCooldownRemainingMs.value / 1000)
+})
+const expressionSignalChangedText = computed(() => {
+  if (!expressionSignalChangedAt.value)
+    return 'none'
+  return new Date(expressionSignalChangedAt.value).toLocaleTimeString()
+})
 
 const faceCenterText = computed(() => {
   if (!faceCenter.value)
@@ -606,6 +632,11 @@ function toggleGestureControls(event: Event) {
   setGestureControlsEnabled(enabled)
 }
 
+function toggleExpressionSignals(event: Event) {
+  const enabled = (event.target as HTMLInputElement).checked
+  setExpressionSignalsEnabled(enabled)
+}
+
 function openEnrollmentPage() {
   void router.push('/vision-enrollment')
 }
@@ -707,6 +738,10 @@ function isContextualInteractionEvent(eventType: VisionInteractionEvent['type'])
     || eventType === 'user_moved_up'
     || eventType === 'user_moved_down'
     || eventType === 'user_centered'
+    || eventType === 'expression_smile_like_detected'
+    || eventType === 'expression_stable_face_detected'
+    || eventType === 'expression_looking_away_detected'
+    || eventType === 'expression_unclear_detected'
     || eventType === 'subject_position_gated'
     || eventType === 'subject_matched'
     || eventType === 'welcome_back'
@@ -877,6 +912,40 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 
   if (event.type === 'acknowledged') {
     triggerVisionPetFeedback('thumbs_up', createPetFeedbackOptions(event))
+    return
+  }
+
+  if (
+    event.type === 'expression_smile_like_detected'
+    || event.type === 'expression_stable_face_detected'
+    || event.type === 'expression_looking_away_detected'
+    || event.type === 'expression_unclear_detected'
+  ) {
+    const mappedSignal = event.type === 'expression_smile_like_detected'
+      ? 'smile_like_signal'
+      : event.type === 'expression_stable_face_detected'
+        ? 'stable_face_signal'
+        : event.type === 'expression_looking_away_detected'
+          ? 'looking_away_signal'
+          : 'unclear_face_signal'
+
+    triggerExpressionSignalFeedback({
+      signal: mappedSignal,
+      confidence: expressionSignalConfidence.value,
+      reason: expressionSignalReason.value,
+      source: expressionSignalSource.value,
+      gateAllowed: expressionSignalFeedbackAllowed.value,
+      gateEnabled: gateEnabled.value,
+      gateState: localFaceGate.gateState.value,
+      gateProfileStatus: localFaceGate.profileStatus.value,
+      quietMode: isVisionQuiet.value,
+      locale: feedbackLocale.value,
+      variant: feedbackVariant.value,
+      displayName: matchedDisplayName.value || undefined,
+      sourceEventId: event.id,
+      presence: facePresence.value,
+    })
+    emitLastContextualToastForEvent(event.id)
     return
   }
 
@@ -1296,6 +1365,41 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             <Button size="sm" variant="ghost" @click="clearBubble">
               Clear bubble
             </Button>
+          </div>
+        </div>
+
+        <div data-testid="expression-signal-panel" :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            Expression Signal
+          </div>
+          <label :class="['mb-2 flex items-center gap-2']">
+            <input
+              data-testid="expression-signal-toggle"
+              type="checkbox"
+              :checked="enableExpressionSignals"
+              @change="toggleExpressionSignals"
+            >
+            <span>Enable Expression Signals</span>
+          </label>
+          <div>expressionSignal: {{ expressionSignal }}</div>
+          <div>expressionSignalCandidate: {{ expressionSignalCandidate }}</div>
+          <div>stableExpressionSignal: {{ stableExpressionSignal }}</div>
+          <div>confidence: {{ expressionSignalConfidenceText }}</div>
+          <div>reason: {{ expressionSignalReason }}</div>
+          <div>source: {{ expressionSignalSource }}</div>
+          <div>stableFrames: {{ expressionSignalStableFrames }}</div>
+          <div>signalChangedAt: {{ expressionSignalChangedText }}</div>
+          <div>cooldownRemainingSec: {{ expressionSignalCooldownRemainingSeconds }}</div>
+          <div>feedbackAllowed: {{ expressionSignalFeedbackAllowed ? 'yes' : 'no' }}</div>
+          <div>signalUnavailable: {{ expressionSignalUnavailable ? 'yes' : 'no' }}</div>
+          <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+            Expression signals are local visual cues, not emotion detection.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Rin uses them only for local feedback.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            No expression data is uploaded.
           </div>
         </div>
 

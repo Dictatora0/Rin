@@ -620,6 +620,114 @@ describe('useVisionPetFeedback', () => {
     secondHarness.unmount()
   })
 
+  it('handles expression smile-like signal across intensity levels', () => {
+    const { feedback, unmount } = createFeedbackHarness()
+
+    feedback.setFeedbackIntensity('minimal')
+    const minimalResult = feedback.triggerExpressionSignalFeedback({
+      signal: 'smile_like_signal',
+      confidence: 0.62,
+      reason: 'smile-like face motion',
+      source: 'blendshape',
+      gateAllowed: true,
+      gateEnabled: false,
+      gateState: 'disabled',
+      presence: 'present',
+    })
+    expect(minimalResult).toBe(true)
+    expect(feedback.lastResolvedFeedbackEventType.value).toBe('expression_smile_like')
+    expect(feedback.lastFeedbackLevel.value).toBe('subtle')
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBeUndefined()
+
+    vi.advanceTimersByTime(10_100)
+    feedback.setFeedbackIntensity('balanced')
+    const balancedResult = feedback.triggerExpressionSignalFeedback({
+      signal: 'smile_like_signal',
+      confidence: 0.68,
+      reason: 'smile-like face motion',
+      source: 'blendshape',
+      gateAllowed: true,
+      gateEnabled: false,
+      gateState: 'disabled',
+      presence: 'present',
+      displayName: 'Rin',
+    })
+    expect(balancedResult).toBe(true)
+    expect(feedback.lastResolvedFeedbackEventType.value).toBe('expression_smile_like')
+    expect(feedback.lastFeedbackLevel.value).toBe('normal')
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBe('Happy')
+    expect(feedback.lastSubjectResponseEvent.value?.expression).toBe('smile')
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBe('Rin, I caught a smile-like signal.')
+
+    vi.advanceTimersByTime(10_100)
+    feedback.setFeedbackIntensity('expressive')
+    const expressiveResult = feedback.triggerExpressionSignalFeedback({
+      signal: 'smile_like_signal',
+      confidence: 0.72,
+      reason: 'smile-like face motion',
+      source: 'blendshape',
+      gateAllowed: true,
+      gateEnabled: false,
+      gateState: 'disabled',
+      presence: 'present',
+      displayName: 'Rin',
+    })
+    expect(expressiveResult).toBe(true)
+    expect(feedback.lastFeedbackLevel.value).toBe('strong')
+    expect(feedback.lastSubjectResponseEvent.value?.feedbackChannels).toContain('motion')
+    unmount()
+  })
+
+  it('blocks expression signal feedback when gate disallows or multiple subjects are present', () => {
+    const { feedback, unmount } = createFeedbackHarness()
+
+    const blockedByGate = feedback.triggerExpressionSignalFeedback({
+      signal: 'stable_face_signal',
+      confidence: 0.8,
+      reason: 'stable face in frame',
+      source: 'position',
+      gateAllowed: false,
+      gateEnabled: true,
+      gateState: 'locked',
+      gateProfileStatus: 'multiple_faces',
+      presence: 'present',
+    })
+    expect(blockedByGate).toBe(true)
+    expect(feedback.lastResolvedFeedbackEventType.value).toBe('subject_gated')
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.expression).toBeUndefined()
+    expect(feedback.activeBubbleMessage.value).toBe('')
+    unmount()
+  })
+
+  it('suppresses strong expression signal feedback during quiet mode', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      quietDurationMs: 8_000,
+    })
+
+    feedback.triggerVisionPetFeedback('open_palm', { allowVisualFeedback: true })
+    expect(feedback.isQuietVisualMode.value).toBe(true)
+
+    const quietExpression = feedback.triggerExpressionSignalFeedback({
+      signal: 'stable_face_signal',
+      confidence: 0.84,
+      reason: 'stable face in frame',
+      source: 'position',
+      gateAllowed: true,
+      gateEnabled: false,
+      gateState: 'disabled',
+      presence: 'present',
+      displayName: 'Rin',
+    })
+    expect(quietExpression).toBe(true)
+    expect(feedback.lastResolvedFeedbackEventType.value).toBe('expression_stable_face')
+    expect(feedback.lastSubjectResponseEvent.value?.suppressedByQuiet).toBe(true)
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBeUndefined()
+    unmount()
+  })
+
   it('suppresses contextual toast and motion while quiet mode is active but keeps UI event state', () => {
     const { feedback, unmount } = createFeedbackHarness({
       quietDurationMs: 8_000,

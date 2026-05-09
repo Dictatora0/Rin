@@ -45,6 +45,10 @@ export type VisionFeedbackBaseEventType
     | 'subject_gated'
     | 'subject_matched'
     | 'subject_uncertain'
+    | 'expression_smile_like'
+    | 'expression_stable_face'
+    | 'expression_looking_away'
+    | 'expression_unclear'
     | 'subject_dwelled_left'
     | 'subject_dwelled_right'
     | 'subject_dwelled_center'
@@ -182,6 +186,10 @@ const EVENT_DEFAULT_COOLDOWN_MS: Record<VisionFeedbackEventType, number> = {
   subject_gated: 5_000,
   subject_matched: 10_000,
   subject_uncertain: 8_000,
+  expression_smile_like: 10_000,
+  expression_stable_face: 12_000,
+  expression_looking_away: 15_000,
+  expression_unclear: 9_000,
   subject_dwelled_left: 14_000,
   subject_dwelled_right: 14_000,
   subject_dwelled_center: 14_000,
@@ -375,7 +383,7 @@ const MESSAGE_TEMPLATES: Record<VisionFeedbackEventType, VisionFeedbackTemplate[
       tags: ['gate'],
       variant: 'a',
     },
-    { id: 'matched-exp-3', text: 'You are fully matched.', namedText: '{name}, you are fully matched.', intensities: ['expressive'], level: 'strong', channels: ['ui', 'toast', 'motion'], tags: ['gate'] },
+    { id: 'matched-exp-3', text: 'You are fully matched.', namedText: '{name}, you are fully matched.', intensities: ['expressive'], level: 'strong', channels: ['ui', 'toast', 'motion', 'bubble'], tags: ['gate'] },
     { id: 'matched-subtle-2', text: 'Verified subject active.', namedText: '{name}, verified subject active.', intensities: ['minimal', 'balanced'], level: 'subtle', channels: ['ui'], tags: ['gate'] },
   ],
   subject_uncertain: [
@@ -411,6 +419,107 @@ const MESSAGE_TEMPLATES: Record<VisionFeedbackEventType, VisionFeedbackTemplate[
     },
     { id: 'uncertain-exp-1', text: 'Match drifted, trying to recover.', intensities: ['expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['gate'] },
     { id: 'uncertain-exp-2', text: 'Still checking match quality.', intensities: ['expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['gate'] },
+  ],
+  expression_smile_like: [
+    {
+      id: 'expr-smile-min-1',
+      text: 'Smile-like signal noted.',
+      intensities: ['minimal'],
+      level: 'subtle',
+      channels: ['ui'],
+      tags: ['expression', 'smile_like'],
+    },
+    {
+      id: 'expr-smile-bal-1',
+      text: 'I caught a smile-like signal.',
+      namedText: '{name}, I caught a smile-like signal.',
+      localeText: {
+        'zh-CN': {
+          text: '检测到一个微笑样信号。',
+          namedText: '{name}，检测到一个微笑样信号。',
+        },
+      },
+      intensities: ['balanced', 'expressive'],
+      level: 'normal',
+      channels: ['ui', 'toast', 'bubble'],
+      tags: ['expression', 'smile_like'],
+      cooldownMs: 10_000,
+    },
+    { id: 'expr-smile-bal-2', text: 'Smile-like motion is visible.', namedText: '{name}, smile-like motion is visible.', intensities: ['balanced', 'expressive'], level: 'normal', channels: ['ui', 'toast', 'bubble'], tags: ['expression', 'smile_like'], cooldownMs: 10_000 },
+    { id: 'expr-smile-exp-1', text: 'Nice smile-like cue in frame.', namedText: '{name}, nice smile-like cue in frame.', intensities: ['expressive'], level: 'strong', channels: ['ui', 'toast', 'bubble', 'motion'], tags: ['expression', 'smile_like'], cooldownMs: 10_000 },
+    { id: 'expr-smile-exp-2', text: 'Smile-like signal looks clear.', namedText: '{name}, smile-like signal looks clear.', intensities: ['expressive'], level: 'strong', channels: ['ui', 'toast', 'bubble', 'motion'], tags: ['expression', 'smile_like'], cooldownMs: 10_000 },
+  ],
+  expression_stable_face: [
+    {
+      id: 'expr-stable-min-1',
+      text: 'Stable face signal recorded.',
+      intensities: ['minimal'],
+      level: 'subtle',
+      channels: ['ui'],
+      tags: ['expression', 'stable_face'],
+      cooldownMs: 12_000,
+    },
+    {
+      id: 'expr-stable-bal-1',
+      text: 'Your face looks steady in frame.',
+      namedText: '{name}, your face looks steady in frame.',
+      localeText: {
+        'zh-CN': {
+          text: '你的画面内人脸很稳定。',
+          namedText: '{name}，你的画面内人脸很稳定。',
+        },
+      },
+      intensities: ['balanced', 'expressive'],
+      level: 'normal',
+      channels: ['ui', 'toast', 'bubble'],
+      tags: ['expression', 'stable_face'],
+      cooldownMs: 12_000,
+    },
+    { id: 'expr-stable-bal-2', text: 'Stable face signal confirmed.', namedText: '{name}, stable face signal confirmed.', intensities: ['balanced', 'expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['expression', 'stable_face'], cooldownMs: 12_000 },
+    { id: 'expr-stable-exp-1', text: 'Frame stability looks clean.', namedText: '{name}, frame stability looks clean.', intensities: ['expressive'], level: 'strong', channels: ['ui', 'toast', 'bubble', 'motion'], tags: ['expression', 'stable_face'], cooldownMs: 12_000 },
+    { id: 'expr-stable-exp-2', text: 'Stable face cue is strong now.', namedText: '{name}, stable face cue is strong now.', intensities: ['expressive'], level: 'strong', channels: ['ui', 'toast', 'motion'], tags: ['expression', 'stable_face'], cooldownMs: 12_000 },
+  ],
+  expression_looking_away: [
+    {
+      id: 'expr-away-min-1',
+      text: 'Away-from-center signal noted.',
+      intensities: ['minimal'],
+      level: 'subtle',
+      channels: ['ui'],
+      tags: ['expression', 'looking_away'],
+      cooldownMs: 15_000,
+    },
+    {
+      id: 'expr-away-bal-1',
+      text: 'You moved away from center.',
+      namedText: '{name}, you moved away from center.',
+      intensities: ['balanced', 'expressive'],
+      level: 'subtle',
+      channels: ['ui', 'toast', 'bubble'],
+      tags: ['expression', 'looking_away'],
+      cooldownMs: 15_000,
+    },
+    { id: 'expr-away-bal-2', text: 'Face position is away from center.', namedText: '{name}, face position is away from center.', intensities: ['balanced', 'expressive'], level: 'subtle', channels: ['ui', 'toast'], tags: ['expression', 'looking_away'], cooldownMs: 15_000 },
+    { id: 'expr-away-exp-1', text: 'Away-from-center signal stayed active.', namedText: '{name}, away-from-center signal stayed active.', intensities: ['expressive'], level: 'normal', channels: ['ui', 'toast', 'bubble', 'motion'], tags: ['expression', 'looking_away'], cooldownMs: 15_000 },
+  ],
+  expression_unclear: [
+    {
+      id: 'expr-unclear-min-1',
+      text: 'Visual signal is unclear.',
+      localeText: {
+        'zh-CN': {
+          text: '当前视觉信号不够清晰。',
+        },
+      },
+      intensities: ['minimal', 'balanced', 'expressive'],
+      level: 'subtle',
+      channels: ['ui'],
+      tags: ['expression', 'unclear'],
+      cooldownMs: 9_000,
+    },
+    { id: 'expr-unclear-bal-1', text: 'The visual signal is unclear.', intensities: ['balanced', 'expressive'], level: 'subtle', channels: ['ui', 'bubble'], tags: ['expression', 'unclear'], cooldownMs: 9_000 },
+    { id: 'expr-unclear-bal-2', text: 'Face motion signal is not stable yet.', intensities: ['balanced', 'expressive'], level: 'subtle', channels: ['ui', 'toast'], tags: ['expression', 'unclear'], cooldownMs: 9_000 },
+    { id: 'expr-unclear-exp-1', text: 'Signal quality dropped for now.', intensities: ['expressive'], level: 'normal', channels: ['ui', 'toast', 'bubble'], tags: ['expression', 'unclear'], cooldownMs: 9_000 },
   ],
   subject_dwelled_left: [
     { id: 'dwell-left-1', text: 'You stayed on the left side.', namedText: '{name}, you stayed on the left side.', intensities: ['balanced', 'expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['dwell'] },

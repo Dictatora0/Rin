@@ -183,6 +183,10 @@ describe('useVisionRuntime singleton warmup manager', () => {
     expect(resolveFileset).toHaveBeenCalledTimes(1)
     expect(createFaceLandmarker).toHaveBeenCalledTimes(1)
     expect(createGestureRecognizer).toHaveBeenCalledTimes(1)
+    expect(createFaceLandmarker.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: false,
+    }))
     expect(openCvInitializeMock).toHaveBeenCalledTimes(1)
     expect(runtime.mediaPipeStatus.value).toBe('ready')
     expect(runtime.opencvStatus.value).toBe('ready')

@@ -14,11 +14,13 @@ const mocks = vi.hoisted(() => ({
   resetVisionRuntime: vi.fn(async () => {}),
   setFaceGateEnabled: vi.fn(() => {}),
   setGestureControlsEnabled: vi.fn(() => {}),
+  setExpressionSignalsEnabled: vi.fn(() => {}),
   setMaxInferenceStallMs: vi.fn(() => {}),
   setRememberFaceProfileOnDevice: vi.fn(async () => true),
   unlockFaceProfile: vi.fn(async () => ({ ok: true as const, profile: null as never })),
 
   triggerVisionPetFeedback: vi.fn(() => true),
+  triggerExpressionSignalFeedback: vi.fn(() => true),
   triggerSubjectPositionFeedback: vi.fn(() => true),
   triggerContextualVisionFeedback: vi.fn(() => true),
   setFeedbackIntensity: vi.fn(() => {}),
@@ -64,6 +66,18 @@ function createInteractionState() {
       gated: boolean
     } | null>(null),
     subjectResponseCooldownUntil: ref(0),
+    enableExpressionSignals: ref(false),
+    expressionSignal: ref<'none' | 'smile_like_signal' | 'stable_face_signal' | 'looking_away_signal' | 'unclear_face_signal' | 'low_confidence'>('none'),
+    expressionSignalCandidate: ref<'none' | 'smile_like_signal' | 'stable_face_signal' | 'looking_away_signal' | 'unclear_face_signal' | 'low_confidence'>('none'),
+    stableExpressionSignal: ref<'none' | 'smile_like_signal' | 'stable_face_signal' | 'looking_away_signal' | 'unclear_face_signal' | 'low_confidence'>('none'),
+    expressionSignalStableFrames: ref(0),
+    expressionSignalConfidence: ref(0),
+    expressionSignalReason: ref('Expression signals are disabled.'),
+    expressionSignalSource: ref<'blendshape' | 'position' | 'quality' | 'fallback'>('fallback'),
+    expressionSignalChangedAt: ref<number | null>(null),
+    expressionSignalCooldownUntil: ref(0),
+    expressionSignalFeedbackAllowed: ref(false),
+    expressionSignalUnavailable: ref(false),
     lastGesture: ref<'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'>('none'),
     gestureControlsEnabled: ref(false),
     candidateGesture: ref<'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'>('none'),
@@ -135,6 +149,7 @@ function createInteractionState() {
     resetVisionRuntime: mocks.resetVisionRuntime,
     setFaceGateEnabled: mocks.setFaceGateEnabled,
     setGestureControlsEnabled: mocks.setGestureControlsEnabled,
+    setExpressionSignalsEnabled: mocks.setExpressionSignalsEnabled,
     setMaxInferenceStallMs: mocks.setMaxInferenceStallMs,
     setRememberFaceProfileOnDevice: mocks.setRememberFaceProfileOnDevice,
     unlockFaceProfile: mocks.unlockFaceProfile,
@@ -144,6 +159,7 @@ function createInteractionState() {
 function createPetFeedbackState() {
   return {
     triggerVisionPetFeedback: mocks.triggerVisionPetFeedback,
+    triggerExpressionSignalFeedback: mocks.triggerExpressionSignalFeedback,
     triggerSubjectPositionFeedback: mocks.triggerSubjectPositionFeedback,
     triggerContextualVisionFeedback: mocks.triggerContextualVisionFeedback,
     feedbackIntensity: ref<'minimal' | 'balanced' | 'expressive'>('balanced'),
@@ -278,10 +294,12 @@ describe('visionIsland UI behavior', () => {
     mocks.resetVisionRuntime.mockReset()
     mocks.setFaceGateEnabled.mockReset()
     mocks.setGestureControlsEnabled.mockReset()
+    mocks.setExpressionSignalsEnabled.mockReset()
     mocks.setMaxInferenceStallMs.mockReset()
     mocks.setRememberFaceProfileOnDevice.mockReset()
     mocks.unlockFaceProfile.mockReset()
     mocks.triggerVisionPetFeedback.mockReset()
+    mocks.triggerExpressionSignalFeedback.mockReset()
     mocks.triggerSubjectPositionFeedback.mockReset()
     mocks.triggerContextualVisionFeedback.mockReset()
     mocks.setFeedbackIntensity.mockReset()
@@ -334,11 +352,17 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('subjectResponseState: idle')
     expect(text).toContain('subjectResponseGate: allowed')
     expect(text).toContain('Feedback intensity:')
+    expect(text).toContain('Expression Signal')
+    expect(text).toContain('Enable Expression Signals')
+    expect(text).toContain('expressionSignal: none')
+    expect(text).toContain('Expression signals are local visual cues, not emotion detection.')
+    expect(text).toContain('No expression data is uploaded.')
     expect(text).toContain('lastFeedbackType: none')
     expect(text).toContain('lastFeedbackMessage: none')
     expect(text).toContain('feedbackPriority: low')
     expect(text).toContain('This is gaze-like feedback, not strict gaze measurement.')
     expect(text.includes('eye tracking')).toBe(false)
+    expect(text.includes('Emotion Recognition')).toBe(false)
     expect(mocks.warmupVisionRuntime).toHaveBeenCalledTimes(0)
     await vi.advanceTimersByTimeAsync(1_200)
     await Promise.resolve()
@@ -442,6 +466,79 @@ describe('visionIsland UI behavior', () => {
     await nextTick()
 
     expect(mocks.setGestureControlsEnabled).toHaveBeenCalledWith(false)
+
+    unmount()
+  })
+
+  it('toggles expression signals and renders expression diagnostics in panel', async () => {
+    const { container, unmount } = mountVisionIsland()
+    await nextTick()
+
+    const expressionToggle = container.querySelector('[data-testid="expression-signal-toggle"]') as HTMLInputElement | null
+    if (!expressionToggle)
+      throw new Error('expression signal toggle not found')
+
+    expressionToggle.checked = true
+    expressionToggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+
+    expect(mocks.setExpressionSignalsEnabled).toHaveBeenCalledTimes(1)
+    expect(mocks.setExpressionSignalsEnabled).toHaveBeenCalledWith(true)
+
+    mocks.interactionState.enableExpressionSignals.value = true
+    mocks.interactionState.expressionSignal.value = 'smile_like_signal'
+    mocks.interactionState.expressionSignalCandidate.value = 'smile_like_signal'
+    mocks.interactionState.stableExpressionSignal.value = 'smile_like_signal'
+    mocks.interactionState.expressionSignalStableFrames.value = 5
+    mocks.interactionState.expressionSignalConfidence.value = 0.58
+    mocks.interactionState.expressionSignalReason.value = 'smile-like face motion'
+    mocks.interactionState.expressionSignalSource.value = 'blendshape'
+    mocks.interactionState.expressionSignalFeedbackAllowed.value = true
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('expressionSignal: smile_like_signal')
+    expect(text).toContain('stableExpressionSignal: smile_like_signal')
+    expect(text).toContain('confidence: 0.58')
+    expect(text).toContain('reason: smile-like face motion')
+    expect(text).toContain('source: blendshape')
+    expect(text).toContain('feedbackAllowed: yes')
+    expect(text.includes('Emotion Recognition')).toBe(false)
+
+    expressionToggle.checked = false
+    expressionToggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+
+    expect(mocks.setExpressionSignalsEnabled).toHaveBeenCalledWith(false)
+
+    unmount()
+  })
+
+  it('routes expression signal events to expression feedback trigger with gate-safe options', async () => {
+    const { unmount } = mountVisionIsland()
+    await nextTick()
+
+    mocks.interactionState.expressionSignalConfidence.value = 0.51
+    mocks.interactionState.expressionSignalReason.value = 'smile-like face motion'
+    mocks.interactionState.expressionSignalSource.value = 'blendshape'
+    mocks.interactionState.expressionSignalFeedbackAllowed.value = true
+    mocks.interactionState.lastEvent.value = {
+      id: 9901,
+      type: 'expression_smile_like_detected',
+      message: 'Smile-like signal detected.',
+      at: Date.now(),
+    }
+    await nextTick()
+
+    expect(mocks.triggerExpressionSignalFeedback).toHaveBeenCalledTimes(1)
+    expect(mocks.triggerExpressionSignalFeedback).toHaveBeenCalledWith(expect.objectContaining({
+      signal: 'smile_like_signal',
+      confidence: 0.51,
+      reason: 'smile-like face motion',
+      source: 'blendshape',
+      gateAllowed: true,
+      sourceEventId: 9901,
+    }))
 
     unmount()
   })

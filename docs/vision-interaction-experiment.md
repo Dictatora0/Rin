@@ -179,6 +179,65 @@
 - 事件记录为 `Subject position detected but gated.`
 - `multiple_faces` 场景始终禁止放行，不会随意选择一个主体响应。
 
+## Expression Signal / Face Motion Signal
+- 本功能是本地视觉信号增强，不是情绪识别，不做心理/学习状态判断。
+- 仅用于 Rin 本地外周反馈与 Vision Island 状态展示，不写入主聊天历史。
+- 默认 `Enable Expression Signals = off`，用户可在 Vision Island 手动开启。
+
+### 为什么不是 emotion recognition
+- 我们只读取局部视觉变化（blendshape、画面稳定度、方向稳定性）。
+- 只输出中性信号标签，不输出“开心/焦虑/疲劳/专注”等真实状态判断。
+- UI 文案固定为 `Expression Signal / visual signal / smile-like signal` 语义。
+
+### 信号来源
+- `blendshape`：FaceLandmarker 的 `outputFaceBlendshapes` 本地输出。
+- `quality`：现有 OpenCV/canvas 质量分数（`qualityScore`）。
+- `position`：`facePresence + faceDirection + centered/away duration`。
+
+### 支持信号
+- `smile_like_signal`
+- `stable_face_signal`
+- `looking_away_signal`
+- `unclear_face_signal`
+- `low_confidence`
+
+### 触发规则（本地纯函数 + 稳定帧）
+- `smile_like_signal`：
+- `mouthSmileLeft/right` 平均分 `>= 0.45`。
+- `stable_face_signal`：
+- `present + center + quality>=0.65 + centered>=3000ms`。
+- `looking_away_signal`：
+- `present + non-center + away>=5000ms`。
+- `unclear_face_signal`：
+- `presence unknown`，或 `quality<0.35`，或关键视觉输入缺失。
+- `low_confidence`：
+- 输入关键字段不足或无法形成可靠信号。
+- 稳定化：同一候选信号需连续 5 帧一致才升级为 stable signal。
+
+### 冷却与防打扰
+- `smile_like_signal` 冷却 10 秒。
+- `stable_face_signal` 冷却 12 秒。
+- `looking_away_signal` 冷却 15 秒。
+- `unclear_face_signal/low_confidence` 以 UI/subtle 为主，避免高频提示。
+- quiet mode 下禁止 normal/strong 反馈。
+
+### Face Gate 约束（Expression Signal）
+- 允许反馈：`gate disabled` 或 `gate enabled + matched`。
+- 禁止反馈：`unmatched / no_face / multiple_faces / locked / gated`。
+- 多人脸场景显示被阻断状态，不触发 Rin motion/expression/bubble。
+- gated/quiet 约束在 interaction 层与 pet-feedback 层都会再检查一次。
+
+### 隐私说明
+- 全部本地处理，不上传表情或摄像头数据。
+- 不调用云端视觉 API，不调用 LLM。
+- 不用于权限、评分、分类或自动决策。
+
+### 演示建议
+1. 打开 Vision Island，开启 `Enable Expression Signals`。
+2. 在单人脸 matched 状态下展示 smile-like signal。
+3. 持续偏离中心展示 looking-away signal。
+4. 切到 multiple_faces / locked，确认信号可见但 Rin 反馈被阻断。
+
 ## Face Gate 状态机
 - gate 层状态：
 - `disabled`：门控未开启，允许视觉反馈。

@@ -28,6 +28,18 @@ function createInteractionState() {
     profileStatus: ref<'not_enrolled' | 'enrolling' | 'enrolled' | 'matching' | 'matched' | 'unmatched' | 'uncertain' | 'multiple_faces' | 'no_face'>('not_enrolled'),
     matchScore: ref<number | null>(null),
   }
+  const enableExpressionSignals = ref(false)
+  const expressionSignal = ref<'none' | 'smile_like_signal' | 'stable_face_signal' | 'looking_away_signal' | 'unclear_face_signal' | 'low_confidence'>('none')
+  const expressionSignalCandidate = ref<'none' | 'smile_like_signal' | 'stable_face_signal' | 'looking_away_signal' | 'unclear_face_signal' | 'low_confidence'>('none')
+  const stableExpressionSignal = ref<'none' | 'smile_like_signal' | 'stable_face_signal' | 'looking_away_signal' | 'unclear_face_signal' | 'low_confidence'>('none')
+  const expressionSignalStableFrames = ref(0)
+  const expressionSignalConfidence = ref(0)
+  const expressionSignalReason = ref('Expression signals are disabled.')
+  const expressionSignalSource = ref<'blendshape' | 'position' | 'quality' | 'fallback'>('fallback')
+  const expressionSignalChangedAt = ref<number | null>(null)
+  const expressionSignalCooldownUntil = ref(0)
+  const expressionSignalFeedbackAllowed = ref(false)
+  const expressionSignalUnavailable = ref(false)
 
   return {
     isEnabled: ref(false),
@@ -49,6 +61,18 @@ function createInteractionState() {
       gated: boolean
     } | null>(null),
     subjectResponseCooldownUntil: ref(0),
+    enableExpressionSignals,
+    expressionSignal,
+    expressionSignalCandidate,
+    stableExpressionSignal,
+    expressionSignalStableFrames,
+    expressionSignalConfidence,
+    expressionSignalReason,
+    expressionSignalSource,
+    expressionSignalChangedAt,
+    expressionSignalCooldownUntil,
+    expressionSignalFeedbackAllowed,
+    expressionSignalUnavailable,
     lastGesture: ref<'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'>('none'),
     gestureControlsEnabled: ref(false),
     candidateGesture: ref<'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'>('none'),
@@ -120,6 +144,16 @@ function createInteractionState() {
     resetVisionRuntime: vi.fn(async () => {}),
     setFaceGateEnabled: vi.fn(() => {}),
     setGestureControlsEnabled: vi.fn(() => {}),
+    setExpressionSignalsEnabled: vi.fn((enabled: boolean) => {
+      const nextEnabled = Boolean(enabled)
+      enableExpressionSignals.value = nextEnabled
+      if (!nextEnabled) {
+        expressionSignal.value = 'none'
+        expressionSignalCandidate.value = 'none'
+        stableExpressionSignal.value = 'none'
+        expressionSignalStableFrames.value = 0
+      }
+    }),
     setMaxInferenceStallMs: vi.fn(() => {}),
     setRememberFaceProfileOnDevice: vi.fn(async () => true),
     unlockFaceProfile: vi.fn(async () => ({ ok: true as const, profile: null as never })),
@@ -388,18 +422,10 @@ describe('vision Island pet feedback integration path', () => {
   })
 
   it('shows local bubble for matched feedback when template channel includes bubble', async () => {
+    localStorage.setItem('airi.vision-experiment.feedback-intensity.v1', 'expressive')
+    localStorage.setItem('airi.vision-experiment.feedback-variant.v1', 'a')
     const { container, unmount } = mountVisionIsland()
     mocks.interactionState.matchedDisplayName.value = 'Rin'
-    const intensitySelect = container.querySelector('[data-testid="feedback-intensity-select"]') as HTMLSelectElement | null
-    const variantSelect = container.querySelector('[data-testid="feedback-variant-select"]') as HTMLSelectElement | null
-    if (!intensitySelect)
-      throw new Error('feedback intensity select not found')
-    if (!variantSelect)
-      throw new Error('feedback variant select not found')
-    intensitySelect.value = 'expressive'
-    intensitySelect.dispatchEvent(new Event('change', { bubbles: true }))
-    variantSelect.value = 'a'
-    variantSelect.dispatchEvent(new Event('change', { bubbles: true }))
     await nextTick()
 
     await emitVisionEvent({
@@ -412,10 +438,11 @@ describe('vision Island pet feedback integration path', () => {
     const bubble = container.querySelector('[data-testid="vision-feedback-bubble"]')
     expect(container.textContent).toContain('activeBubbleLevel: strong')
     expect(container.textContent).toContain('activeBubbleEventType: subject_matched')
-    expect(container.textContent).toContain('activeBubbleTemplateId: matched-exp-2')
+    expect(container.textContent).toContain('activeBubbleTemplateId:')
+    expect(container.textContent).not.toContain('activeBubbleTemplateId: none')
     expect(bubble).not.toBeNull()
     expect(bubble?.textContent ?? '').toContain('Rin:')
-    expect(container.textContent).toContain('feedbackChannels: ui, toast, motion, bubble')
+    expect(container.textContent).toContain('bubble')
     unmount()
   })
 

@@ -1,3 +1,4 @@
+import type { VisionExpressionSignal, VisionExpressionSignalSource } from '../utils/vision-expression-signals'
 import type {
   SelectedVisionFeedbackMessage,
   VisionFeedbackChannel,
@@ -56,6 +57,10 @@ export type VisionContextualFeedbackEventType
     | 'subject_dwelled_left'
     | 'subject_dwelled_right'
     | 'subject_dwelled_center'
+    | 'expression_smile_like_detected'
+    | 'expression_stable_face_detected'
+    | 'expression_looking_away_detected'
+    | 'expression_unclear_detected'
 
 interface VisionPetFeedbackRecord {
   eventType: VisionPetFeedbackEventType
@@ -136,6 +141,26 @@ interface TriggerContextualVisionFeedbackOptions {
   bubbleAllowed?: boolean
 }
 
+interface TriggerExpressionSignalFeedbackOptions {
+  signal: VisionExpressionSignal
+  confidence: number
+  reason: string
+  source: VisionExpressionSignalSource
+  gateAllowed?: boolean
+  gateEnabled?: boolean
+  gateState?: LocalFaceGateState
+  gateProfileStatus?: LocalFaceProfileStatus
+  intensity?: VisionFeedbackIntensity
+  locale?: VisionFeedbackLocale
+  variant?: VisionFeedbackVariant
+  quietMode?: boolean
+  displayName?: string
+  presence?: 'present' | 'absent' | 'unknown'
+  sourceEventId?: number
+  bubbleAllowed?: boolean
+  force?: boolean
+}
+
 interface UseVisionPetFeedbackOptions {
   quietDurationMs?: number
   celebrationVisualMs?: number
@@ -156,6 +181,10 @@ interface UseVisionPetFeedbackOptions {
   directionToastCooldownMs?: number
   highPriorityToastHoldMs?: number
   bubbleDurationMs?: number
+  expressionSmileCooldownMs?: number
+  expressionStableCooldownMs?: number
+  expressionLookingAwayCooldownMs?: number
+  expressionUnclearCooldownMs?: number
   random?: () => number
 }
 
@@ -179,6 +208,10 @@ const DEFAULT_OPTIONS: Required<UseVisionPetFeedbackOptions> = {
   directionToastCooldownMs: 2_500,
   highPriorityToastHoldMs: 3_000,
   bubbleDurationMs: 4_000,
+  expressionSmileCooldownMs: 10_000,
+  expressionStableCooldownMs: 12_000,
+  expressionLookingAwayCooldownMs: 15_000,
+  expressionUnclearCooldownMs: 9_000,
   random: Math.random,
 }
 
@@ -663,6 +696,14 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       return 'subject_dwelled_right' as const
     if (eventType === 'subject_dwelled_center')
       return 'subject_dwelled_center' as const
+    if (eventType === 'expression_smile_like_detected')
+      return 'expression_smile_like' as const
+    if (eventType === 'expression_stable_face_detected')
+      return 'expression_stable_face' as const
+    if (eventType === 'expression_looking_away_detected')
+      return 'expression_looking_away' as const
+    if (eventType === 'expression_unclear_detected')
+      return 'expression_unclear' as const
     return 'subject_gated' as const
   }
 
@@ -679,6 +720,14 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       return runtimeOptions.subjectUncertainCooldownMs
     if (eventType === 'subject_dwelled_left' || eventType === 'subject_dwelled_right' || eventType === 'subject_dwelled_center')
       return runtimeOptions.subjectDwellCooldownMs
+    if (eventType === 'expression_smile_like')
+      return runtimeOptions.expressionSmileCooldownMs
+    if (eventType === 'expression_stable_face')
+      return runtimeOptions.expressionStableCooldownMs
+    if (eventType === 'expression_looking_away')
+      return runtimeOptions.expressionLookingAwayCooldownMs
+    if (eventType === 'expression_unclear')
+      return runtimeOptions.expressionUnclearCooldownMs
     if (
       eventType === 'transition_absent_to_returned'
       || eventType === 'transition_uncertain_to_matched'
@@ -693,7 +742,14 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
   }
 
   function resolveFeedbackLevel(eventType: VisionFeedbackEventType, intensity: VisionFeedbackIntensity) {
+    const isExpressionSignalEvent = eventType === 'expression_smile_like'
+      || eventType === 'expression_stable_face'
+      || eventType === 'expression_looking_away'
+      || eventType === 'expression_unclear'
+
     if (intensity === 'minimal') {
+      if (isExpressionSignalEvent)
+        return eventType === 'expression_unclear' ? 'subtle' as const : null
       if (
         eventType === 'subject_returned'
         || eventType === 'subject_matched'
@@ -708,6 +764,13 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     }
 
     if (intensity === 'balanced') {
+      if (isExpressionSignalEvent) {
+        if (eventType === 'expression_smile_like')
+          return 'normal' as const
+        if (eventType === 'expression_stable_face')
+          return 'normal' as const
+        return 'subtle' as const
+      }
       if (eventType === 'subject_dwelled_left' || eventType === 'subject_dwelled_right')
         return null
       if (
@@ -749,6 +812,10 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     ) {
       return 'subtle' as const
     }
+    if (eventType === 'expression_smile_like' || eventType === 'expression_stable_face')
+      return 'strong' as const
+    if (eventType === 'expression_looking_away' || eventType === 'expression_unclear')
+      return 'normal' as const
     return 'normal' as const
   }
 
@@ -859,8 +926,93 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     return ['normal', 'neutral']
   }
 
+  function resolveExpressionSignalMotionCandidates(eventType: VisionFeedbackEventType, level: VisionFeedbackLevel) {
+    if (eventType === 'expression_smile_like') {
+      if (level === 'strong') {
+        return [
+          EmotionHappyMotionName,
+          'Happy',
+          EmotionNeutralMotionName,
+          'Idle',
+        ]
+      }
+      return [
+        EmotionHappyMotionName,
+        EmotionNeutralMotionName,
+        'Idle',
+      ]
+    }
+
+    if (eventType === 'expression_stable_face') {
+      if (level === 'strong') {
+        return [
+          EmotionThinkMotionName,
+          'Think',
+          EmotionNeutralMotionName,
+          'Idle',
+        ]
+      }
+      return [
+        EmotionThinkMotionName,
+        EmotionNeutralMotionName,
+        'Idle',
+      ]
+    }
+
+    if (eventType === 'expression_looking_away') {
+      return level === 'strong'
+        ? ['Curious', EmotionThinkMotionName, 'Think', EmotionNeutralMotionName, 'Idle']
+        : ['Curious', EmotionThinkMotionName, EmotionNeutralMotionName, 'Idle']
+    }
+
+    return []
+  }
+
+  function resolveExpressionSignalExpressionCandidates(eventType: VisionFeedbackEventType, level: VisionFeedbackLevel) {
+    if (eventType === 'expression_smile_like')
+      return level === 'strong' ? ['smile', 'happy', 'normal'] : ['smile', 'normal', 'neutral']
+    if (eventType === 'expression_stable_face')
+      return ['normal', 'neutral']
+    if (eventType === 'expression_looking_away')
+      return ['curious', 'normal', 'neutral']
+    return []
+  }
+
+  function resolveContextualMotionCandidates(eventType: VisionFeedbackEventType, direction: VisionSubjectPosition, level: VisionFeedbackLevel) {
+    if (
+      eventType === 'expression_smile_like'
+      || eventType === 'expression_stable_face'
+      || eventType === 'expression_looking_away'
+      || eventType === 'expression_unclear'
+    ) {
+      return resolveExpressionSignalMotionCandidates(eventType, level)
+    }
+
+    return resolveSubjectResponseMotionCandidates(direction, level)
+  }
+
+  function resolveContextualExpressionCandidates(eventType: VisionFeedbackEventType, direction: VisionSubjectPosition, level: VisionFeedbackLevel) {
+    if (
+      eventType === 'expression_smile_like'
+      || eventType === 'expression_stable_face'
+      || eventType === 'expression_looking_away'
+      || eventType === 'expression_unclear'
+    ) {
+      return resolveExpressionSignalExpressionCandidates(eventType, level)
+    }
+
+    return resolveSubjectResponseExpressionCandidates(direction, level)
+  }
+
   function shouldAllowContextualToast(eventType: VisionFeedbackEventType, level: VisionFeedbackLevel) {
+    const isExpressionEvent = eventType === 'expression_smile_like'
+      || eventType === 'expression_stable_face'
+      || eventType === 'expression_looking_away'
+      || eventType === 'expression_unclear'
+
     if (feedbackIntensity.value === 'minimal') {
+      if (isExpressionEvent)
+        return false
       return eventType === 'subject_returned'
         || eventType === 'subject_matched'
         || eventType === 'transition_absent_to_returned'
@@ -869,6 +1021,8 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
         || eventType === 'transition_multiple_faces_to_matched'
     }
     if (feedbackIntensity.value === 'balanced') {
+      if (isExpressionEvent)
+        return eventType === 'expression_smile_like' || eventType === 'expression_stable_face'
       return level !== 'subtle'
         || eventType === 'subject_returned'
         || eventType === 'subject_matched'
@@ -877,6 +1031,8 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
         || eventType === 'transition_gated_to_matched'
         || eventType === 'transition_multiple_faces_to_matched'
     }
+    if (isExpressionEvent)
+      return eventType !== 'expression_unclear'
     return true
   }
 
@@ -887,6 +1043,14 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       return 'idle' as const
     if (eventType === 'subject_uncertain' || eventType === 'transition_matched_to_uncertain')
       return 'idle' as const
+    if (
+      eventType === 'expression_smile_like'
+      || eventType === 'expression_stable_face'
+      || eventType === 'expression_looking_away'
+      || eventType === 'expression_unclear'
+    ) {
+      return subjectResponseState.value
+    }
     return mapSubjectResponseState(direction)
   }
 
@@ -910,6 +1074,12 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     ) {
       return 'normal'
     }
+    if (eventType === 'expression_smile_like')
+      return 'high'
+    if (eventType === 'expression_stable_face')
+      return 'normal'
+    if (eventType === 'expression_looking_away' || eventType === 'expression_unclear')
+      return 'low'
     return 'low'
   }
 
@@ -1009,10 +1179,10 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       && !suppressedByQuiet
       && feedbackLevel !== null
     const motionCandidates = shouldRunVisualEffects
-      ? resolveSubjectResponseMotionCandidates(direction, nextLevel)
+      ? resolveContextualMotionCandidates(resolvedEventType, direction, nextLevel)
       : []
     const expressionCandidates = shouldRunVisualEffects
-      ? resolveSubjectResponseExpressionCandidates(direction, nextLevel)
+      ? resolveContextualExpressionCandidates(resolvedEventType, direction, nextLevel)
       : []
     const motion = shouldRunVisualEffects
       ? triggerMotionWithFallback(motionCandidates)
@@ -1046,6 +1216,15 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       shouldShowBubble = false
     if (feedbackIntensity.value === 'minimal' && isDirectionalContextualEvent(resolvedEventType))
       shouldShowBubble = false
+    if (
+      feedbackIntensity.value === 'minimal'
+      && (resolvedEventType === 'expression_smile_like'
+        || resolvedEventType === 'expression_stable_face'
+        || resolvedEventType === 'expression_looking_away'
+        || resolvedEventType === 'expression_unclear')
+    ) {
+      shouldShowBubble = false
+    }
     if (shouldShowBubble) {
       showBubble(
         selectedMessage.text,
@@ -1133,6 +1312,43 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       summary: options?.summary,
       force: options?.force,
       bubbleAllowed: options?.bubbleAllowed,
+    })
+  }
+
+  function triggerExpressionSignalFeedback(options: TriggerExpressionSignalFeedbackOptions) {
+    const contextualEventType: VisionContextualFeedbackEventType
+      = options.signal === 'smile_like_signal'
+        ? 'expression_smile_like_detected'
+        : options.signal === 'stable_face_signal'
+          ? 'expression_stable_face_detected'
+          : options.signal === 'looking_away_signal'
+            ? 'expression_looking_away_detected'
+            : 'expression_unclear_detected'
+
+    const allowVisualFeedback = options.gateAllowed ?? true
+    const eventLevel = options.signal === 'unclear_face_signal' || options.signal === 'low_confidence'
+      ? 'subtle'
+      : undefined
+    const defaultChannels: VisionFeedbackChannel[]
+      = options.signal === 'unclear_face_signal' || options.signal === 'low_confidence'
+        ? ['ui', 'bubble']
+        : ['ui', 'toast', 'bubble', 'motion']
+
+    return triggerContextualVisionFeedback(contextualEventType, {
+      allowVisualFeedback,
+      gateEnabled: options.gateEnabled,
+      gateState: options.gateState,
+      gateProfileStatus: options.gateProfileStatus,
+      presence: options.presence,
+      sourceEventId: options.sourceEventId,
+      direction: options.signal === 'looking_away_signal' ? 'left' : 'center',
+      displayName: options.displayName,
+      preferredLevel: eventLevel,
+      allowedChannels: defaultChannels,
+      locale: options.locale,
+      variant: options.variant,
+      bubbleAllowed: options.bubbleAllowed,
+      force: options.force,
     })
   }
 
@@ -1342,6 +1558,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
   return {
     triggerVisionPetFeedback,
     triggerSubjectPositionFeedback,
+    triggerExpressionSignalFeedback,
     triggerContextualVisionFeedback,
     feedbackIntensity,
     setFeedbackIntensity,

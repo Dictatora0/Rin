@@ -2,6 +2,11 @@ import type { Category, FaceLandmarkerResult, GestureRecognizerResult, Normalize
 
 import type { GestureQualityPoint, GestureQualityState } from '../utils/gesture-quality'
 import type { GestureCandidateGesture, GestureMachineGesture, GestureMachineState } from '../utils/gesture-state-machine'
+import type {
+  VisionExpressionSignal,
+  VisionExpressionSignalResult,
+  VisionExpressionSignalSource,
+} from '../utils/vision-expression-signals'
 import type { FaceSampleQuality, VisionFaceProfilePayload, VisionFaceProfileSample } from './use-encrypted-face-profile'
 import type { VisionRuntimeWarmupOptions } from './use-vision-runtime'
 
@@ -23,6 +28,7 @@ import {
   DEFAULT_GESTURE_STATE_MACHINE_CONFIG,
 
 } from '../utils/gesture-state-machine'
+import { resolveVisionExpressionSignal } from '../utils/vision-expression-signals'
 import { useEncryptedFaceProfile } from './use-encrypted-face-profile'
 import { createLandmarkDescriptor, useLocalFaceGate } from './use-local-face-gate'
 import { useVisionRuntime } from './use-vision-runtime'
@@ -35,6 +41,8 @@ export type VisionFaceDirection = 'left' | 'center' | 'right' | 'up' | 'down' | 
 export type VisionGesture = 'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'
 export type VisionGestureQualityState = GestureQualityState
 export type VisionSubjectResponseState = 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
+export type { VisionExpressionSignal }
+export type { VisionExpressionSignalSource }
 
 export type VisionInteractionEventType
   = | 'quiet_mode_requested'
@@ -55,6 +63,10 @@ export type VisionInteractionEventType
     | 'user_moved_down'
     | 'user_centered'
     | 'subject_position_gated'
+    | 'expression_smile_like_detected'
+    | 'expression_stable_face_detected'
+    | 'expression_looking_away_detected'
+    | 'expression_unclear_detected'
 
 export interface VisionInteractionEvent {
   id: number
@@ -155,10 +167,20 @@ const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
 const DISPLAY_NAME_LOCAL_STORAGE_KEY = 'airi.vision-experiment.display-name'
 const GATE_ENABLED_STORAGE_KEY = 'airi.vision-experiment.local-face-gate-enabled.v1'
 const GESTURE_CONTROLS_ENABLED_STORAGE_KEY = 'airi.vision-experiment.gesture-controls-enabled.v1'
+const EXPRESSION_SIGNALS_ENABLED_STORAGE_KEY = 'airi.vision-experiment.expression-signals-enabled.v1'
 const INFERENCE_ERROR_LOG_COOLDOWN_MS = 1_500
 const TIMESTAMP_MISMATCH_RECOVERY_COOLDOWN_MS = 3_000
 const QUALITY_EVALUATION_INTERVAL_MS = 400
 const UI_YIELD_INTERVAL_MS = 240
+const EXPRESSION_SIGNAL_STABLE_FRAMES = 5
+const EXPRESSION_SIGNAL_COOLDOWN_MS: Record<VisionExpressionSignal, number> = {
+  none: 0,
+  smile_like_signal: 10_000,
+  stable_face_signal: 12_000,
+  looking_away_signal: 15_000,
+  unclear_face_signal: 9_000,
+  low_confidence: 9_000,
+}
 const FACE_PROFILE_AUTO_UNLOCK_STORE_KEY = 'vision.face-profile.auto-unlock.passphrase.v1'
 const ENABLE_VISION_VERBOSE_DEBUG_LOGS = import.meta.env.DEV
   && import.meta.env.VITE_VISION_DEBUG_LOGS === 'true'
@@ -191,6 +213,20 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   const subjectResponseState = ref<VisionSubjectResponseState>('idle')
   const lastSubjectResponseEvent = ref<VisionSubjectResponseEvent | null>(null)
   const subjectResponseCooldownUntil = ref(0)
+  const enableExpressionSignals = ref(loadExpressionSignalsEnabled())
+  const expressionSignal = ref<VisionExpressionSignal>('none')
+  const expressionSignalCandidate = ref<VisionExpressionSignal>('none')
+  const stableExpressionSignal = ref<VisionExpressionSignal>('none')
+  const expressionSignalStableFrames = ref(0)
+  const expressionSignalConfidence = ref(0)
+  const expressionSignalReason = ref(enableExpressionSignals.value
+    ? 'No stable expression signal.'
+    : 'Expression signals are disabled.')
+  const expressionSignalSource = ref<VisionExpressionSignalSource>('fallback')
+  const expressionSignalChangedAt = ref<number | null>(null)
+  const expressionSignalCooldownUntil = ref(0)
+  const expressionSignalFeedbackAllowed = ref(false)
+  const expressionSignalUnavailable = ref(false)
   const lastGesture = ref<VisionGesture>('none')
   const gestureControlsEnabled = ref(loadGestureControlsEnabled())
   const candidateGesture = ref<GestureCandidateGesture>('none')
@@ -317,6 +353,9 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   let candidateDirection: VisionFaceDirection = 'unknown'
   let candidateDirectionFrames = 0
+  let expressionSignalCandidateFrames = 0
+  let centeredDirectionStartedAt: number | null = null
+  let awayDirectionStartedAt: number | null = null
 
   let previousGestureHandCenter: GestureQualityPoint | null = null
   let previousGestureHandTimestampMs: number | null = null
@@ -515,6 +554,17 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     }
   }
 
+  function loadExpressionSignalsEnabled() {
+    if (typeof localStorage === 'undefined')
+      return false
+    try {
+      return localStorage.getItem(EXPRESSION_SIGNALS_ENABLED_STORAGE_KEY) === 'true'
+    }
+    catch {
+      return false
+    }
+  }
+
   function persistGateEnabled(enabled: boolean) {
     if (typeof localStorage === 'undefined')
       return
@@ -531,6 +581,17 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       return
     try {
       localStorage.setItem(GESTURE_CONTROLS_ENABLED_STORAGE_KEY, enabled ? 'true' : 'false')
+    }
+    catch {
+      // ignore storage write failures
+    }
+  }
+
+  function persistExpressionSignalsEnabled(enabled: boolean) {
+    if (typeof localStorage === 'undefined')
+      return
+    try {
+      localStorage.setItem(EXPRESSION_SIGNALS_ENABLED_STORAGE_KEY, enabled ? 'true' : 'false')
     }
     catch {
       // ignore storage write failures
@@ -565,6 +626,27 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     persistGestureControlsEnabled(enabled)
     if (!enabled)
       resetGesturePipelineState()
+  }
+
+  function setExpressionSignalsEnabled(enabled: boolean) {
+    enableExpressionSignals.value = enabled
+    persistExpressionSignalsEnabled(enabled)
+    if (!enabled) {
+      expressionSignal.value = 'none'
+      expressionSignalCandidate.value = 'none'
+      stableExpressionSignal.value = 'none'
+      expressionSignalStableFrames.value = 0
+      expressionSignalConfidence.value = 0
+      expressionSignalReason.value = 'Expression signals are disabled.'
+      expressionSignalSource.value = 'fallback'
+      expressionSignalChangedAt.value = null
+      expressionSignalCooldownUntil.value = 0
+      expressionSignalFeedbackAllowed.value = false
+      expressionSignalUnavailable.value = false
+      expressionSignalCandidateFrames = 0
+      centeredDirectionStartedAt = null
+      awayDirectionStartedAt = null
+    }
   }
 
   function getSecureStoreInvokes() {
@@ -848,6 +930,22 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     subjectResponseState.value = 'idle'
     lastSubjectResponseEvent.value = null
     subjectResponseCooldownUntil.value = 0
+    expressionSignal.value = 'none'
+    expressionSignalCandidate.value = 'none'
+    stableExpressionSignal.value = 'none'
+    expressionSignalStableFrames.value = 0
+    expressionSignalConfidence.value = 0
+    expressionSignalReason.value = enableExpressionSignals.value
+      ? 'No stable expression signal.'
+      : 'Expression signals are disabled.'
+    expressionSignalSource.value = 'fallback'
+    expressionSignalChangedAt.value = null
+    expressionSignalCooldownUntil.value = 0
+    expressionSignalFeedbackAllowed.value = false
+    expressionSignalUnavailable.value = false
+    expressionSignalCandidateFrames = 0
+    centeredDirectionStartedAt = null
+    awayDirectionStartedAt = null
 
     lastGesture.value = 'none'
     facePresence.value = 'unknown'
@@ -1238,11 +1336,165 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     })
   }
 
+  function mapExpressionSignalToEventType(signal: VisionExpressionSignal): VisionInteractionEventType | null {
+    if (signal === 'smile_like_signal')
+      return 'expression_smile_like_detected'
+    if (signal === 'stable_face_signal')
+      return 'expression_stable_face_detected'
+    if (signal === 'looking_away_signal')
+      return 'expression_looking_away_detected'
+    if (signal === 'unclear_face_signal' || signal === 'low_confidence')
+      return 'expression_unclear_detected'
+    return null
+  }
+
+  function buildExpressionSignalEventMessage(signal: VisionExpressionSignal) {
+    if (signal === 'smile_like_signal')
+      return 'Smile-like signal detected.'
+    if (signal === 'stable_face_signal')
+      return 'Stable face signal detected.'
+    if (signal === 'looking_away_signal')
+      return 'Face position away from center detected.'
+    return 'Visual signal is unclear.'
+  }
+
+  function updateExpressionSignalDurations(nowMs: number) {
+    if (facePresence.value !== 'present' || faceDirection.value === 'unknown') {
+      centeredDirectionStartedAt = null
+      awayDirectionStartedAt = null
+      return {
+        centeredDurationMs: 0,
+        awayDurationMs: 0,
+      }
+    }
+
+    if (faceDirection.value === 'center') {
+      if (centeredDirectionStartedAt === null)
+        centeredDirectionStartedAt = nowMs
+      awayDirectionStartedAt = null
+      return {
+        centeredDurationMs: Math.max(0, nowMs - centeredDirectionStartedAt),
+        awayDurationMs: 0,
+      }
+    }
+
+    if (awayDirectionStartedAt === null)
+      awayDirectionStartedAt = nowMs
+    centeredDirectionStartedAt = null
+    return {
+      centeredDurationMs: 0,
+      awayDurationMs: Math.max(0, nowMs - awayDirectionStartedAt),
+    }
+  }
+
+  function applyExpressionSignal(options: {
+    nowMs: number
+    faceLandmarksLength: number
+    blendshapeCategories: Category[]
+    blendshapeOutputAvailable: boolean
+    qualityScore: number | undefined
+  }) {
+    if (!enableExpressionSignals.value) {
+      expressionSignal.value = 'none'
+      expressionSignalCandidate.value = 'none'
+      stableExpressionSignal.value = 'none'
+      expressionSignalStableFrames.value = 0
+      expressionSignalConfidence.value = 0
+      expressionSignalReason.value = 'Expression signals are disabled.'
+      expressionSignalSource.value = 'fallback'
+      expressionSignalChangedAt.value = null
+      expressionSignalCooldownUntil.value = 0
+      expressionSignalFeedbackAllowed.value = false
+      expressionSignalUnavailable.value = false
+      expressionSignalCandidateFrames = 0
+      return
+    }
+
+    const hasSingleFace = options.faceLandmarksLength === 1
+    const gateAllowsFeedback = canTriggerSubjectPositionResponse.value
+    const feedbackAllowed = gateAllowsFeedback
+      && facePresence.value === 'present'
+      && hasSingleFace
+      && !isVisionQuiet.value
+
+    expressionSignalFeedbackAllowed.value = feedbackAllowed
+    expressionSignalUnavailable.value = facePresence.value === 'present'
+      && hasSingleFace
+      && (!options.blendshapeOutputAvailable || options.blendshapeCategories.length === 0)
+
+    const durations = updateExpressionSignalDurations(options.nowMs)
+    const resolvedSignal: VisionExpressionSignalResult = resolveVisionExpressionSignal({
+      blendshapes: options.blendshapeCategories.map(category => ({
+        categoryName: category.categoryName,
+        score: Number.isFinite(category.score) ? Number(category.score) : 0,
+      })),
+      blendshapeOutputAvailable: options.blendshapeOutputAvailable,
+      hasLandmarks: hasSingleFace,
+      facePresence: facePresence.value,
+      faceDirection: faceDirection.value,
+      qualityScore: options.qualityScore,
+      faceCenter: faceCenter.value,
+      centeredDurationMs: durations.centeredDurationMs,
+      awayDurationMs: durations.awayDurationMs,
+    })
+
+    expressionSignal.value = resolvedSignal.signal
+    expressionSignalConfidence.value = resolvedSignal.confidence
+    expressionSignalReason.value = resolvedSignal.reason
+    expressionSignalSource.value = resolvedSignal.source
+
+    if (resolvedSignal.signal === expressionSignalCandidate.value) {
+      expressionSignalCandidateFrames += 1
+    }
+    else {
+      expressionSignalCandidate.value = resolvedSignal.signal
+      expressionSignalCandidateFrames = 1
+    }
+    expressionSignalStableFrames.value = expressionSignalCandidateFrames
+
+    if (expressionSignalCandidateFrames < EXPRESSION_SIGNAL_STABLE_FRAMES)
+      return
+    if (stableExpressionSignal.value === resolvedSignal.signal)
+      return
+
+    stableExpressionSignal.value = resolvedSignal.signal
+    expressionSignalChangedAt.value = options.nowMs
+
+    if (resolvedSignal.signal === 'none')
+      return
+
+    if (!feedbackAllowed)
+      return
+
+    const cooldownMs = EXPRESSION_SIGNAL_COOLDOWN_MS[resolvedSignal.signal]
+    if (cooldownMs > 0 && options.nowMs < expressionSignalCooldownUntil.value)
+      return
+
+    const eventType = mapExpressionSignalToEventType(resolvedSignal.signal)
+    if (!eventType)
+      return
+
+    const eventMessage = buildExpressionSignalEventMessage(resolvedSignal.signal)
+    const emitted = emitEvent({
+      type: eventType,
+      message: eventMessage,
+      toastMessage: eventMessage,
+      nowMs: options.nowMs,
+      cooldownMs: Math.max(runtimeOptions.eventCooldownMs, cooldownMs),
+      cooldownKey: `expression_signal:${resolvedSignal.signal}`,
+      isAutomatic: true,
+    })
+    if (!emitted)
+      return
+    expressionSignalCooldownUntil.value = options.nowMs + cooldownMs
+  }
+
   async function applyFacePresence(faceResult: FaceLandmarkerResult, nowMs: number) {
     latestFaceResult.value = faceResult
     const faceLandmarks = faceResult.faceLandmarks ?? []
     const primaryLandmarks = faceLandmarks[0] ?? []
     const hasFace = faceLandmarks.length > 0 && primaryLandmarks.length > 0
+    const hasSingleFace = faceLandmarks.length === 1
 
     const qualityResult = await evaluateQualityMetricsForFrame({
       hasFace,
@@ -1259,7 +1511,6 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     const allowFeedback = !localFaceGate.gateEnabled.value || localFaceGate.gateState.value === 'enabled'
     const gateBlockingActive = localFaceGate.gateEnabled.value && localFaceGate.gateState.value !== 'enabled'
 
-    const hasSingleFace = faceLandmarks.length === 1
     const center = hasSingleFace ? computeFaceCenter(primaryLandmarks) : null
     applyFaceDirection(center, nowMs, {
       allowFeedback: allowFeedback && hasSingleFace,
@@ -1282,6 +1533,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       })
     }
 
+    let nextPresence: VisionFacePresence = 'unknown'
     if (!localFaceGate.gateEnabled.value && hasFace) {
       presentFrameStreak += 1
       absentFrameStreak = 0
@@ -1311,16 +1563,11 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
           })
         }
       }
-      else {
-        facePresence.value = 'present'
-      }
-      return
+      nextPresence = 'present'
     }
-
-    if (!localFaceGate.gateEnabled.value && absentFrameStreak >= runtimeOptions.stableFrames) {
+    else if (!localFaceGate.gateEnabled.value && absentFrameStreak >= runtimeOptions.stableFrames) {
       if (stablePresence !== 'absent') {
         stablePresence = 'absent'
-        facePresence.value = 'absent'
         lastPresenceTransitionAt.value = nowMs
         emitEvent({
           type: 'user_away',
@@ -1329,16 +1576,26 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
           isAutomatic: true,
         })
       }
-      else {
-        facePresence.value = 'absent'
-      }
-      return
+      nextPresence = 'absent'
+    }
+    else if (!localFaceGate.gateEnabled.value) {
+      nextPresence = 'unknown'
+    }
+    else {
+      nextPresence = gateResult.status === 'no_face' ? 'absent' : (hasFace ? 'present' : 'unknown')
     }
 
-    if (!localFaceGate.gateEnabled.value)
-      facePresence.value = 'unknown'
-    else
-      facePresence.value = gateResult.status === 'no_face' ? 'absent' : (hasFace ? 'present' : 'unknown')
+    facePresence.value = nextPresence
+
+    const blendshapeRows = faceResult.faceBlendshapes ?? []
+    const primaryBlendshapeCategories = blendshapeRows[0]?.categories ?? []
+    applyExpressionSignal({
+      nowMs,
+      faceLandmarksLength: faceLandmarks.length,
+      blendshapeCategories: primaryBlendshapeCategories,
+      blendshapeOutputAvailable: Array.isArray(faceResult.faceBlendshapes),
+      qualityScore: qualityResult?.qualityScore,
+    })
   }
 
   async function evaluateQualityMetricsForFrame(options: {
@@ -2157,6 +2414,18 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     subjectResponseState,
     lastSubjectResponseEvent,
     subjectResponseCooldownUntil,
+    enableExpressionSignals,
+    expressionSignal,
+    expressionSignalCandidate,
+    stableExpressionSignal,
+    expressionSignalStableFrames,
+    expressionSignalConfidence,
+    expressionSignalReason,
+    expressionSignalSource,
+    expressionSignalChangedAt,
+    expressionSignalCooldownUntil,
+    expressionSignalFeedbackAllowed,
+    expressionSignalUnavailable,
     lastGesture,
     gestureControlsEnabled,
     candidateGesture,
@@ -2215,6 +2484,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     setDisplayName,
     setFaceGateEnabled,
     setGestureControlsEnabled,
+    setExpressionSignalsEnabled,
     setMaxInferenceStallMs,
     enrollLocalFaceProfile,
     unlockFaceProfile,

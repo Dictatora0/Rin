@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { FaceLandmarkerResult, GestureRecognizerResult, NormalizedLandmark } from '@mediapipe/tasks-vision'
+import type { Category, FaceLandmarkerResult, GestureRecognizerResult, NormalizedLandmark } from '@mediapipe/tasks-vision'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, ref } from 'vue'
@@ -70,8 +70,19 @@ const evaluateFrameMock = vi.fn(() => ({ status: 'no_face' as const }))
 const consumeJustMatchedWelcomeMock = vi.fn(() => false)
 const saveEncryptedProfileMock = vi.fn(async () => ({ ok: true as const }))
 
-function createFaceLandmarkerResult(landmarks: NormalizedLandmark[][]): FaceLandmarkerResult {
-  return { faceLandmarks: landmarks } as FaceLandmarkerResult
+function createFaceLandmarkerResult(
+  landmarks: NormalizedLandmark[][],
+  options?: {
+    blendshapeCategories?: Array<{ categoryName: string, score: number }>
+  },
+): FaceLandmarkerResult {
+  const blendshapeRows = options?.blendshapeCategories
+    ? [{ categories: options.blendshapeCategories as unknown as Category[] }]
+    : undefined
+  return {
+    faceLandmarks: landmarks,
+    faceBlendshapes: blendshapeRows,
+  } as FaceLandmarkerResult
 }
 
 function createOpenPalmHandLandmarks(): NormalizedLandmark[] {
@@ -142,13 +153,26 @@ function createFaceAt(centerX: number, centerY: number): NormalizedLandmark[] {
   ]
 }
 
+function createSmileBlendshapeCategories(options?: {
+  left?: number
+  right?: number
+}) {
+  return [
+    { categoryName: 'mouthSmileLeft', score: options?.left ?? 0.6 },
+    { categoryName: 'mouthSmileRight', score: options?.right ?? 0.6 },
+  ]
+}
+
 function queueFrames(options: {
   gesture: string
   face: NormalizedLandmark[][]
   count: number
+  blendshapeCategories?: Array<{ categoryName: string, score: number }>
 }) {
   for (let i = 0; i < options.count; i += 1) {
-    queuedFaceResults.push(createFaceLandmarkerResult(options.face))
+    queuedFaceResults.push(createFaceLandmarkerResult(options.face, {
+      blendshapeCategories: options.blendshapeCategories,
+    }))
     queuedGestureResults.push(createGestureRecognizerResult(options.gesture))
   }
 }
@@ -159,9 +183,12 @@ function queueFramesWithGestureCandidates(options: {
   count: number
   handLandmarks?: NormalizedLandmark[][]
   handedness?: string
+  blendshapeCategories?: Array<{ categoryName: string, score: number }>
 }) {
   for (let i = 0; i < options.count; i += 1) {
-    queuedFaceResults.push(createFaceLandmarkerResult(options.face))
+    queuedFaceResults.push(createFaceLandmarkerResult(options.face, {
+      blendshapeCategories: options.blendshapeCategories,
+    }))
     queuedGestureResults.push(createGestureRecognizerResultWithCandidates({
       candidates: options.candidates,
       landmarks: options.handLandmarks,
@@ -386,11 +413,13 @@ async function runQueuedFrames(options: {
   startNowMs: number
   startTimeSeconds: number
   stepMs?: number
+  blendshapeCategories?: Array<{ categoryName: string, score: number }>
 }) {
   queueFrames({
     gesture: options.gesture,
     face: options.face,
     count: options.count,
+    blendshapeCategories: options.blendshapeCategories,
   })
 
   const stepMs = options.stepMs ?? 200
@@ -452,6 +481,7 @@ describe('useVisionInteraction behavior locks', () => {
   beforeEach(async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(1_000))
+    localStorage.removeItem('airi.vision-experiment.expression-signals-enabled.v1')
     resetInteractionMocks()
     await useVisionRuntime().resetVisionRuntime()
     vi.stubGlobal('requestAnimationFrame', vi.fn((cb: FrameRequestCallback) => {
@@ -755,6 +785,99 @@ describe('useVisionInteraction behavior locks', () => {
     await runNextAnimationFrame(1_800, videoElement, 9)
     expect(interaction.faceDirection.value).toBe('unknown')
     expect(interaction.lastEvent.value?.id).toBe(gatedEventId)
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('stabilizes expression signal for five frames before emitting smile-like feedback event', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+    })
+    interaction.setExpressionSignalsEnabled(true)
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      blendshapeCategories: createSmileBlendshapeCategories(),
+      count: 4,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
+    expect(interaction.stableExpressionSignal.value).toBe('none')
+    expect(interaction.expressionSignalStableFrames.value).toBeLessThan(5)
+    expect(interaction.lastEvent.value?.type).not.toBe('expression_smile_like_detected')
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      blendshapeCategories: createSmileBlendshapeCategories(),
+      count: 1,
+      startNowMs: 1_000,
+      startTimeSeconds: 5,
+    })
+    expect(interaction.stableExpressionSignal.value).toBe('smile_like_signal')
+    expect(interaction.expressionSignalFeedbackAllowed.value).toBe(true)
+    expect(interaction.expressionSignalConfidence.value).toBeGreaterThanOrEqual(0.45)
+    expect(interaction.lastEvent.value?.type).toBe('expression_smile_like_detected')
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('keeps expression feedback disabled when expression signals toggle is off', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+    })
+    interaction.setExpressionSignalsEnabled(false)
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      blendshapeCategories: createSmileBlendshapeCategories(),
+      count: 6,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
+
+    expect(interaction.expressionSignal.value).toBe('none')
+    expect(interaction.stableExpressionSignal.value).toBe('none')
+    expect(interaction.expressionSignalReason.value).toBe('Expression signals are disabled.')
+    expect(interaction.expressionSignalFeedbackAllowed.value).toBe(false)
+    expect(interaction.lastEvent.value?.type).not.toBe('expression_smile_like_detected')
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('detects expression signal but blocks expression feedback when face gate is locked', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+    })
+    interaction.setExpressionSignalsEnabled(true)
+    gateEnabledRef.value = true
+    gateStateRef.value = 'locked'
+    gateProfileStatusRef.value = 'unmatched'
+    evaluateFrameMock.mockReturnValue({ status: 'unmatched' } as any)
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      blendshapeCategories: createSmileBlendshapeCategories(),
+      count: 6,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
+
+    expect(interaction.expressionSignal.value).toBe('smile_like_signal')
+    expect(interaction.stableExpressionSignal.value).toBe('smile_like_signal')
+    expect(interaction.expressionSignalFeedbackAllowed.value).toBe(false)
+    expect(interaction.lastEvent.value?.type).toBe('subject_position_gated')
+    expect(interaction.lastEvent.value?.type).not.toBe('expression_smile_like_detected')
 
     await interaction.stop()
     app.unmount()

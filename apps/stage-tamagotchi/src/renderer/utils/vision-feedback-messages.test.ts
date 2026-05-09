@@ -21,6 +21,10 @@ describe('vision feedback templates v2', () => {
     expect(eventTypes).toContain('subject_gated')
     expect(eventTypes).toContain('subject_matched')
     expect(eventTypes).toContain('subject_uncertain')
+    expect(eventTypes).toContain('expression_smile_like')
+    expect(eventTypes).toContain('expression_stable_face')
+    expect(eventTypes).toContain('expression_looking_away')
+    expect(eventTypes).toContain('expression_unclear')
     expect(eventTypes).toContain('subject_dwelled_left')
     expect(eventTypes).toContain('subject_dwelled_right')
     expect(eventTypes).toContain('subject_dwelled_center')
@@ -70,6 +74,34 @@ describe('vision feedback templates v2', () => {
     expect(balanced.level).toBe('normal')
     expect(expressiveStrong.level).toBe('strong')
     expect(balancedDowngraded.level).toBe('normal')
+  })
+
+  it('selects expression templates with intensity-aware levels and channels', () => {
+    const minimalSmile = selectVisionFeedbackMessage('expression_smile_like', {
+      intensity: 'minimal',
+      random: () => 0,
+    })
+    const balancedSmile = selectVisionFeedbackMessage('expression_smile_like', {
+      intensity: 'balanced',
+      random: () => 0,
+    })
+    const expressiveSmile = selectVisionFeedbackMessage('expression_smile_like', {
+      intensity: 'expressive',
+      preferredLevel: 'strong',
+      random: () => 0,
+    })
+    const balancedUnclear = selectVisionFeedbackMessage('expression_unclear', {
+      intensity: 'balanced',
+      random: () => 0,
+    })
+
+    expect(minimalSmile.level).toBe('subtle')
+    expect(minimalSmile.channels).toEqual(['ui'])
+    expect(balancedSmile.level).toBe('normal')
+    expect(balancedSmile.channels).toContain('toast')
+    expect(expressiveSmile.level).toBe('strong')
+    expect(expressiveSmile.channels).toContain('motion')
+    expect(balancedUnclear.level).toBe('subtle')
   })
 
   it('filters by allowedChannels and falls back safely when no candidate matches', () => {
@@ -298,5 +330,36 @@ describe('vision feedback templates v2', () => {
     expect(matchedToAbsent).toBe('transition_matched_to_absent')
     expect(matchedToUncertain).toBe('transition_matched_to_uncertain')
     expect(noTransitionFallback).toBe('subject_position_center')
+  })
+
+  it('keeps expression templates free from emotion/mood/fatigue/attention diagnosis language', () => {
+    const blockedPatterns = [
+      /emotion recognition/i,
+      /mood/i,
+      /fatigue/i,
+      /attention diagnosis/i,
+      /anxious/i,
+      /angry/i,
+      /tired/i,
+      /focused/i,
+      /distracted/i,
+    ]
+    const expressionEventTypes = [
+      'expression_smile_like',
+      'expression_stable_face',
+      'expression_looking_away',
+      'expression_unclear',
+    ] as const
+
+    for (const eventType of expressionEventTypes) {
+      const templates = listVisionFeedbackTemplatesForEvent(eventType)
+      for (const template of templates) {
+        const entries = [template.text, template.namedText ?? '']
+        for (const entry of entries) {
+          for (const pattern of blockedPatterns)
+            expect(pattern.test(entry)).toBe(false)
+        }
+      }
+    }
   })
 })
