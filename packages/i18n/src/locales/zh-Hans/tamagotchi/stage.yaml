@@ -17,6 +17,14 @@ docs:
   'refresh': 刷新
   'open-hearing-controls': 打开听力控制
   'drag-to-move-window': 拖动以移动窗口
+  'move-mode':
+    toggle: 移动模式
+    enable: 开启移动模式
+    disable: 关闭移动模式
+    hint: '移动模式：拖动舞台可重新放置 Rin'
+  'zoom-in': 放大
+  'zoom-out': 缩小
+  'reset-size': 重置尺寸
   'switch-to-light-mode': 切换到亮色模式
   'switch-to-dark-mode': 切换到暗色模式
   'pin-on-top': 置顶窗口

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { StageWindowSizeAction } from './window-size'
+
 import { defineInvoke } from '@moeru/eventa'
 import { useElectronEventaContext, useElectronEventaInvoke, useElectronMouseInElement } from '@proj-airi/electron-vueuse'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
@@ -25,20 +27,27 @@ import {
   electronStartDraggingWindow,
   electronWindowSetAlwaysOnTop,
 } from '../../../../shared/eventa'
+import { useControlsIslandStore } from '../../../stores/controls-island'
+import { calculateStageWindowBoundsForAction } from './window-size'
 
 const { isDark, toggleDark } = useTheme()
 const { t } = useI18n()
 
 const settingsAudioDeviceStore = useSettingsAudioDevice()
 const settingsStore = useSettings()
+const controlsIslandStore = useControlsIslandStore()
 const context = useElectronEventaContext()
 const { enabled } = storeToRefs(settingsAudioDeviceStore)
 const { alwaysOnTop, controlsIslandIconSize } = storeToRefs(settingsStore)
+const { moveModeEnabled } = storeToRefs(controlsIslandStore)
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const openChat = useElectronEventaInvoke(electronOpenChat)
 const isLinux = useElectronEventaInvoke(electron.app.isLinux)
 const closeWindow = useElectronEventaInvoke(electronAppQuit)
 const setAlwaysOnTop = useElectronEventaInvoke(electronWindowSetAlwaysOnTop)
+const getWindowBounds = useElectronEventaInvoke(electron.window.getBounds)
+const setWindowBounds = useElectronEventaInvoke(electron.window.setBounds)
+const getPrimaryDisplay = useElectronEventaInvoke(electron.screen.getPrimaryDisplay)
 
 const expanded = ref(false)
 const visionPanelVisible = ref(false)
@@ -138,6 +147,34 @@ function refreshWindow() {
 
 function toggleVisionPanel() {
   visionPanelVisible.value = !visionPanelVisible.value
+}
+
+function toggleMoveMode() {
+  controlsIslandStore.toggleMoveMode()
+}
+
+async function resizeWindowByAction(action: StageWindowSizeAction) {
+  try {
+    const [currentBounds, primaryDisplay] = await Promise.all([
+      getWindowBounds(),
+      getPrimaryDisplay(),
+    ])
+
+    if (!currentBounds || !primaryDisplay?.workArea) {
+      return
+    }
+
+    const nextBounds = calculateStageWindowBoundsForAction({
+      action,
+      currentBounds,
+      workArea: primaryDisplay.workArea,
+    })
+
+    await setWindowBounds([nextBounds])
+  }
+  catch (error) {
+    console.warn('[ControlsIsland] Failed to apply window resize action:', error)
+  }
 }
 </script>
 
@@ -249,6 +286,68 @@ function toggleVisionPanel() {
               </ControlButton>
               <template #tooltip>
                 {{ t('tamagotchi.stage.controls-island.close') }}
+              </template>
+            </ControlButtonTooltip>
+          </div>
+
+          <div data-testid="controls-window-grid" class="w-max self-start" grid grid-cols-2 gap-2>
+            <ControlButtonTooltip disable-hoverable-content>
+              <ControlButton
+                data-testid="controls-move-mode-toggle"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="t('tamagotchi.stage.controls-island.move-mode.toggle')"
+                :aria-pressed="moveModeEnabled"
+                :class="[
+                  moveModeEnabled ? 'bg-sky-100/80 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300' : '',
+                ]"
+                @click="toggleMoveMode"
+              >
+                <div i-ph:hand-grab :class="adjustStyleClasses.icon" />
+              </ControlButton>
+              <template #tooltip>
+                {{ moveModeEnabled ? t('tamagotchi.stage.controls-island.move-mode.disable') : t('tamagotchi.stage.controls-island.move-mode.enable') }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip disable-hoverable-content>
+              <ControlButton
+                data-testid="controls-zoom-in"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="t('tamagotchi.stage.controls-island.zoom-in')"
+                @click="resizeWindowByAction('zoom-in')"
+              >
+                <div i-ph:magnifying-glass-plus :class="adjustStyleClasses.icon" />
+              </ControlButton>
+              <template #tooltip>
+                {{ t('tamagotchi.stage.controls-island.zoom-in') }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip disable-hoverable-content>
+              <ControlButton
+                data-testid="controls-zoom-out"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="t('tamagotchi.stage.controls-island.zoom-out')"
+                @click="resizeWindowByAction('zoom-out')"
+              >
+                <div i-ph:magnifying-glass-minus :class="adjustStyleClasses.icon" />
+              </ControlButton>
+              <template #tooltip>
+                {{ t('tamagotchi.stage.controls-island.zoom-out') }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip disable-hoverable-content>
+              <ControlButton
+                data-testid="controls-reset-size"
+                :button-style="adjustStyleClasses.button"
+                :aria-label="t('tamagotchi.stage.controls-island.reset-size')"
+                @click="resizeWindowByAction('reset-size')"
+              >
+                <div i-ph:arrows-clockwise :class="adjustStyleClasses.icon" />
+              </ControlButton>
+              <template #tooltip>
+                {{ t('tamagotchi.stage.controls-island.reset-size') }}
               </template>
             </ControlButtonTooltip>
           </div>

@@ -1,21 +1,24 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, onBeforeUnmount, ref } from 'vue'
+import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 
 import ControlsIsland from './index.vue'
 
 const mocks = vi.hoisted(() => {
   const moveModeEnabled = { value: false }
   return {
-    isOutside: { value: false } as { value: boolean },
     moveModeEnabled,
-    visionUnmountStop: vi.fn(),
+    isOutside: { value: false } as { value: boolean },
     openSettings: vi.fn(),
     openChat: vi.fn(),
     closeWindow: vi.fn(),
     setAlwaysOnTop: vi.fn(),
     startDraggingWindow: vi.fn(),
+    getBounds: vi.fn(async () => ({ x: 120, y: 100, width: 450, height: 600 })),
+    setBounds: vi.fn(async () => {}),
+    getPrimaryDisplay: vi.fn(async () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } })),
+    unknownEvents: [] as string[],
     toggleMoveMode: vi.fn(() => {
       moveModeEnabled.value = !moveModeEnabled.value
     }),
@@ -64,6 +67,7 @@ vi.mock('@proj-airi/electron-vueuse', () => ({
   useElectronEventaContext: () => ref({}),
   useElectronEventaInvoke: (event: unknown) => {
     const eventName = String((event as { __eventName?: string })?.__eventName ?? '')
+    const eventBody = JSON.stringify(event ?? {})
     if (eventName === 'electron.app.isLinux')
       return () => false
     if (eventName === 'electronOpenSettings')
@@ -74,6 +78,13 @@ vi.mock('@proj-airi/electron-vueuse', () => ({
       return mocks.closeWindow
     if (eventName === 'electronWindowSetAlwaysOnTop')
       return mocks.setAlwaysOnTop
+    if (eventName === 'electron.window.getBounds' || eventName.includes('getBounds') || eventBody.includes('getBounds'))
+      return mocks.getBounds
+    if (eventName === 'electron.window.setBounds' || eventName.includes('setBounds') || eventBody.includes('setBounds'))
+      return mocks.setBounds
+    if (eventName === 'electron.screen.getPrimaryDisplay' || eventName.includes('getPrimaryDisplay') || eventBody.includes('getPrimaryDisplay'))
+      return mocks.getPrimaryDisplay
+    mocks.unknownEvents.push(`${eventName}::${eventBody}`)
     return vi.fn(() => {})
   },
   useElectronMouseInElement: () => ({
@@ -134,9 +145,6 @@ vi.mock('../vision-island/index.vue', () => ({
   default: defineComponent({
     name: 'VisionIslandStub',
     setup() {
-      onBeforeUnmount(() => {
-        mocks.visionUnmountStop()
-      })
       return () => h('div', { 'data-testid': 'vision-island-stub' }, 'vision')
     },
   }),
@@ -146,12 +154,7 @@ vi.mock('./control-button-tooltip.vue', () => ({
   default: defineComponent({
     name: 'ControlButtonTooltipStub',
     setup(_, { slots }) {
-      return () => {
-        return h('div', [
-          slots.default?.(),
-          h('span', { class: 'tooltip-text' }, slots.tooltip?.()),
-        ])
-      }
+      return () => h('div', [slots.default?.(), h('span', { class: 'tooltip-text' }, slots.tooltip?.())])
     },
   }),
 }))
@@ -189,9 +192,7 @@ vi.mock('./controls-island-profile-picker.vue', () => ({
     name: 'ControlsIslandProfilePickerStub',
     emits: ['update:open'],
     setup(_, { slots }) {
-      return () => {
-        return h('div', slots.default?.({ toggle: () => {} }))
-      }
+      return () => h('div', slots.default?.({ toggle: () => {} }))
     },
   }),
 }))
@@ -217,7 +218,6 @@ function mountControlsIsland() {
   document.body.appendChild(container)
   app.mount(container)
   return {
-    app,
     container,
     unmount() {
       app.unmount()
@@ -226,29 +226,32 @@ function mountControlsIsland() {
   }
 }
 
-function findButtonByTooltipText(container: HTMLElement, text: string) {
+function clickExpand(container: HTMLElement) {
   const tooltipNode = Array.from(container.querySelectorAll('.tooltip-text'))
-    .find(node => node.textContent?.includes(text))
+    .find(node => node.textContent?.includes('tamagotchi.stage.controls-island.expand'))
   if (!tooltipNode)
-    throw new Error(`tooltip "${text}" not found`)
+    throw new Error('expand tooltip not found')
   const button = tooltipNode.previousElementSibling as HTMLButtonElement | null
-  if (!button || button.tagName !== 'BUTTON')
-    throw new Error(`button for tooltip "${text}" not found`)
-  return button
+  if (!button)
+    throw new Error('expand button not found')
+  button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 }
 
-describe('controls island vision panel interaction flow', () => {
+describe('controls island move mode and size controls', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.isOutside = ref(false)
-    mocks.visionUnmountStop.mockReset()
+    mocks.moveModeEnabled.value = false
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
     mocks.closeWindow.mockReset()
     mocks.setAlwaysOnTop.mockReset()
     mocks.startDraggingWindow.mockReset()
-    mocks.toggleMoveMode.mockReset()
-    mocks.moveModeEnabled.value = false
+    mocks.getBounds.mockClear()
+    mocks.setBounds.mockClear()
+    mocks.getPrimaryDisplay.mockClear()
+    mocks.toggleMoveMode.mockClear()
+    mocks.unknownEvents.length = 0
   })
 
   afterEach(() => {
@@ -257,49 +260,73 @@ describe('controls island vision panel interaction flow', () => {
     vi.restoreAllMocks()
   })
 
-  it('keeps vision panel mounted after mouse leaves for 2s and does not trigger stop', async () => {
+  it('toggles move mode through controls button', async () => {
     const { container, unmount } = mountControlsIsland()
-
-    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
-    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    clickExpand(container)
     await nextTick()
 
-    const cameraButton = findButtonByTooltipText(container, '打开视觉交互')
-    cameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const toggleButton = container.querySelector('[data-testid="controls-move-mode-toggle"]') as HTMLButtonElement | null
+    expect(toggleButton).not.toBeNull()
+    expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.move-mode.toggle')
+    expect(mocks.moveModeEnabled.value).toBe(false)
+
+    toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(mocks.toggleMoveMode).toHaveBeenCalledTimes(1)
+    expect(mocks.moveModeEnabled.value).toBe(true)
 
-    mocks.isOutside.value = true
-    await nextTick()
-    await vi.advanceTimersByTimeAsync(2_100)
+    toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
-    expect(mocks.visionUnmountStop).toHaveBeenCalledTimes(0)
-    expect(mocks.closeWindow).toHaveBeenCalledTimes(0)
+    expect(mocks.toggleMoveMode).toHaveBeenCalledTimes(2)
+    expect(mocks.moveModeEnabled.value).toBe(false)
 
     unmount()
   })
 
-  it('keeps vision runtime mounted when collapsing controls drawer manually', async () => {
+  it('dispatches zoom in, zoom out, and reset size actions', async () => {
     const { container, unmount } = mountControlsIsland()
-
-    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
-    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    clickExpand(container)
     await nextTick()
 
-    const cameraButton = findButtonByTooltipText(container, '打开视觉交互')
-    cameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await nextTick()
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    const zoomInButton = container.querySelector('[data-testid="controls-zoom-in"]') as HTMLButtonElement | null
+    const zoomOutButton = container.querySelector('[data-testid="controls-zoom-out"]') as HTMLButtonElement | null
+    const resetButton = container.querySelector('[data-testid="controls-reset-size"]') as HTMLButtonElement | null
 
-    const collapseButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.collapse')
-    collapseButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await nextTick()
+    expect(zoomInButton).not.toBeNull()
+    expect(zoomOutButton).not.toBeNull()
+    expect(resetButton).not.toBeNull()
+    expect(zoomInButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.zoom-in')
+    expect(zoomOutButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.zoom-out')
+    expect(resetButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.reset-size')
 
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
-    expect(mocks.visionUnmountStop).toHaveBeenCalledTimes(0)
+    zoomInButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    zoomOutButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    resetButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => {
+      expect(mocks.setBounds).toHaveBeenCalledTimes(3)
+    })
+
+    expect(mocks.getBounds).toHaveBeenCalledTimes(3)
+    expect(mocks.getPrimaryDisplay).toHaveBeenCalledTimes(3)
+    expect(mocks.unknownEvents).toEqual([])
+
+    const [zoomInCall, zoomOutCall, resetCall] = mocks.setBounds.mock.calls as Array<Array<Array<{ width: number, height: number }>>>
+    if (!zoomInCall || !zoomOutCall || !resetCall)
+      throw new Error('expected setBounds to receive three calls')
+
+    const zoomInPayload = zoomInCall[0]?.[0]
+    const zoomOutPayload = zoomOutCall[0]?.[0]
+    const resetPayload = resetCall[0]?.[0]
+    if (!zoomInPayload || !zoomOutPayload || !resetPayload)
+      throw new Error('expected setBounds payload shape to match [bounds]')
+    expect(zoomInPayload.width).toBeGreaterThan(450)
+    expect(zoomInPayload.height).toBeGreaterThan(600)
+    expect(zoomOutPayload.width).toBeLessThan(450)
+    expect(zoomOutPayload.height).toBeLessThan(600)
+    expect(resetPayload.width).toBe(450)
+    expect(resetPayload.height).toBe(600)
 
     unmount()
   })

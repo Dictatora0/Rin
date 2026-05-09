@@ -17,6 +17,14 @@ docs:
   'refresh': Refresh
   'open-hearing-controls': Open hearing Controls
   'drag-to-move-window': Drag to move window
+  'move-mode':
+    toggle: Move mode
+    enable: Enable Move mode
+    disable: Disable Move mode
+    hint: 'Move mode: drag the stage to reposition Rin'
+  'zoom-in': Zoom in
+  'zoom-out': Zoom out
+  'reset-size': Reset size
   'switch-to-light-mode': Switch to light mode
   'switch-to-dark-mode': Switch to dark mode
   'pin-on-top': Pin on top

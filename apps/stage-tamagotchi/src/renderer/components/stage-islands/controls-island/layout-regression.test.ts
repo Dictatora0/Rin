@@ -6,14 +6,19 @@ import { createApp, defineComponent, h, nextTick, onBeforeUnmount, ref } from 'v
 import ControlsIsland from './index.vue'
 
 const mocks = vi.hoisted(() => {
+  const moveModeEnabled = { value: false }
   return {
     isOutside: { value: false } as { value: boolean },
+    moveModeEnabled,
     visionPanelUnmounted: vi.fn(),
     openSettings: vi.fn(),
     openChat: vi.fn(),
     closeWindow: vi.fn(),
     setAlwaysOnTop: vi.fn(),
     startDraggingWindow: vi.fn(),
+    toggleMoveMode: vi.fn(() => {
+      moveModeEnabled.value = !moveModeEnabled.value
+    }),
   }
 })
 
@@ -48,6 +53,13 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
   }),
 }))
 
+vi.mock('../../../stores/controls-island', () => ({
+  useControlsIslandStore: () => ({
+    moveModeEnabled: mocks.moveModeEnabled,
+    toggleMoveMode: mocks.toggleMoveMode,
+  }),
+}))
+
 vi.mock('@proj-airi/electron-vueuse', () => ({
   useElectronEventaContext: () => ref({}),
   useElectronEventaInvoke: (event: unknown) => {
@@ -73,6 +85,13 @@ vi.mock('../../../../shared/eventa', () => ({
   electron: {
     app: {
       isLinux: { __eventName: 'electron.app.isLinux' },
+    },
+    window: {
+      getBounds: { __eventName: 'electron.window.getBounds' },
+      setBounds: { __eventName: 'electron.window.setBounds' },
+    },
+    screen: {
+      getPrimaryDisplay: { __eventName: 'electron.screen.getPrimaryDisplay' },
     },
   },
   electronAppQuit: { __eventName: 'electronAppQuit' },
@@ -227,6 +246,8 @@ describe('controls island layout regression locks', () => {
     mocks.closeWindow.mockReset()
     mocks.setAlwaysOnTop.mockReset()
     mocks.startDraggingWindow.mockReset()
+    mocks.toggleMoveMode.mockReset()
+    mocks.moveModeEnabled.value = false
   })
 
   afterEach(() => {
