@@ -2,6 +2,10 @@
 .trash/
 .DS_Store
 
+# Local course/project notes and registry overrides
+/.npmrc
+/HCI分工.pdf
+
 # Node.js
 node_modules
 
