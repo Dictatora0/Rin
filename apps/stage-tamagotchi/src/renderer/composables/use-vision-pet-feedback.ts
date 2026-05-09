@@ -1,4 +1,14 @@
-import type { LocalFaceGateState } from './use-local-face-gate'
+import type {
+  SelectedVisionFeedbackMessage,
+  VisionFeedbackChannel,
+  VisionFeedbackEventType,
+  VisionFeedbackIntensity,
+  VisionFeedbackLevel,
+  VisionFeedbackLocale,
+  VisionFeedbackTransitionSnapshot,
+  VisionFeedbackVariant,
+} from '../utils/vision-feedback-messages'
+import type { LocalFaceGateState, LocalFaceProfileStatus } from './use-local-face-gate'
 import type { VisionFaceDirection } from './use-vision-interaction'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -13,7 +23,10 @@ import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
-import { pickVisionFeedbackMessage } from '../utils/vision-feedback-messages'
+import {
+  resolveVisionFeedbackTransition,
+  selectVisionFeedbackMessage,
+} from '../utils/vision-feedback-messages'
 
 type VisionPetFeedbackEventType
   = | 'open_palm'
@@ -26,8 +39,8 @@ type VisionPetFeedbackEventType
 type VisionPetFeedbackState = 'idle' | 'quiet' | 'celebrating' | 'acknowledged' | 'gated'
 type VisionSubjectPosition = Exclude<VisionFaceDirection, 'unknown'>
 type VisionSubjectResponseState = 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
-export type VisionFeedbackIntensity = 'minimal' | 'balanced' | 'expressive'
-export type VisionFeedbackLevel = 'subtle' | 'normal' | 'strong'
+export type { VisionFeedbackIntensity, VisionFeedbackLevel }
+export type { VisionFeedbackLocale, VisionFeedbackVariant }
 export type VisionContextualFeedbackPriority = 'low' | 'normal' | 'high'
 export type VisionContextualFeedbackEventType
   = | 'subject_moved_left'
@@ -58,7 +71,7 @@ interface VisionPetFeedbackRecord {
 }
 
 interface VisionSubjectResponseRecord {
-  eventType: VisionContextualFeedbackEventType
+  eventType: VisionFeedbackEventType
   direction: VisionSubjectPosition
   state: VisionSubjectResponseState
   at: number
@@ -69,6 +82,10 @@ interface VisionSubjectResponseRecord {
   suppressedByQuiet: boolean
   feedbackLevel: VisionFeedbackLevel
   feedbackPriority: VisionContextualFeedbackPriority
+  feedbackChannels: VisionFeedbackChannel[]
+  templateId: string
+  isTransition: boolean
+  resolvedEventType: VisionFeedbackEventType
   toastMessage?: string
   summary: string
 }
@@ -83,6 +100,11 @@ interface TriggerVisionPetFeedbackOptions {
   force?: boolean
 }
 
+interface ContextualGateSnapshot {
+  gateState: LocalFaceGateState
+  profileStatus: LocalFaceProfileStatus | 'unknown'
+}
+
 interface TriggerSubjectPositionFeedbackOptions {
   allowVisualFeedback?: boolean
   gateEnabled?: boolean
@@ -91,6 +113,9 @@ interface TriggerSubjectPositionFeedbackOptions {
   summary?: string
   force?: boolean
   displayName?: string
+  gateProfileStatus?: LocalFaceProfileStatus
+  presence?: 'present' | 'absent' | 'unknown'
+  bubbleAllowed?: boolean
 }
 
 interface TriggerContextualVisionFeedbackOptions {
@@ -102,6 +127,13 @@ interface TriggerContextualVisionFeedbackOptions {
   displayName?: string
   summary?: string
   force?: boolean
+  gateProfileStatus?: LocalFaceProfileStatus
+  presence?: 'present' | 'absent' | 'unknown'
+  preferredLevel?: VisionFeedbackLevel
+  allowedChannels?: VisionFeedbackChannel[]
+  locale?: VisionFeedbackLocale
+  variant?: VisionFeedbackVariant
+  bubbleAllowed?: boolean
 }
 
 interface UseVisionPetFeedbackOptions {
@@ -123,6 +155,7 @@ interface UseVisionPetFeedbackOptions {
   feedbackMessageCooldownMs?: number
   directionToastCooldownMs?: number
   highPriorityToastHoldMs?: number
+  bubbleDurationMs?: number
   random?: () => number
 }
 
@@ -145,15 +178,30 @@ const DEFAULT_OPTIONS: Required<UseVisionPetFeedbackOptions> = {
   feedbackMessageCooldownMs: 5_000,
   directionToastCooldownMs: 2_500,
   highPriorityToastHoldMs: 3_000,
+  bubbleDurationMs: 4_000,
   random: Math.random,
 }
 
 const FEEDBACK_INTENSITY_STORAGE_KEY = 'airi.vision-experiment.feedback-intensity.v1'
+const FEEDBACK_LOCALE_STORAGE_KEY = 'airi.vision-experiment.feedback-locale.v1'
+const FEEDBACK_VARIANT_STORAGE_KEY = 'airi.vision-experiment.feedback-variant.v1'
 
 function normalizeFeedbackIntensity(value: string | null): VisionFeedbackIntensity {
   if (value === 'minimal' || value === 'balanced' || value === 'expressive')
     return value
   return 'balanced'
+}
+
+function normalizeFeedbackLocale(value: string | null): VisionFeedbackLocale {
+  if (value === 'zh-CN')
+    return 'zh-CN'
+  return 'en'
+}
+
+function normalizeFeedbackVariant(value: string | null): VisionFeedbackVariant {
+  if (value === 'a' || value === 'b')
+    return value
+  return 'default'
 }
 
 function loadFeedbackIntensity() {
@@ -167,11 +215,55 @@ function loadFeedbackIntensity() {
   }
 }
 
+function loadFeedbackLocale() {
+  if (typeof localStorage === 'undefined')
+    return 'en' as const
+  try {
+    return normalizeFeedbackLocale(localStorage.getItem(FEEDBACK_LOCALE_STORAGE_KEY))
+  }
+  catch {
+    return 'en' as const
+  }
+}
+
+function loadFeedbackVariant() {
+  if (typeof localStorage === 'undefined')
+    return 'default' as const
+  try {
+    return normalizeFeedbackVariant(localStorage.getItem(FEEDBACK_VARIANT_STORAGE_KEY))
+  }
+  catch {
+    return 'default' as const
+  }
+}
+
 function persistFeedbackIntensity(intensity: VisionFeedbackIntensity) {
   if (typeof localStorage === 'undefined')
     return
   try {
     localStorage.setItem(FEEDBACK_INTENSITY_STORAGE_KEY, intensity)
+  }
+  catch {
+    // ignore storage write failures
+  }
+}
+
+function persistFeedbackLocale(locale: VisionFeedbackLocale) {
+  if (typeof localStorage === 'undefined')
+    return
+  try {
+    localStorage.setItem(FEEDBACK_LOCALE_STORAGE_KEY, locale)
+  }
+  catch {
+    // ignore storage write failures
+  }
+}
+
+function persistFeedbackVariant(variant: VisionFeedbackVariant) {
+  if (typeof localStorage === 'undefined')
+    return
+  try {
+    localStorage.setItem(FEEDBACK_VARIANT_STORAGE_KEY, variant)
   }
   catch {
     // ignore storage write failures
@@ -216,14 +308,28 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
   const celebrationCount = ref(0)
   const isQuietVisualMode = computed(() => quietRemainingMs.value > 0)
   const feedbackIntensity = ref<VisionFeedbackIntensity>(loadFeedbackIntensity())
+  const feedbackLocale = ref<VisionFeedbackLocale>(loadFeedbackLocale())
+  const feedbackVariant = ref<VisionFeedbackVariant>(loadFeedbackVariant())
   const lastFeedbackType = ref<VisionContextualFeedbackEventType | null>(null)
   const lastFeedbackMessage = ref('')
   const lastFeedbackLevel = ref<VisionFeedbackLevel>('subtle')
   const lastFeedbackPriority = ref<VisionContextualFeedbackPriority>('low')
+  const lastFeedbackChannels = ref<VisionFeedbackChannel[]>([])
+  const lastFeedbackTemplateId = ref<string | null>(null)
+  const lastResolvedFeedbackEventType = ref<VisionFeedbackEventType | null>(null)
+  const lastIsTransitionFeedback = ref(false)
   const lastFeedbackAt = ref<number | null>(null)
   const nextAllowedFeedbackAt = ref(0)
   const feedbackSuppressedByQuiet = ref(false)
   const feedbackBlockedByGate = ref(false)
+  const previousTransitionSnapshot = ref<VisionFeedbackTransitionSnapshot | null>(null)
+  const currentPresence = ref<'present' | 'absent' | 'unknown'>('unknown')
+  const activeBubbleMessage = ref('')
+  const activeBubbleLevel = ref<VisionFeedbackLevel | null>(null)
+  const activeBubbleEventType = ref<VisionFeedbackEventType | null>(null)
+  const activeBubbleTemplateId = ref<string | null>(null)
+  const bubbleVisibleUntil = ref(0)
+  const bubbleRemainingMs = ref(0)
 
   const lastTriggeredAt = ref<Record<VisionPetFeedbackEventType, number>>({
     open_palm: Number.NEGATIVE_INFINITY,
@@ -236,38 +342,11 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
   const lastDirectionalToastAt = ref(Number.NEGATIVE_INFINITY)
   const highPriorityToastUntil = ref(Number.NEGATIVE_INFINITY)
   const lastMotionTriggeredAt = ref(Number.NEGATIVE_INFINITY)
-  const contextualLastTriggeredAt = ref<Record<VisionContextualFeedbackEventType, number>>({
-    subject_moved_left: Number.NEGATIVE_INFINITY,
-    subject_moved_right: Number.NEGATIVE_INFINITY,
-    subject_moved_up: Number.NEGATIVE_INFINITY,
-    subject_moved_down: Number.NEGATIVE_INFINITY,
-    subject_centered: Number.NEGATIVE_INFINITY,
-    subject_returned: Number.NEGATIVE_INFINITY,
-    subject_absent: Number.NEGATIVE_INFINITY,
-    subject_matched: Number.NEGATIVE_INFINITY,
-    subject_gated: Number.NEGATIVE_INFINITY,
-    subject_uncertain: Number.NEGATIVE_INFINITY,
-    subject_dwelled_left: Number.NEGATIVE_INFINITY,
-    subject_dwelled_right: Number.NEGATIVE_INFINITY,
-    subject_dwelled_center: Number.NEGATIVE_INFINITY,
-  })
-  const previousMessageByEventType = ref<Record<VisionContextualFeedbackEventType, string | null>>({
-    subject_moved_left: null,
-    subject_moved_right: null,
-    subject_moved_up: null,
-    subject_moved_down: null,
-    subject_centered: null,
-    subject_returned: null,
-    subject_absent: null,
-    subject_matched: null,
-    subject_gated: null,
-    subject_uncertain: null,
-    subject_dwelled_left: null,
-    subject_dwelled_right: null,
-    subject_dwelled_center: null,
-  })
+  const contextualLastTriggeredAt = ref<Map<VisionFeedbackEventType, number>>(new Map())
+  const previousMessageByEventType = ref<Map<VisionFeedbackEventType, { text: string, templateId: string }>>(new Map())
   let stateResetTimer: ReturnType<typeof setTimeout> | null = null
   let quietTickerId: ReturnType<typeof setInterval> | null = null
+  let bubbleTickerId: ReturnType<typeof setInterval> | null = null
 
   const nextAllowedFeedbackIn = computed(() => {
     return Math.max(0, nextAllowedFeedbackAt.value - Date.now())
@@ -284,6 +363,19 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       return
     clearInterval(quietTickerId)
     quietTickerId = null
+  }
+
+  function startBubbleTicker() {
+    if (bubbleTickerId !== null || typeof window === 'undefined')
+      return
+    bubbleTickerId = setInterval(() => syncBubbleRemaining(Date.now()), 200)
+  }
+
+  function stopBubbleTicker() {
+    if (bubbleTickerId === null)
+      return
+    clearInterval(bubbleTickerId)
+    bubbleTickerId = null
   }
 
   function clearStateResetTimer() {
@@ -315,6 +407,17 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     }
   }
 
+  function syncBubbleRemaining(nowMs: number) {
+    bubbleRemainingMs.value = Math.max(0, bubbleVisibleUntil.value - nowMs)
+    if (bubbleRemainingMs.value === 0) {
+      activeBubbleMessage.value = ''
+      activeBubbleLevel.value = null
+      activeBubbleEventType.value = null
+      activeBubbleTemplateId.value = null
+      stopBubbleTicker()
+    }
+  }
+
   function activateQuietVisualMode(nowMs: number) {
     quietVisualUntil.value = nowMs + runtimeOptions.quietDurationMs
     syncQuietRemainingMs(nowMs)
@@ -335,8 +438,54 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     persistFeedbackIntensity(nextIntensity)
   }
 
+  function setFeedbackLocale(nextLocale: VisionFeedbackLocale) {
+    feedbackLocale.value = nextLocale
+    persistFeedbackLocale(nextLocale)
+  }
+
+  function setFeedbackVariant(nextVariant: VisionFeedbackVariant) {
+    feedbackVariant.value = nextVariant
+    persistFeedbackVariant(nextVariant)
+  }
+
+  function clearBubble() {
+    bubbleVisibleUntil.value = 0
+    bubbleRemainingMs.value = 0
+    activeBubbleMessage.value = ''
+    activeBubbleLevel.value = null
+    activeBubbleEventType.value = null
+    activeBubbleTemplateId.value = null
+    stopBubbleTicker()
+  }
+
+  function showBubble(
+    message: string,
+    level: VisionFeedbackLevel,
+    eventType: VisionFeedbackEventType,
+    templateId: string,
+    nowMs: number,
+  ) {
+    if (!message.trim())
+      return
+    activeBubbleMessage.value = message
+    activeBubbleLevel.value = level
+    activeBubbleEventType.value = eventType
+    activeBubbleTemplateId.value = templateId
+    bubbleVisibleUntil.value = nowMs + runtimeOptions.bubbleDurationMs
+    syncBubbleRemaining(nowMs)
+    startBubbleTicker()
+  }
+
   watch(feedbackIntensity, (nextIntensity) => {
     persistFeedbackIntensity(nextIntensity)
+  }, { immediate: true })
+
+  watch(feedbackLocale, (nextLocale) => {
+    persistFeedbackLocale(nextLocale)
+  }, { immediate: true })
+
+  watch(feedbackVariant, (nextVariant) => {
+    persistFeedbackVariant(nextVariant)
   }, { immediate: true })
 
   function shouldAllowVisualFeedback(options?: TriggerVisionPetFeedbackOptions | TriggerContextualVisionFeedbackOptions) {
@@ -489,7 +638,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     return 'center'
   }
 
-  function templateTypeFromContextualEvent(eventType: VisionContextualFeedbackEventType) {
+  function mapContextualEventToFeedbackEvent(eventType: VisionContextualFeedbackEventType) {
     if (eventType === 'subject_moved_left')
       return 'subject_position_left' as const
     if (eventType === 'subject_moved_right')
@@ -517,7 +666,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     return 'subject_gated' as const
   }
 
-  function getContextualCooldownMs(eventType: VisionContextualFeedbackEventType) {
+  function getContextualCooldownMs(eventType: VisionFeedbackEventType) {
     if (eventType === 'subject_returned')
       return runtimeOptions.subjectReturnedCooldownMs
     if (eventType === 'subject_matched')
@@ -530,31 +679,105 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       return runtimeOptions.subjectUncertainCooldownMs
     if (eventType === 'subject_dwelled_left' || eventType === 'subject_dwelled_right' || eventType === 'subject_dwelled_center')
       return runtimeOptions.subjectDwellCooldownMs
+    if (
+      eventType === 'transition_absent_to_returned'
+      || eventType === 'transition_uncertain_to_matched'
+      || eventType === 'transition_gated_to_matched'
+      || eventType === 'transition_multiple_faces_to_matched'
+    ) {
+      return runtimeOptions.subjectMatchedCooldownMs
+    }
+    if (eventType === 'transition_matched_to_absent' || eventType === 'transition_matched_to_uncertain')
+      return runtimeOptions.subjectAbsentCooldownMs
     return runtimeOptions.feedbackMessageCooldownMs
   }
 
-  function resolveFeedbackLevel(eventType: VisionContextualFeedbackEventType, intensity: VisionFeedbackIntensity) {
+  function resolveFeedbackLevel(eventType: VisionFeedbackEventType, intensity: VisionFeedbackIntensity) {
     if (intensity === 'minimal') {
-      if (eventType === 'subject_returned' || eventType === 'subject_matched')
+      if (
+        eventType === 'subject_returned'
+        || eventType === 'subject_matched'
+        || eventType === 'transition_absent_to_returned'
+        || eventType === 'transition_uncertain_to_matched'
+        || eventType === 'transition_gated_to_matched'
+        || eventType === 'transition_multiple_faces_to_matched'
+      ) {
         return 'subtle' as const
+      }
       return null
     }
 
     if (intensity === 'balanced') {
       if (eventType === 'subject_dwelled_left' || eventType === 'subject_dwelled_right')
         return null
-      if (eventType === 'subject_returned' || eventType === 'subject_matched')
+      if (
+        eventType === 'subject_returned'
+        || eventType === 'subject_matched'
+        || eventType === 'transition_absent_to_returned'
+        || eventType === 'transition_uncertain_to_matched'
+        || eventType === 'transition_gated_to_matched'
+        || eventType === 'transition_multiple_faces_to_matched'
+      ) {
         return 'strong' as const
-      if (eventType === 'subject_absent' || eventType === 'subject_uncertain')
+      }
+      if (
+        eventType === 'subject_absent'
+        || eventType === 'subject_uncertain'
+        || eventType === 'transition_matched_to_absent'
+        || eventType === 'transition_matched_to_uncertain'
+      ) {
         return 'subtle' as const
+      }
       return 'normal' as const
     }
 
-    if (eventType === 'subject_returned' || eventType === 'subject_matched')
+    if (
+      eventType === 'subject_returned'
+      || eventType === 'subject_matched'
+      || eventType === 'transition_absent_to_returned'
+      || eventType === 'transition_uncertain_to_matched'
+      || eventType === 'transition_gated_to_matched'
+      || eventType === 'transition_multiple_faces_to_matched'
+    ) {
       return 'strong' as const
-    if (eventType === 'subject_absent' || eventType === 'subject_uncertain')
+    }
+    if (
+      eventType === 'subject_absent'
+      || eventType === 'subject_uncertain'
+      || eventType === 'transition_matched_to_absent'
+      || eventType === 'transition_matched_to_uncertain'
+    ) {
       return 'subtle' as const
+    }
     return 'normal' as const
+  }
+
+  function toTransitionSnapshot(input: {
+    eventType: VisionFeedbackEventType
+    gateSnapshot: ContextualGateSnapshot
+    presence?: 'present' | 'absent' | 'unknown'
+  }): VisionFeedbackTransitionSnapshot {
+    const inferredPresence = input.presence
+      ?? (input.eventType === 'subject_absent' || input.eventType === 'transition_matched_to_absent'
+        ? 'absent'
+        : (input.eventType === 'subject_returned' || input.eventType === 'transition_absent_to_returned' ? 'present' : currentPresence.value))
+
+    if (inferredPresence !== 'unknown')
+      currentPresence.value = inferredPresence
+
+    const inferredProfileStatus = input.eventType === 'subject_matched'
+      ? 'matched'
+      : input.eventType === 'subject_uncertain'
+        ? 'uncertain'
+        : input.eventType === 'subject_gated'
+          ? input.gateSnapshot.profileStatus
+          : input.gateSnapshot.profileStatus
+
+    return {
+      presence: inferredPresence,
+      gateState: input.gateSnapshot.gateState,
+      profileStatus: inferredProfileStatus,
+    }
   }
 
   function resolveSubjectResponseMotionCandidates(direction: VisionSubjectPosition, level: VisionFeedbackLevel) {
@@ -636,48 +859,76 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     return ['normal', 'neutral']
   }
 
-  function shouldAllowContextualToast(eventType: VisionContextualFeedbackEventType, level: VisionFeedbackLevel) {
-    if (feedbackIntensity.value === 'minimal')
-      return eventType === 'subject_returned' || eventType === 'subject_matched'
-    if (feedbackIntensity.value === 'balanced')
-      return level !== 'subtle' || eventType === 'subject_returned' || eventType === 'subject_matched'
+  function shouldAllowContextualToast(eventType: VisionFeedbackEventType, level: VisionFeedbackLevel) {
+    if (feedbackIntensity.value === 'minimal') {
+      return eventType === 'subject_returned'
+        || eventType === 'subject_matched'
+        || eventType === 'transition_absent_to_returned'
+        || eventType === 'transition_uncertain_to_matched'
+        || eventType === 'transition_gated_to_matched'
+        || eventType === 'transition_multiple_faces_to_matched'
+    }
+    if (feedbackIntensity.value === 'balanced') {
+      return level !== 'subtle'
+        || eventType === 'subject_returned'
+        || eventType === 'subject_matched'
+        || eventType === 'transition_absent_to_returned'
+        || eventType === 'transition_uncertain_to_matched'
+        || eventType === 'transition_gated_to_matched'
+        || eventType === 'transition_multiple_faces_to_matched'
+    }
     return true
   }
 
-  function resolveContextualState(eventType: VisionContextualFeedbackEventType, direction: VisionSubjectPosition) {
+  function resolveContextualState(eventType: VisionFeedbackEventType, direction: VisionSubjectPosition) {
     if (eventType === 'subject_gated')
       return 'gated' as const
-    if (eventType === 'subject_absent')
+    if (eventType === 'subject_absent' || eventType === 'transition_matched_to_absent')
       return 'idle' as const
-    if (eventType === 'subject_uncertain')
+    if (eventType === 'subject_uncertain' || eventType === 'transition_matched_to_uncertain')
       return 'idle' as const
     return mapSubjectResponseState(direction)
   }
 
-  function resolveContextualFeedbackPriority(eventType: VisionContextualFeedbackEventType): VisionContextualFeedbackPriority {
-    if (eventType === 'subject_returned' || eventType === 'subject_matched')
+  function resolveContextualFeedbackPriority(eventType: VisionFeedbackEventType): VisionContextualFeedbackPriority {
+    if (
+      eventType === 'subject_returned'
+      || eventType === 'subject_matched'
+      || eventType === 'transition_absent_to_returned'
+      || eventType === 'transition_uncertain_to_matched'
+      || eventType === 'transition_gated_to_matched'
+      || eventType === 'transition_multiple_faces_to_matched'
+    ) {
       return 'high'
-    if (eventType === 'subject_gated' || eventType === 'subject_absent' || eventType === 'subject_uncertain')
+    }
+    if (
+      eventType === 'subject_gated'
+      || eventType === 'subject_absent'
+      || eventType === 'subject_uncertain'
+      || eventType === 'transition_matched_to_absent'
+      || eventType === 'transition_matched_to_uncertain'
+    ) {
       return 'normal'
+    }
     return 'low'
   }
 
-  function isDirectionalContextualEvent(eventType: VisionContextualFeedbackEventType) {
-    return eventType === 'subject_moved_left'
-      || eventType === 'subject_moved_right'
-      || eventType === 'subject_moved_up'
-      || eventType === 'subject_moved_down'
-      || eventType === 'subject_centered'
+  function isDirectionalContextualEvent(eventType: VisionFeedbackEventType) {
+    return eventType === 'subject_position_left'
+      || eventType === 'subject_position_right'
+      || eventType === 'subject_position_up'
+      || eventType === 'subject_position_down'
+      || eventType === 'subject_position_center'
       || eventType === 'subject_dwelled_left'
       || eventType === 'subject_dwelled_right'
       || eventType === 'subject_dwelled_center'
   }
 
-  function isContextualInCooldown(eventType: VisionContextualFeedbackEventType, nowMs: number, force = false) {
+  function isContextualInCooldown(eventType: VisionFeedbackEventType, nowMs: number, force = false) {
     if (force)
       return false
     const cooldownMs = getContextualCooldownMs(eventType)
-    const lastAt = contextualLastTriggeredAt.value[eventType]
+    const lastAt = contextualLastTriggeredAt.value.get(eventType) ?? Number.NEGATIVE_INFINITY
     return nowMs - lastAt < cooldownMs
   }
 
@@ -693,24 +944,70 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     const direction = options?.direction && options.direction !== 'unknown'
       ? options.direction
       : directionFromContextualEvent(eventType)
-    const nextEventType = isGateBlocked ? 'subject_gated' : eventType
-    const feedbackPriority = resolveContextualFeedbackPriority(nextEventType)
-    if (isContextualInCooldown(nextEventType, nowMs, options?.force))
-      return false
-    const feedbackLevel = resolveFeedbackLevel(nextEventType, feedbackIntensity.value)
-    const templateType = templateTypeFromContextualEvent(nextEventType)
-    const previousMessage = previousMessageByEventType.value[nextEventType]
-    const summary = options?.summary ?? pickVisionFeedbackMessage(templateType, {
-      displayName: options?.displayName,
-      previousMessage,
-      random: runtimeOptions.random,
+
+    const baseFeedbackEventType = isGateBlocked
+      ? ('subject_gated' as const)
+      : mapContextualEventToFeedbackEvent(eventType)
+
+    const gateSnapshot: ContextualGateSnapshot = {
+      gateState: options?.gateState ?? (options?.gateEnabled ? (isGateBlocked ? 'gated' : 'enabled') : 'disabled'),
+      profileStatus: options?.gateProfileStatus ?? 'unknown',
+    }
+    const currentSnapshot = toTransitionSnapshot({
+      eventType: baseFeedbackEventType,
+      gateSnapshot,
+      presence: options?.presence,
     })
-    previousMessageByEventType.value[nextEventType] = summary
+    const resolvedEventType = isGateBlocked
+      ? ('subject_gated' as const)
+      : resolveVisionFeedbackTransition(previousTransitionSnapshot.value, currentSnapshot, baseFeedbackEventType)
+    previousTransitionSnapshot.value = currentSnapshot
+
+    const feedbackPriority = resolveContextualFeedbackPriority(resolvedEventType)
+    if (isContextualInCooldown(resolvedEventType, nowMs, options?.force))
+      return false
+
+    const feedbackLevel = resolveFeedbackLevel(resolvedEventType, feedbackIntensity.value)
+    const previousSelection = previousMessageByEventType.value.get(resolvedEventType) ?? null
+    const nextLocale = options?.locale ?? feedbackLocale.value
+    const nextVariant = options?.variant ?? feedbackVariant.value
+
+    const selectedMessage: SelectedVisionFeedbackMessage = options?.summary
+      ? {
+          text: options.summary,
+          level: feedbackLevel ?? 'subtle',
+          channels: ['ui'],
+          cooldownMs: getContextualCooldownMs(resolvedEventType),
+          eventType: resolvedEventType,
+          templateId: 'manual-summary',
+          locale: nextLocale,
+          variant: nextVariant,
+          selectedTextSource: 'default',
+          shouldShowBubble: false,
+        }
+      : selectVisionFeedbackMessage(resolvedEventType, {
+          intensity: feedbackIntensity.value,
+          locale: nextLocale,
+          variant: nextVariant,
+          displayName: options?.displayName,
+          previousText: previousSelection?.text ?? null,
+          previousTemplateId: previousSelection?.templateId ?? null,
+          random: runtimeOptions.random,
+          preferredLevel: feedbackLevel ?? undefined,
+          allowedChannels: options?.allowedChannels,
+          bubbleAllowed: options?.bubbleAllowed,
+        })
+    previousMessageByEventType.value.set(resolvedEventType, {
+      text: selectedMessage.text,
+      templateId: selectedMessage.templateId,
+    })
 
     const suppressedByQuiet = isQuietVisualMode.value || feedbackLevel === null
     feedbackSuppressedByQuiet.value = isQuietVisualMode.value
-    const nextLevel: VisionFeedbackLevel = feedbackLevel ?? 'subtle'
-    const shouldRunVisualEffects = !isGateBlocked && !suppressedByQuiet && feedbackLevel !== null
+    const nextLevel: VisionFeedbackLevel = feedbackLevel ?? selectedMessage.level
+    const shouldRunVisualEffects = !isGateBlocked
+      && !suppressedByQuiet
+      && feedbackLevel !== null
     const motionCandidates = shouldRunVisualEffects
       ? resolveSubjectResponseMotionCandidates(direction, nextLevel)
       : []
@@ -726,10 +1023,11 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
 
     let shouldToast = !suppressedByQuiet
       && feedbackLevel !== null
-      && shouldAllowContextualToast(nextEventType, nextLevel)
+      && selectedMessage.channels.includes('toast')
+      && shouldAllowContextualToast(resolvedEventType, nextLevel)
     if (shouldToast && feedbackPriority === 'low' && nowMs < highPriorityToastUntil.value)
       shouldToast = false
-    if (shouldToast && isDirectionalContextualEvent(nextEventType)) {
+    if (shouldToast && isDirectionalContextualEvent(resolvedEventType)) {
       const inDirectionalToastCooldown = (nowMs - lastDirectionalToastAt.value) < runtimeOptions.directionToastCooldownMs
       if (inDirectionalToastCooldown)
         shouldToast = false
@@ -739,12 +1037,31 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     if (shouldToast && feedbackPriority === 'high')
       highPriorityToastUntil.value = nowMs + runtimeOptions.highPriorityToastHoldMs
 
-    const state = resolveContextualState(nextEventType, direction)
+    let shouldShowBubble = selectedMessage.shouldShowBubble
+    if (isGateBlocked || resolvedEventType === 'subject_gated')
+      shouldShowBubble = false
+    if (feedbackLevel === null)
+      shouldShowBubble = false
+    if (isQuietVisualMode.value)
+      shouldShowBubble = false
+    if (feedbackIntensity.value === 'minimal' && isDirectionalContextualEvent(resolvedEventType))
+      shouldShowBubble = false
+    if (shouldShowBubble) {
+      showBubble(
+        selectedMessage.text,
+        nextLevel,
+        resolvedEventType,
+        selectedMessage.templateId,
+        nowMs,
+      )
+    }
+
+    const state = resolveContextualState(resolvedEventType, direction)
     subjectResponseState.value = state
     subjectResponseCooldownUntil.value = nowMs + runtimeOptions.subjectResponseCooldownMs
     lastSubjectStableDirection.value = direction
     lastSubjectResponseEvent.value = {
-      eventType: nextEventType,
+      eventType: resolvedEventType,
       direction,
       state,
       at: nowMs,
@@ -755,20 +1072,30 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       suppressedByQuiet,
       feedbackLevel: nextLevel,
       feedbackPriority,
-      toastMessage: shouldToast ? summary : undefined,
-      summary,
+      feedbackChannels: selectedMessage.channels,
+      templateId: selectedMessage.templateId,
+      isTransition: resolvedEventType.startsWith('transition_'),
+      resolvedEventType,
+      toastMessage: shouldToast ? selectedMessage.text : undefined,
+      summary: selectedMessage.text,
     }
 
-    contextualLastTriggeredAt.value[nextEventType] = nowMs
-    const cooldownMs = getContextualCooldownMs(nextEventType)
+    contextualLastTriggeredAt.value.set(resolvedEventType, nowMs)
+    const cooldownMs = selectedMessage.cooldownMs > 0
+      ? selectedMessage.cooldownMs
+      : getContextualCooldownMs(resolvedEventType)
     nextAllowedFeedbackAt.value = nowMs + cooldownMs
-    lastFeedbackType.value = nextEventType
-    lastFeedbackMessage.value = summary
+    lastFeedbackType.value = isGateBlocked ? 'subject_gated' : eventType
+    lastResolvedFeedbackEventType.value = resolvedEventType
+    lastFeedbackMessage.value = selectedMessage.text
     lastFeedbackLevel.value = nextLevel
     lastFeedbackPriority.value = feedbackPriority
+    lastFeedbackChannels.value = selectedMessage.channels
+    lastFeedbackTemplateId.value = selectedMessage.templateId
+    lastIsTransitionFeedback.value = resolvedEventType.startsWith('transition_')
     lastFeedbackAt.value = nowMs
 
-    if (isGateBlocked || nextEventType === 'subject_gated')
+    if (isGateBlocked || resolvedEventType === 'subject_gated')
       setTransientState('gated', runtimeOptions.gatedVisualMs)
     else if (isQuietVisualMode.value)
       petFeedbackState.value = 'quiet'
@@ -798,11 +1125,14 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       allowVisualFeedback: options?.allowVisualFeedback,
       gateEnabled: options?.gateEnabled,
       gateState: options?.gateState,
+      gateProfileStatus: options?.gateProfileStatus,
+      presence: options?.presence,
       sourceEventId: options?.sourceEventId,
       direction,
       displayName: options?.displayName,
       summary: options?.summary,
       force: options?.force,
+      bubbleAllowed: options?.bubbleAllowed,
     })
   }
 
@@ -967,8 +1297,15 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
   function clearPetFeedback() {
     clearStateResetTimer()
     stopQuietTicker()
+    stopBubbleTicker()
     quietVisualUntil.value = 0
     quietRemainingMs.value = 0
+    bubbleVisibleUntil.value = 0
+    bubbleRemainingMs.value = 0
+    activeBubbleMessage.value = ''
+    activeBubbleLevel.value = null
+    activeBubbleEventType.value = null
+    activeBubbleTemplateId.value = null
     petFeedbackState.value = 'idle'
     subjectResponseState.value = 'idle'
     subjectResponseCooldownUntil.value = 0
@@ -976,13 +1313,21 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     lastPetFeedback.value = null
     lastSubjectResponseEvent.value = null
     lastFeedbackType.value = null
+    lastResolvedFeedbackEventType.value = null
     lastFeedbackMessage.value = ''
     lastFeedbackLevel.value = 'subtle'
     lastFeedbackPriority.value = 'low'
+    lastFeedbackChannels.value = []
+    lastFeedbackTemplateId.value = null
+    lastIsTransitionFeedback.value = false
     lastFeedbackAt.value = null
     nextAllowedFeedbackAt.value = 0
     feedbackSuppressedByQuiet.value = false
     feedbackBlockedByGate.value = false
+    previousTransitionSnapshot.value = null
+    currentPresence.value = 'unknown'
+    contextualLastTriggeredAt.value.clear()
+    previousMessageByEventType.value.clear()
     lastDirectionalToastAt.value = Number.NEGATIVE_INFINITY
     highPriorityToastUntil.value = Number.NEGATIVE_INFINITY
     celebrationCount.value = 0
@@ -991,6 +1336,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
   onBeforeUnmount(() => {
     clearStateResetTimer()
     stopQuietTicker()
+    stopBubbleTicker()
   })
 
   return {
@@ -999,15 +1345,29 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     triggerContextualVisionFeedback,
     feedbackIntensity,
     setFeedbackIntensity,
+    feedbackLocale,
+    setFeedbackLocale,
+    feedbackVariant,
+    setFeedbackVariant,
     lastFeedbackType,
     lastFeedbackMessage,
     lastFeedbackLevel,
     lastFeedbackPriority,
+    lastFeedbackChannels,
+    lastFeedbackTemplateId,
+    lastResolvedFeedbackEventType,
+    lastIsTransitionFeedback,
     lastFeedbackAt,
     nextAllowedFeedbackAt,
     nextAllowedFeedbackIn,
     feedbackSuppressedByQuiet,
     feedbackBlockedByGate,
+    activeBubbleMessage,
+    activeBubbleLevel,
+    activeBubbleEventType,
+    activeBubbleTemplateId,
+    bubbleVisibleUntil,
+    bubbleRemainingMs,
     petFeedbackState,
     lastPetFeedback,
     subjectResponseState,
@@ -1018,6 +1378,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     quietRemainingMs,
     celebrationCount,
     cancelQuietVisualMode,
+    clearBubble,
     clearPetFeedback,
   }
 }

@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, ref } from 'vue'
 
+import { listVisionFeedbackTemplatesForEvent } from '../utils/vision-feedback-messages'
 import { useVisionPetFeedback } from './use-vision-pet-feedback'
 
 const stageModelRenderer = ref<'live2d' | 'vrm' | 'godot'>('live2d')
@@ -330,7 +331,7 @@ describe('useVisionPetFeedback', () => {
     expect(firstLeft).toBe(true)
     expect(feedback.subjectResponseState.value).toBe('following_left')
     expect(feedback.lastSubjectResponseEvent.value).toEqual(expect.objectContaining({
-      eventType: 'subject_moved_left',
+      eventType: 'subject_position_left',
       direction: 'left',
       state: 'following_left',
       sourceEventId: 9001,
@@ -339,6 +340,10 @@ describe('useVisionPetFeedback', () => {
       summary: 'I noticed you moved left.',
       motion: 'Think',
       expression: 'normal',
+      isTransition: false,
+      resolvedEventType: 'subject_position_left',
+      templateId: 'left-bal-1',
+      feedbackChannels: ['ui', 'toast'],
     }))
     expect(feedback.subjectResponseCooldownUntil.value).toBe(Date.now() + 3_500)
 
@@ -365,7 +370,7 @@ describe('useVisionPetFeedback', () => {
     expect(switchRightAfterCooldown).toBe(true)
     expect(feedback.subjectResponseState.value).toBe('following_right')
     expect(feedback.lastSubjectResponseEvent.value).toEqual(expect.objectContaining({
-      eventType: 'subject_moved_right',
+      eventType: 'subject_position_right',
       direction: 'right',
       state: 'following_right',
       sourceEventId: 9004,
@@ -374,6 +379,10 @@ describe('useVisionPetFeedback', () => {
       summary: 'I noticed you moved right.',
       motion: 'Think',
       expression: 'normal',
+      isTransition: false,
+      resolvedEventType: 'subject_position_right',
+      templateId: 'right-bal-1',
+      feedbackChannels: ['ui', 'toast'],
     }))
     expect(toggleExpression).toHaveBeenCalledWith('normal', 1.5)
     unmount()
@@ -426,7 +435,7 @@ describe('useVisionPetFeedback', () => {
     expect(quietDirection).toBe(true)
     expect(feedback.subjectResponseState.value).toBe('centered')
     expect(feedback.lastSubjectResponseEvent.value).toEqual(expect.objectContaining({
-      eventType: 'subject_centered',
+      eventType: 'subject_position_center',
       direction: 'center',
       state: 'centered',
       sourceEventId: 9201,
@@ -435,6 +444,10 @@ describe('useVisionPetFeedback', () => {
       motion: undefined,
       expression: undefined,
       summary: 'Back to center.',
+      isTransition: false,
+      resolvedEventType: 'subject_position_center',
+      templateId: 'center-bal-1',
+      feedbackChannels: ['ui', 'toast'],
     }))
     expect(toggleExpression).toHaveBeenCalledTimes(0)
     unmount()
@@ -570,7 +583,14 @@ describe('useVisionPetFeedback', () => {
     expect(feedback.lastFeedbackType.value).toBe('subject_matched')
     expect(feedback.lastFeedbackPriority.value).toBe('high')
     expect(feedback.lastSubjectResponseEvent.value?.feedbackPriority).toBe('high')
-    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBe('Matched subject confirmed, Rin.')
+    expect(feedback.lastResolvedFeedbackEventType.value).toBe('subject_matched')
+    expect(feedback.lastIsTransitionFeedback.value).toBe(false)
+    const matchedTemplateTexts = new Set(
+      listVisionFeedbackTemplatesForEvent('subject_matched')
+        .map(template => template.namedText ?? template.text)
+        .map(text => text.replace('{name}', 'Rin')),
+    )
+    expect(matchedTemplateTexts.has(feedback.lastSubjectResponseEvent.value?.toastMessage ?? '')).toBe(true)
     unmount()
   })
 
@@ -714,6 +734,125 @@ describe('useVisionPetFeedback', () => {
     expect(feedback.lastSubjectResponseEvent.value?.gated).toBe(true)
     expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
     expect(feedback.lastSubjectResponseEvent.value?.expression).toBeUndefined()
+    unmount()
+  })
+
+  it('renders transient local bubble for bubble-enabled templates and clears after timeout', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      bubbleDurationMs: 4_000,
+    })
+
+    feedback.setFeedbackIntensity('expressive')
+    const matched = feedback.triggerContextualVisionFeedback('subject_matched', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+
+    expect(matched).toBe(true)
+    expect(feedback.activeBubbleMessage.value).toBe('Great, Rin, match is stable now.')
+    expect(feedback.activeBubbleLevel.value).toBe('strong')
+    expect(feedback.activeBubbleEventType.value).toBe('subject_matched')
+    expect(feedback.activeBubbleTemplateId.value).toBe('matched-exp-1')
+    expect(feedback.bubbleRemainingMs.value).toBe(4_000)
+
+    vi.advanceTimersByTime(4_100)
+    expect(feedback.activeBubbleMessage.value).toBe('')
+    expect(feedback.activeBubbleLevel.value).toBeNull()
+    expect(feedback.activeBubbleEventType.value).toBeNull()
+    expect(feedback.activeBubbleTemplateId.value).toBeNull()
+    unmount()
+  })
+
+  it('clears local bubble immediately when clearBubble is called', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      bubbleDurationMs: 4_000,
+    })
+
+    feedback.setFeedbackIntensity('expressive')
+    feedback.triggerContextualVisionFeedback('subject_matched', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+
+    expect(feedback.activeBubbleMessage.value).toBe('Great, Rin, match is stable now.')
+    feedback.clearBubble()
+    expect(feedback.activeBubbleMessage.value).toBe('')
+    expect(feedback.bubbleRemainingMs.value).toBe(0)
+    expect(feedback.activeBubbleTemplateId.value).toBeNull()
+    unmount()
+  })
+
+  it('suppresses bubble when gate blocks or quiet mode is active', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      quietDurationMs: 8_000,
+      bubbleDurationMs: 4_000,
+    })
+
+    feedback.setFeedbackIntensity('expressive')
+    const gateBlocked = feedback.triggerContextualVisionFeedback('subject_matched', {
+      allowVisualFeedback: false,
+      gateEnabled: true,
+      gateState: 'locked',
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(gateBlocked).toBe(true)
+    expect(feedback.activeBubbleMessage.value).toBe('')
+
+    feedback.triggerVisionPetFeedback('open_palm', { allowVisualFeedback: true })
+    expect(feedback.isQuietVisualMode.value).toBe(true)
+
+    const quietMatched = feedback.triggerContextualVisionFeedback('subject_matched', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(quietMatched).toBe(true)
+    expect(feedback.activeBubbleMessage.value).toBe('')
+    expect(feedback.lastResolvedFeedbackEventType.value).toBe('transition_gated_to_matched')
+    expect(feedback.lastFeedbackLevel.value).toBe('strong')
+    unmount()
+  })
+
+  it('applies locale and variant with fallback while keeping deterministic selection', () => {
+    const { feedback, unmount } = createFeedbackHarness()
+
+    feedback.setFeedbackLocale('zh-CN')
+    feedback.setFeedbackVariant('a')
+    const centeredZh = feedback.triggerContextualVisionFeedback('subject_centered', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(centeredZh).toBe(true)
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('Rin，你又回到中心位置。')
+    expect(feedback.lastFeedbackTemplateId.value).toBe('center-bal-2')
+
+    vi.advanceTimersByTime(5_100)
+    feedback.setFeedbackVariant('b')
+    const centeredVariantB = feedback.triggerContextualVisionFeedback('subject_centered', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      displayName: 'Rin',
+    })
+    expect(centeredVariantB).toBe(true)
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('Rin，你回到中心了。')
+    expect(feedback.lastFeedbackTemplateId.value).toBe('center-bal-1')
+
+    vi.advanceTimersByTime(5_100)
+    feedback.setFeedbackVariant('a')
+    const upFallbackDefaultText = feedback.triggerContextualVisionFeedback('subject_moved_up', {
+      allowVisualFeedback: true,
+      direction: 'up',
+      displayName: 'Rin',
+    })
+    expect(upFallbackDefaultText).toBe(true)
+    expect(feedback.lastFeedbackTemplateId.value).toBe('up-bal-1')
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('Rin, looking up?')
+    expect(localStorage.getItem('airi.vision-experiment.feedback-locale.v1')).toBe('zh-CN')
+    expect(localStorage.getItem('airi.vision-experiment.feedback-variant.v1')).toBe('a')
     unmount()
   })
 })

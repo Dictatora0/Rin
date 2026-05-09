@@ -154,18 +154,23 @@ function resetLive2dState() {
 }
 
 const LEFT_POSITION_MESSAGES = [
+  'Left side noted.',
   'I noticed you moved left.',
   'You shifted to the left.',
   'Left side detected.',
   'You are leaning left now.',
   'Left position confirmed.',
+  'Nice move to the left.',
 ]
 
 const GATED_POSITION_MESSAGES = [
+  'Feedback is gated.',
   'Detected, but feedback is gated.',
   'Position detected, gate is blocking.',
   'Gate lock: no active feedback.',
   'Feedback paused by face gate.',
+  'Gate is active, waiting for match.',
+  'Match needed before stronger feedback.',
 ]
 
 vi.mock('pinia', () => ({
@@ -382,6 +387,38 @@ describe('vision Island pet feedback integration path', () => {
     unmount()
   })
 
+  it('shows local bubble for matched feedback when template channel includes bubble', async () => {
+    const { container, unmount } = mountVisionIsland()
+    mocks.interactionState.matchedDisplayName.value = 'Rin'
+    const intensitySelect = container.querySelector('[data-testid="feedback-intensity-select"]') as HTMLSelectElement | null
+    const variantSelect = container.querySelector('[data-testid="feedback-variant-select"]') as HTMLSelectElement | null
+    if (!intensitySelect)
+      throw new Error('feedback intensity select not found')
+    if (!variantSelect)
+      throw new Error('feedback variant select not found')
+    intensitySelect.value = 'expressive'
+    intensitySelect.dispatchEvent(new Event('change', { bubbles: true }))
+    variantSelect.value = 'a'
+    variantSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+
+    await emitVisionEvent({
+      id: 420,
+      type: 'subject_matched',
+      message: 'Matched subject confirmed.',
+      subjectPosition: 'center',
+    })
+
+    const bubble = container.querySelector('[data-testid="vision-feedback-bubble"]')
+    expect(container.textContent).toContain('activeBubbleLevel: strong')
+    expect(container.textContent).toContain('activeBubbleEventType: subject_matched')
+    expect(container.textContent).toContain('activeBubbleTemplateId: matched-exp-2')
+    expect(bubble).not.toBeNull()
+    expect(bubble?.textContent ?? '').toContain('Rin:')
+    expect(container.textContent).toContain('feedbackChannels: ui, toast, motion, bubble')
+    unmount()
+  })
+
   it('keeps subject-position response gated when face gate blocks matched subject', async () => {
     const { container, unmount } = mountVisionIsland()
     mocks.interactionState.gateEnabled.value = true
@@ -406,6 +443,7 @@ describe('vision Island pet feedback integration path', () => {
       return container.textContent?.includes(`lastFeedbackMessage: ${message}`) ?? false
     })
     expect(hasAllowedGatedMessage).toBe(true)
+    expect(container.querySelector('[data-testid="vision-feedback-bubble"]')).toBeNull()
 
     unmount()
   })

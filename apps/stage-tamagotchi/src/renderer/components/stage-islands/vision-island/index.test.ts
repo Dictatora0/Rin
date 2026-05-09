@@ -22,7 +22,10 @@ const mocks = vi.hoisted(() => ({
   triggerSubjectPositionFeedback: vi.fn(() => true),
   triggerContextualVisionFeedback: vi.fn(() => true),
   setFeedbackIntensity: vi.fn(() => {}),
+  setFeedbackLocale: vi.fn(() => {}),
+  setFeedbackVariant: vi.fn(() => {}),
   cancelQuietVisualMode: vi.fn(() => {}),
+  clearBubble: vi.fn(() => {}),
   clearPetFeedback: vi.fn(() => {}),
 
   routerPush: vi.fn(async () => {}),
@@ -145,15 +148,29 @@ function createPetFeedbackState() {
     triggerContextualVisionFeedback: mocks.triggerContextualVisionFeedback,
     feedbackIntensity: ref<'minimal' | 'balanced' | 'expressive'>('balanced'),
     setFeedbackIntensity: mocks.setFeedbackIntensity,
+    feedbackLocale: ref<'en' | 'zh-CN'>('en'),
+    setFeedbackLocale: mocks.setFeedbackLocale,
+    feedbackVariant: ref<'default' | 'a' | 'b'>('default'),
+    setFeedbackVariant: mocks.setFeedbackVariant,
     lastFeedbackType: ref<string | null>(null),
     lastFeedbackMessage: ref(''),
     lastFeedbackLevel: ref<'subtle' | 'normal' | 'strong'>('subtle'),
     lastFeedbackPriority: ref<'low' | 'normal' | 'high'>('low'),
+    lastFeedbackChannels: ref<Array<'ui' | 'toast' | 'bubble' | 'motion'>>([]),
+    lastFeedbackTemplateId: ref<string | null>(null),
+    lastResolvedFeedbackEventType: ref<string | null>(null),
+    lastIsTransitionFeedback: ref(false),
     lastFeedbackAt: ref<number | null>(null),
     nextAllowedFeedbackAt: ref(0),
     nextAllowedFeedbackIn: ref(0),
     feedbackSuppressedByQuiet: ref(false),
     feedbackBlockedByGate: ref(false),
+    activeBubbleMessage: ref(''),
+    activeBubbleLevel: ref<'subtle' | 'normal' | 'strong' | null>(null),
+    activeBubbleEventType: ref<string | null>(null),
+    activeBubbleTemplateId: ref<string | null>(null),
+    bubbleVisibleUntil: ref(0),
+    bubbleRemainingMs: ref(0),
     petFeedbackState: ref<'idle' | 'quiet' | 'celebrating' | 'acknowledged' | 'gated'>('idle'),
     lastPetFeedback: ref<{ summary: string, at: number } | null>(null),
     subjectResponseState: ref<'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'>('idle'),
@@ -170,6 +187,7 @@ function createPetFeedbackState() {
     quietRemainingMs: ref(0),
     celebrationCount: ref(0),
     cancelQuietVisualMode: mocks.cancelQuietVisualMode,
+    clearBubble: mocks.clearBubble,
     clearPetFeedback: mocks.clearPetFeedback,
   }
 }
@@ -530,7 +548,7 @@ describe('visionIsland UI behavior', () => {
     const { container, unmount } = mountVisionIsland()
     await nextTick()
 
-    const intensitySelect = container.querySelector('select')
+    const intensitySelect = container.querySelector('[data-testid="feedback-intensity-select"]') as HTMLSelectElement | null
     if (!intensitySelect)
       throw new Error('feedback intensity select not found')
 
@@ -558,6 +576,50 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('quietSuppressed: yes')
     expect(text).toContain('gateBlocked: no')
 
+    unmount()
+  })
+
+  it('updates locale and variant selectors and shows local bubble when active', async () => {
+    const { container, unmount } = mountVisionIsland()
+    await nextTick()
+
+    const localeSelect = container.querySelector('[data-testid="feedback-locale-select"]') as HTMLSelectElement | null
+    const variantSelect = container.querySelector('[data-testid="feedback-variant-select"]') as HTMLSelectElement | null
+    if (!localeSelect || !variantSelect)
+      throw new Error('locale or variant select not found')
+
+    localeSelect.value = 'zh-CN'
+    localeSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    variantSelect.value = 'b'
+    variantSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+
+    expect(mocks.setFeedbackLocale).toHaveBeenCalledTimes(1)
+    expect(mocks.setFeedbackLocale).toHaveBeenCalledWith('zh-CN')
+    expect(mocks.setFeedbackVariant).toHaveBeenCalledTimes(1)
+    expect(mocks.setFeedbackVariant).toHaveBeenCalledWith('b')
+
+    mocks.petFeedbackState.activeBubbleMessage.value = '欢迎回来。'
+    mocks.petFeedbackState.activeBubbleLevel.value = 'normal'
+    mocks.petFeedbackState.activeBubbleEventType.value = 'transition_absent_to_returned'
+    mocks.petFeedbackState.activeBubbleTemplateId.value = 't-absent-returned-1'
+    mocks.petFeedbackState.bubbleVisibleUntil.value = Date.now() + 4_000
+    mocks.petFeedbackState.bubbleRemainingMs.value = 4_000
+    await nextTick()
+
+    const bubble = container.querySelector('[data-testid="vision-feedback-bubble"]')
+    expect(bubble).not.toBeNull()
+    expect(bubble?.textContent ?? '').toContain('Rin: 欢迎回来。')
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('Bubble feedback is local to the vision experiment.')
+    expect(text).toContain('Locale changes only local feedback templates.')
+    expect(text.includes('eye tracking')).toBe(false)
+
+    mocks.petFeedbackState.activeBubbleMessage.value = ''
+    mocks.petFeedbackState.bubbleRemainingMs.value = 0
+    await nextTick()
+    expect(container.querySelector('[data-testid="vision-feedback-bubble"]')).toBeNull()
     unmount()
   })
 

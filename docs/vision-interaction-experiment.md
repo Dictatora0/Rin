@@ -87,25 +87,78 @@
 - 目标是自然交互演示，而非严格视线测量。
 
 ### Contextual Vision Feedback Engine
-- 文案来源是本地模板池 `apps/stage-tamagotchi/src/renderer/utils/vision-feedback-messages.ts`。
-- 模板事件覆盖：
+- v2 语料不再是 `string[]`，而是结构化模板：
+- `VisionFeedbackTemplate = { id, text, namedText?, level, intensities, channels, cooldownMs?, tags? }`
+- selector 输出 `text + level + channels + cooldownMs + templateId + resolvedEventType`，可直接驱动 UI/Toast/Motion。
+- 本地模板池在 `apps/stage-tamagotchi/src/renderer/utils/vision-feedback-messages.ts`，全部离线可控，不调用 LLM/远程 API。
+- 不使用 LLM 的原因：
+- 需要 deterministic 可测试行为（支持 injected random）。
+- 需要强约束 cooldown/优先级/gate，不允许生成式漂移。
+- 需要保证隐私与低延迟，不上传视觉上下文。
+
+### Bubble Channel（本地短气泡）
+- `bubble` 不再只是 metadata；Vision Island 会渲染本地 transient bubble。
+- bubble 只属于视觉实验模块，不写入主聊天会话历史。
+- bubble 默认展示约 4 秒，自动消失；也可手动 clear。
+- bubble 来源是 selector 选中的同一模板文本，不额外生成新文案。
+- quiet mode / Face Gate 约束：
+- quiet mode 下 normal/strong bubble 会被抑制，保留状态更新。
+- gate blocked（unmatched/multiple_faces/locked/no_face 等）不显示正向 bubble。
+
+### 事件类型（Base + Transition）
+- Base events（13）：
 - `subject_position_left/right/up/down/center`
-- `subject_returned`
-- `subject_absent`
-- `subject_gated`
-- `subject_matched`
-- `subject_uncertain`
+- `subject_returned` / `subject_absent`
+- `subject_gated` / `subject_matched` / `subject_uncertain`
 - `subject_dwelled_left/right/center`
-- 模板选择支持 displayName 插值，且同一事件连续两次不会返回相同句子。
-- 全部文案本地生成，不调用远程 API，不写入主聊天历史。
+- Transition events（6）：
+- `transition_absent_to_returned`
+- `transition_uncertain_to_matched`
+- `transition_gated_to_matched`
+- `transition_multiple_faces_to_matched`
+- `transition_matched_to_absent`
+- `transition_matched_to_uncertain`
+- transition 命中时优先于 base event（未命中回退 base），避免“只是方向变化就随机一句”的割裂感。
+
+### Transition-First 策略
+- 先解析状态过渡，再选模板，而不是先随机句子：
+- `absent -> present` 优先 `transition_absent_to_returned`
+- `uncertain -> matched` 优先 `transition_uncertain_to_matched`
+- `gated/unmatched/locked -> matched` 优先 `transition_gated_to_matched`
+- `multiple_faces -> matched` 优先 `transition_multiple_faces_to_matched`
+- `matched -> absent/uncertain` 优先对应降级 transition
+- 这样 returned/matched 类高价值反馈不会被高频方向噪声淹没。
 
 ### Feedback Intensity
 - `minimal`：
-- 主要更新状态，不做方向类 toast，Live2D 反馈极轻或不触发。
+- 主要更新状态，方向类事件尽量 UI-only，优先 subtle。
+- 仅 returned/matched 等关键反馈允许轻提示。
 - `balanced`（默认）：
-- 方向变化触发短反馈；`subject_returned / subject_matched` 更强。
+- 默认 normal/subtle 混合，方向变化触发短反馈。
+- returned/matched 与关键 transition 可提升到更高可见度。
 - `expressive`：
-- 方向变化、回中和 dwell 都可触发更活跃反馈（仍受冷却限制）。
+- normal/strong 可用，回中与 dwell 反馈更积极。
+- 仍受 cooldown、priority、gate、quiet mode 约束，不会刷屏。
+
+### 模板去重与选择规则
+- 同一 eventType 连续触发会避免相同 `templateId`；仅当候选唯一时允许重复。
+- 支持 `displayName` 时优先 `namedText`，无名字回退 `text`，不会残留 `{name}` 占位符。
+- 支持 `allowedChannels` 与 `preferredLevel` 过滤；若强度不允许则自动降级 level。
+- 选择失败时回退到安全模板，不抛异常。
+
+### Locale / Variant（轻量扩展）
+- 模板新增：
+- `localeText?: Partial<Record<'en' | 'zh-CN', { text; namedText? }>>`
+- `variant?: 'default' | 'a' | 'b'`
+- selector 支持 `locale` 与 `variant`：
+- locale 只影响文本来源，不改变核心过滤逻辑；locale 缺失时 fallback 到默认 `text/namedText`。
+- variant 优先匹配请求值，缺失时回退 `default` 与可用候选。
+- 当前仅补少量中文示例（非全量翻译），用于验证结构与 fallback 规则：
+- `transition_absent_to_returned`
+- `subject_gated`
+- `subject_position_center`
+- `subject_matched`
+- `subject_uncertain`
 
 ### 防打扰策略
 - 事件级冷却：方向类默认 5s，`returned/matched` 10s，dwell 14s。

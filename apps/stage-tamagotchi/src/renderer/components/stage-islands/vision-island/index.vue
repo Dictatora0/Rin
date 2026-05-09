@@ -105,13 +105,27 @@ const {
   triggerContextualVisionFeedback,
   feedbackIntensity,
   setFeedbackIntensity,
+  feedbackLocale,
+  setFeedbackLocale,
+  feedbackVariant,
+  setFeedbackVariant,
   lastFeedbackType,
   lastFeedbackMessage,
   lastFeedbackLevel,
   lastFeedbackPriority,
+  lastFeedbackChannels,
+  lastFeedbackTemplateId,
+  lastResolvedFeedbackEventType,
+  lastIsTransitionFeedback,
   nextAllowedFeedbackIn,
   feedbackSuppressedByQuiet,
   feedbackBlockedByGate,
+  activeBubbleMessage,
+  activeBubbleLevel,
+  activeBubbleEventType,
+  activeBubbleTemplateId,
+  bubbleVisibleUntil,
+  bubbleRemainingMs,
   petFeedbackState,
   lastPetFeedback,
   subjectResponseState: petSubjectResponseState,
@@ -121,6 +135,7 @@ const {
   quietRemainingMs: petQuietRemainingMs,
   celebrationCount: petCelebrationCount,
   cancelQuietVisualMode,
+  clearBubble,
   clearPetFeedback,
 } = useVisionPetFeedback()
 
@@ -138,6 +153,15 @@ const feedbackIntensityOptions = [
   { value: 'minimal', label: 'Minimal' },
   { value: 'balanced', label: 'Balanced' },
   { value: 'expressive', label: 'Expressive' },
+] as const
+const feedbackLocaleOptions = [
+  { value: 'en', label: 'English' },
+  { value: 'zh-CN', label: '简体中文' },
+] as const
+const feedbackVariantOptions = [
+  { value: 'default', label: 'Default' },
+  { value: 'a', label: 'A' },
+  { value: 'b', label: 'B' },
 ] as const
 
 const faceCenterText = computed(() => {
@@ -431,6 +455,40 @@ const contextualFeedbackLevelText = computed(() => {
 const contextualFeedbackPriorityText = computed(() => {
   return lastFeedbackPriority.value
 })
+const contextualFeedbackChannelsText = computed(() => {
+  if (lastFeedbackChannels.value.length === 0)
+    return 'none'
+  return lastFeedbackChannels.value.join(', ')
+})
+const contextualFeedbackTemplateIdText = computed(() => {
+  return lastFeedbackTemplateId.value ?? 'none'
+})
+const resolvedFeedbackEventTypeText = computed(() => {
+  return lastResolvedFeedbackEventType.value ?? 'none'
+})
+const transitionFeedbackBadgeText = computed(() => {
+  return lastIsTransitionFeedback.value ? 'transition' : 'base'
+})
+const activeBubbleMessageText = computed(() => {
+  if (!activeBubbleMessage.value)
+    return 'none'
+  return activeBubbleMessage.value
+})
+const activeBubbleLevelText = computed(() => {
+  return activeBubbleLevel.value ?? 'none'
+})
+const activeBubbleEventTypeText = computed(() => {
+  return activeBubbleEventType.value ?? 'none'
+})
+const activeBubbleTemplateIdText = computed(() => {
+  return activeBubbleTemplateId.value ?? 'none'
+})
+const bubbleRemainingSeconds = computed(() => {
+  return Math.ceil(bubbleRemainingMs.value / 1000)
+})
+const bubbleVisible = computed(() => {
+  return activeBubbleMessage.value.trim().length > 0 && bubbleRemainingMs.value > 0
+})
 const nextAllowedFeedbackSeconds = computed(() => {
   return Math.ceil(nextAllowedFeedbackIn.value / 1000)
 })
@@ -509,6 +567,8 @@ watch(() => localFaceGate.profileStatus.value, (status) => {
     allowVisualFeedback: canTriggerSubjectPositionResponse.value,
     gateEnabled: gateEnabled.value,
     gateState: localFaceGate.gateState.value,
+    gateProfileStatus: localFaceGate.profileStatus.value,
+    presence: facePresence.value,
     direction: subjectPosition.value,
     displayName: matchedDisplayName.value || undefined,
   })
@@ -672,6 +732,20 @@ function onFeedbackIntensityChange(event: Event) {
   setFeedbackIntensity(value)
 }
 
+function onFeedbackLocaleChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  if (value !== 'en' && value !== 'zh-CN')
+    return
+  setFeedbackLocale(value)
+}
+
+function onFeedbackVariantChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  if (value !== 'default' && value !== 'a' && value !== 'b')
+    return
+  setFeedbackVariant(value)
+}
+
 function scheduleSubjectDwellFeedback() {
   clearSubjectDwellTimer()
   const stablePosition = lastStableSubjectPosition.value
@@ -703,6 +777,8 @@ function scheduleSubjectDwellFeedback() {
       allowVisualFeedback: canTriggerSubjectPositionResponse.value,
       gateEnabled: gateEnabled.value,
       gateState: localFaceGate.gateState.value,
+      gateProfileStatus: localFaceGate.profileStatus.value,
+      presence: facePresence.value,
       direction: stablePosition,
       displayName: matchedDisplayName.value || undefined,
     })
@@ -769,6 +845,8 @@ function createPetFeedbackOptions(event: VisionInteractionEvent) {
     allowVisualFeedback: canTriggerInteractiveFeedback.value,
     gateEnabled: gateEnabled.value,
     gateState: localFaceGate.gateState.value,
+    gateProfileStatus: localFaceGate.profileStatus.value,
+    presence: facePresence.value,
     sourceEventId: event.id,
     displayName: matchedDisplayName.value || undefined,
   }
@@ -807,6 +885,8 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
       allowVisualFeedback: canTriggerSubjectPositionResponse.value,
       gateEnabled: gateEnabled.value,
       gateState: localFaceGate.gateState.value,
+      gateProfileStatus: localFaceGate.profileStatus.value,
+      presence: facePresence.value,
       sourceEventId: event.id,
       direction: subjectPosition.value,
       displayName: matchedDisplayName.value || undefined,
@@ -820,6 +900,8 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
       allowVisualFeedback: canTriggerSubjectPositionResponse.value,
       gateEnabled: gateEnabled.value,
       gateState: localFaceGate.gateState.value,
+      gateProfileStatus: localFaceGate.profileStatus.value,
+      presence: facePresence.value,
       sourceEventId: event.id,
       direction: subjectPosition.value,
       displayName: matchedDisplayName.value || undefined,
@@ -833,6 +915,8 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
       allowVisualFeedback: canTriggerSubjectPositionResponse.value,
       gateEnabled: gateEnabled.value,
       gateState: localFaceGate.gateState.value,
+      gateProfileStatus: localFaceGate.profileStatus.value,
+      presence: facePresence.value,
       sourceEventId: event.id,
       direction: subjectPosition.value,
       displayName: matchedDisplayName.value || undefined,
@@ -1082,6 +1166,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           <label :class="['mb-2 flex items-center gap-2']">
             <span>Feedback intensity:</span>
             <select
+              data-testid="feedback-intensity-select"
               :value="feedbackIntensity"
               :class="[
                 'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
@@ -1098,6 +1183,63 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
               </option>
             </select>
           </label>
+          <label :class="['mb-2 flex items-center gap-2']">
+            <span>Locale:</span>
+            <select
+              data-testid="feedback-locale-select"
+              :value="feedbackLocale"
+              :class="[
+                'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
+                'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
+              ]"
+              @change="onFeedbackLocaleChange"
+            >
+              <option
+                v-for="option in feedbackLocaleOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label :class="['mb-2 flex items-center gap-2']">
+            <span>Variant:</span>
+            <select
+              data-testid="feedback-variant-select"
+              :value="feedbackVariant"
+              :class="[
+                'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
+                'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
+              ]"
+              @change="onFeedbackVariantChange"
+            >
+              <option
+                v-for="option in feedbackVariantOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <div
+            v-if="bubbleVisible"
+            data-testid="vision-feedback-bubble"
+            :class="[
+              'mb-2 rounded-lg border px-2 py-1 text-xs',
+              activeBubbleLevel === 'strong'
+                ? 'border-sky-500 bg-sky-100/80 text-sky-700 dark:border-sky-400 dark:bg-sky-950/60 dark:text-sky-200'
+                : activeBubbleLevel === 'normal'
+                  ? 'border-emerald-500 bg-emerald-100/80 text-emerald-700 dark:border-emerald-400 dark:bg-emerald-950/60 dark:text-emerald-200'
+                  : 'border-neutral-400 bg-neutral-100 text-neutral-700 dark:border-neutral-500 dark:bg-neutral-900/70 dark:text-neutral-200',
+            ]"
+          >
+            <div>Rin: {{ activeBubbleMessage }}</div>
+            <div :class="['mt-1 text-[11px] opacity-80']">
+              {{ activeBubbleLevelText }} · {{ bubbleRemainingSeconds }}s
+            </div>
+          </div>
           <div>faceCenter: {{ faceCenterText }}</div>
           <div>faceDirection: {{ faceDirectionText }}</div>
           <div>subjectPosition: {{ subjectPositionText }}</div>
@@ -1107,9 +1249,19 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           <div>subjectResponseGate: {{ subjectResponseGateText }}</div>
           <div>subjectResponseCooldownSec: {{ subjectResponseCooldownSeconds }}</div>
           <div>lastFeedbackType: {{ lastContextualFeedbackTypeText }}</div>
+          <div>resolvedFeedbackEventType: {{ resolvedFeedbackEventTypeText }}</div>
+          <div>transitionFeedback: {{ transitionFeedbackBadgeText }}</div>
           <div>lastFeedbackMessage: {{ lastContextualFeedbackMessageText }}</div>
           <div>feedbackLevel: {{ contextualFeedbackLevelText }}</div>
           <div>feedbackPriority: {{ contextualFeedbackPriorityText }}</div>
+          <div>feedbackChannels: {{ contextualFeedbackChannelsText }}</div>
+          <div>feedbackTemplateId: {{ contextualFeedbackTemplateIdText }}</div>
+          <div>activeBubbleMessage: {{ activeBubbleMessageText }}</div>
+          <div>activeBubbleLevel: {{ activeBubbleLevelText }}</div>
+          <div>activeBubbleEventType: {{ activeBubbleEventTypeText }}</div>
+          <div>activeBubbleTemplateId: {{ activeBubbleTemplateIdText }}</div>
+          <div>bubbleVisibleUntil: {{ bubbleVisibleUntil }}</div>
+          <div>bubbleRemainingSec: {{ bubbleRemainingSeconds }}</div>
           <div>nextAllowedFeedbackIn: {{ nextAllowedFeedbackSeconds }}</div>
           <div>dwellStatus: {{ dwellStatusText }}</div>
           <div>quietSuppressed: {{ feedbackSuppressedByQuiet ? 'yes' : 'no' }}</div>
@@ -1126,7 +1278,24 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             Feedback intensity controls how expressive Rin is.
           </div>
           <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Feedback intensity changes how often and how expressively Rin responds.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Transition feedback makes returns and gate changes feel more natural.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Bubble feedback is local to the vision experiment.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Locale changes only local feedback templates.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
             This is gaze-like feedback, not strict gaze measurement.
+          </div>
+          <div v-if="bubbleVisible" :class="['mt-1']">
+            <Button size="sm" variant="ghost" @click="clearBubble">
+              Clear bubble
+            </Button>
           </div>
         </div>
 
