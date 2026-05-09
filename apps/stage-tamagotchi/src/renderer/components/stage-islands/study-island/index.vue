@@ -51,26 +51,17 @@ const mainButtonIcon = computed(() => {
 
 <template>
   <div
-    fixed
-    left-3
-    bottom-12
-    z-20
-    flex
-    flex-col
-    items-start
-    gap-2
-    rounded-2xl
-    border-2
-    bg-white/90
-    px-4
-    py-3
-    shadow-lg
-    backdrop-blur-md
-    dark:border-neutral-700
-    dark:bg-neutral-900/90
+    :class="[
+      'fixed left-3 bottom-12 z-20',
+      'flex flex-col items-start gap-2',
+      'rounded-2xl border-2 px-4 py-3',
+      'bg-white/90 dark:bg-neutral-900/90',
+      'shadow-lg backdrop-blur-md',
+      'dark:border-neutral-700',
+    ]"
   >
     <!-- Mode & Time Display -->
-    <div flex items-center gap-3>
+    <div :class="['flex items-center gap-3']">
       <div
         :class="[
           'shrink-0 rounded-full px-3 py-1 text-xs font-medium',
@@ -84,8 +75,8 @@ const mainButtonIcon = computed(() => {
       </div>
 
       <div
-        class="font-mono text-2xl font-bold tabular-nums"
         :class="[
+          'font-mono text-2xl font-bold tabular-nums',
           isFocusing ? 'text-rose-600 dark:text-rose-400' :
             isBreaking ? 'text-emerald-600 dark:text-emerald-400' :
               'text-neutral-800 dark:text-neutral-200',
@@ -96,7 +87,7 @@ const mainButtonIcon = computed(() => {
     </div>
 
     <!-- Control Buttons -->
-    <div flex items-center gap-2>
+    <div :class="['flex items-center gap-2']">
       <!-- Start/Pause/Resume Button -->
       <button
         type="button"
@@ -109,7 +100,7 @@ const mainButtonIcon = computed(() => {
         ]"
         @click="handleMainAction"
       >
-        <div :class="mainButtonIcon" class="size-4" />
+        <div :class="[mainButtonIcon, 'size-4']" />
         {{ mainButtonLabel }}
       </button>
 
@@ -127,7 +118,7 @@ const mainButtonIcon = computed(() => {
         ]"
         @click="startBreak"
       >
-        <div i-solar:cup-bold class="size-4" />
+        <div class="i-solar:cup-bold size-4" />
         Start Break
       </button>
 
@@ -135,22 +126,26 @@ const mainButtonIcon = computed(() => {
       <button
         v-if="!isIdle"
         type="button"
-        class="flex items-center gap-1.5 rounded-lg bg-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-600 transition-all hover:scale-105 hover:bg-neutral-300 active:scale-95 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
+        :class="[
+          'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+          'bg-neutral-200 text-neutral-600 hover:scale-105 hover:bg-neutral-300 active:scale-95',
+          'dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600',
+        ]"
         @click="resetSession"
       >
-        <div i-solar:restart-bold class="size-4" />
+        <div class="i-solar:restart-bold size-4" />
         Reset
       </button>
     </div>
 
     <!-- Stats Panel -->
-    <div flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400>
-      <div flex items-center gap-1>
-        <div i-solar:list-check-bold class="size-3.5" />
+    <div :class="['flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400']">
+      <div :class="['flex items-center gap-1']">
+        <div class="i-solar:list-check-bold size-3.5" />
         <span>Today: {{ todayFocusSessions }} rounds</span>
       </div>
-      <div flex items-center gap-1>
-        <div i-solar:clock-circle-bold class="size-3.5" />
+      <div :class="['flex items-center gap-1']">
+        <div class="i-solar:clock-circle-bold size-3.5" />
         <span>{{ todayFocusMinutes }} mins</span>
       </div>
     </div>
