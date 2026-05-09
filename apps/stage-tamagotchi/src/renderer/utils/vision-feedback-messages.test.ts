@@ -38,13 +38,25 @@ describe('vision feedback templates v2', () => {
     for (const eventType of eventTypes) {
       const templates = listVisionFeedbackTemplatesForEvent(eventType)
       expect(templates.length).toBeGreaterThan(0)
+      const templateIds = new Set<string>()
       for (const template of templates) {
+        expect(templateIds.has(template.id)).toBe(false)
+        templateIds.add(template.id)
         expect(template.id.length).toBeGreaterThan(0)
         expect(template.text.trim().length).toBeGreaterThan(0)
         expect(template.intensities.length).toBeGreaterThan(0)
         expect(template.channels.length).toBeGreaterThan(0)
+        expect(['subtle', 'normal', 'strong']).toContain(template.level)
+        for (const intensity of template.intensities)
+          expect(['minimal', 'balanced', 'expressive']).toContain(intensity)
+        for (const channel of template.channels)
+          expect(['ui', 'toast', 'bubble', 'motion']).toContain(channel)
+        if (template.variant !== undefined)
+          expect(['default', 'a', 'b']).toContain(template.variant)
         if (template.localeText?.['zh-CN']) {
           expect(template.localeText['zh-CN']?.text?.trim().length).toBeGreaterThan(0)
+          if (template.localeText['zh-CN']?.namedText)
+            expect(template.localeText['zh-CN']?.namedText?.trim().length).toBeGreaterThan(0)
         }
       }
     }
@@ -283,7 +295,12 @@ describe('vision feedback templates v2', () => {
     expect(deterministicA.templateId).toBe(deterministicB.templateId)
     expect(deterministicA.text).toBe(deterministicB.text)
     expect(unknown.eventType).toBe('subject_uncertain')
-    expect(unknown.text.length).toBeGreaterThan(0)
+    expect(unknown.templateId).toBe('uncertain-bal-1')
+    expect(unknown.level).toBe('subtle')
+    expect(unknown.channels).toEqual(['ui', 'toast'])
+    expect(unknown.shouldShowBubble).toBe(false)
+    expect(unknown.selectedTextSource).toBe('default')
+    expect(unknown.text).toBe('Identity uncertain right now.')
   })
 
   it('resolves transition events with priority and falls back to base event when unmatched', () => {
@@ -354,7 +371,9 @@ describe('vision feedback templates v2', () => {
     for (const eventType of expressionEventTypes) {
       const templates = listVisionFeedbackTemplatesForEvent(eventType)
       for (const template of templates) {
-        const entries = [template.text, template.namedText ?? '']
+        const localeEntries = Object.values(template.localeText ?? {})
+          .flatMap(localeVariant => [localeVariant.text, localeVariant.namedText ?? ''])
+        const entries = [template.text, template.namedText ?? '', ...localeEntries]
         for (const entry of entries) {
           for (const pattern of blockedPatterns)
             expect(pattern.test(entry)).toBe(false)

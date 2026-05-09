@@ -25,7 +25,7 @@ describe('resolveVisionExpressionSignal', () => {
     expect(result.confidence).toBe(0.5)
   })
 
-  it('does not return smile_like_signal when smile score is below threshold', () => {
+  it('returns none (not smile_like_signal) when smile score is below threshold without other qualifying signals', () => {
     const result = resolveVisionExpressionSignal({
       blendshapes: [
         createBlendshape('mouthSmileLeft', 0.2),
@@ -37,7 +37,10 @@ describe('resolveVisionExpressionSignal', () => {
       centeredDurationMs: 1_000,
     })
 
-    expect(result.signal).not.toBe('smile_like_signal')
+    expect(result.signal).toBe('none')
+    expect(result.reason).toBe('no stable expression signal')
+    expect(result.source).toBe('fallback')
+    expect(result.confidence).toBe(0.49)
   })
 
   it('returns stable_face_signal for centered present face with stable duration and quality', () => {
@@ -150,5 +153,7 @@ describe('resolveVisionExpressionSignal', () => {
 
     expect(result.signal).toBe('none')
     expect(result.reason).toBe('no stable expression signal')
+    expect(result.source).toBe('fallback')
+    expect(result.confidence).toBe(0.49)
   })
 })

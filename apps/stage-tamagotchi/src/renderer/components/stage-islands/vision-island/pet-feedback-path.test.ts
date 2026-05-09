@@ -5,6 +5,8 @@ import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 
 import VisionIsland from './index.vue'
 
+import { listVisionFeedbackTemplatesForEvent } from '../../../utils/vision-feedback-messages'
+
 const mocks = vi.hoisted(() => ({
   routerPush: vi.fn(async () => {}),
   toastMessage: vi.fn(() => {}),
@@ -187,26 +189,6 @@ function resetLive2dState() {
   mocks.toggleExpression.mockReturnValue({ success: true, name: 'neutral', durationSeconds: 1.8 })
 }
 
-const LEFT_POSITION_MESSAGES = [
-  'Left side noted.',
-  'I noticed you moved left.',
-  'You shifted to the left.',
-  'Left side detected.',
-  'You are leaning left now.',
-  'Left position confirmed.',
-  'Nice move to the left.',
-]
-
-const GATED_POSITION_MESSAGES = [
-  'Feedback is gated.',
-  'Detected, but feedback is gated.',
-  'Position detected, gate is blocking.',
-  'Gate lock: no active feedback.',
-  'Feedback paused by face gate.',
-  'Gate is active, waiting for match.',
-  'Match needed before stronger feedback.',
-]
-
 vi.mock('pinia', () => ({
   storeToRefs: <T extends Record<string, unknown>>(store: T) => store,
 }))
@@ -287,6 +269,14 @@ function mountVisionIsland() {
   }
 }
 
+async function openAdvancedDiagnostics(container: HTMLElement) {
+  const toggle = container.querySelector('[data-testid="advanced-diagnostics-toggle"]') as HTMLButtonElement | null
+  if (!toggle)
+    throw new Error('advanced diagnostics toggle not found')
+  toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await nextTick()
+}
+
 async function emitVisionEvent(event: {
   id: number
   type: string
@@ -302,7 +292,7 @@ async function emitVisionEvent(event: {
   await nextTick()
 }
 
-describe('vision Island pet feedback integration path', () => {
+describe('vision Island real-path pet feedback integration', () => {
   beforeEach(() => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     localStorage.clear()
@@ -328,6 +318,7 @@ describe('vision Island pet feedback integration path', () => {
       type: 'quiet_mode_requested',
       message: 'Quiet mode requested',
     })
+    await openAdvancedDiagnostics(container)
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('neutral', 1.8)
@@ -343,6 +334,7 @@ describe('vision Island pet feedback integration path', () => {
       type: 'completion_celebration',
       message: 'Completion celebration',
     })
+    await openAdvancedDiagnostics(container)
 
     expect(mocks.currentMotion.value.group).toBe('Tap@Body')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('happy', 3)
@@ -359,6 +351,7 @@ describe('vision Island pet feedback integration path', () => {
       type: 'acknowledged',
       message: 'Acknowledged',
     })
+    await openAdvancedDiagnostics(container)
 
     expect(mocks.currentMotion.value.group).toBe('Tap')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('smile', 2)
@@ -379,6 +372,7 @@ describe('vision Island pet feedback integration path', () => {
       type: 'detected_but_gated',
       message: 'Victory detected but gated',
     })
+    await openAdvancedDiagnostics(container)
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
@@ -401,11 +395,22 @@ describe('vision Island pet feedback integration path', () => {
     expect(mocks.currentMotion.value.group).toBe('Think')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('normal', 1.4)
     expect(container.textContent).toContain('petSubjectResponseState: following_left')
+    await openAdvancedDiagnostics(container)
     expect(container.textContent).toContain('lastFeedbackType: subject_moved_left')
-    const hasAllowedLeftMessage = LEFT_POSITION_MESSAGES.some((message) => {
-      return container.textContent?.includes(`lastFeedbackMessage: ${message}`) ?? false
-    })
-    expect(hasAllowedLeftMessage).toBe(true)
+    expect(container.textContent).toContain('resolvedFeedbackEventType: subject_position_left')
+    expect(container.textContent).toContain('feedbackChannels: ui, toast')
+    expect(container.textContent).toContain('feedbackLevel: normal')
+    const leftTemplateIdMatch = container.textContent?.match(/feedbackTemplateId: (\S+)/)
+    expect(leftTemplateIdMatch).not.toBeNull()
+    expect(leftTemplateIdMatch?.[1]).toMatch(/^left-bal-/)
+    const leftMessageMatch = container.textContent?.match(/lastFeedbackMessage:\s*(.*?)\s*lastSubjectResponseEvent:/)
+    expect(leftMessageMatch).not.toBeNull()
+    const allowedLeftMessages = new Set(
+      listVisionFeedbackTemplatesForEvent('subject_position_left')
+        .filter(template => template.id.startsWith('left-bal-'))
+        .map(template => template.text),
+    )
+    expect(allowedLeftMessages.has(leftMessageMatch?.[1].trim() ?? '')).toBe(true)
 
     await emitVisionEvent({
       id: 42,
@@ -417,6 +422,81 @@ describe('vision Island pet feedback integration path', () => {
     expect(mocks.currentMotion.value.group).toBe('Think')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('smile', 1.4)
     expect(container.textContent).toContain('petSubjectResponseState: centered')
+
+    unmount()
+  })
+
+  it('routes expression smile-like event through real feedback pipeline', async () => {
+    const { container, unmount } = mountVisionIsland()
+    mocks.interactionState.enableExpressionSignals.value = true
+    mocks.interactionState.expressionSignal.value = 'smile_like_signal'
+    mocks.interactionState.expressionSignalCandidate.value = 'smile_like_signal'
+    mocks.interactionState.stableExpressionSignal.value = 'smile_like_signal'
+    mocks.interactionState.expressionSignalStableFrames.value = 5
+    mocks.interactionState.expressionSignalConfidence.value = 0.61
+    mocks.interactionState.expressionSignalReason.value = 'smile-like face motion'
+    mocks.interactionState.expressionSignalSource.value = 'blendshape'
+    mocks.interactionState.expressionSignalFeedbackAllowed.value = true
+    await nextTick()
+
+    await emitVisionEvent({
+      id: 3001,
+      type: 'expression_smile_like_detected',
+      message: 'Smile-like signal detected.',
+    })
+    await openAdvancedDiagnostics(container)
+
+    expect(mocks.currentMotion.value.group).toBe('Happy')
+    expect(mocks.toggleExpression).toHaveBeenCalledWith('smile', 1.4)
+    expect(container.textContent).toContain('lastFeedbackType: expression_smile_like_detected')
+    expect(container.textContent).toContain('resolvedFeedbackEventType: expression_smile_like')
+    expect(container.textContent).toContain('transitionFeedback: base')
+    expect(container.textContent).toContain('feedbackLevel: normal')
+    expect(container.textContent).toContain('feedbackChannels: ui, toast, bubble')
+    const smileTemplateIdMatch = container.textContent?.match(/feedbackTemplateId: (\S+)/)
+    expect(smileTemplateIdMatch).not.toBeNull()
+    expect(smileTemplateIdMatch?.[1]).toMatch(/^expr-smile-bal-/)
+    expect(container.textContent).toContain('activeBubbleEventType: expression_smile_like')
+    const bubble = container.querySelector('[data-testid="vision-feedback-bubble"]')
+    expect(bubble).not.toBeNull()
+    const smileMessages = new Set(
+      listVisionFeedbackTemplatesForEvent('expression_smile_like')
+        .filter(template => template.id.startsWith('expr-smile-bal-'))
+        .map(template => template.text),
+    )
+    const bubbleText = bubble?.textContent ?? ''
+    expect(Array.from(smileMessages).some(message => bubbleText.includes(`Rin: ${message}`))).toBe(true)
+
+    unmount()
+  })
+
+  it('blocks expression signal feedback when face gate is locked', async () => {
+    const { container, unmount } = mountVisionIsland()
+    mocks.interactionState.enableExpressionSignals.value = true
+    mocks.interactionState.expressionSignal.value = 'smile_like_signal'
+    mocks.interactionState.expressionSignalConfidence.value = 0.63
+    mocks.interactionState.expressionSignalReason.value = 'smile-like face motion'
+    mocks.interactionState.expressionSignalSource.value = 'blendshape'
+    mocks.interactionState.expressionSignalFeedbackAllowed.value = true
+    mocks.interactionState.gateEnabled.value = true
+    mocks.interactionState.localFaceGate.gateState.value = 'locked'
+    mocks.interactionState.localFaceGate.profileStatus.value = 'multiple_faces'
+    await nextTick()
+
+    await emitVisionEvent({
+      id: 3002,
+      type: 'expression_smile_like_detected',
+      message: 'Smile-like signal detected.',
+    })
+    await openAdvancedDiagnostics(container)
+
+    expect(mocks.currentMotion.value.group).toBe('Idle')
+    expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
+    expect(container.textContent).toContain('lastFeedbackType: subject_gated')
+    expect(container.textContent).toContain('resolvedFeedbackEventType: subject_gated')
+    expect(container.textContent).toContain('feedbackChannels: ui, toast')
+    expect(container.textContent).toContain('activeBubbleEventType: none')
+    expect(container.querySelector('[data-testid="vision-feedback-bubble"]')).toBeNull()
 
     unmount()
   })
@@ -434,6 +514,7 @@ describe('vision Island pet feedback integration path', () => {
       message: 'Matched subject confirmed.',
       subjectPosition: 'center',
     })
+    await openAdvancedDiagnostics(container)
 
     const bubble = container.querySelector('[data-testid="vision-feedback-bubble"]')
     expect(container.textContent).toContain('activeBubbleLevel: strong')
@@ -460,16 +541,27 @@ describe('vision Island pet feedback integration path', () => {
       message: 'Subject position detected but gated.',
       subjectPosition: 'right',
     })
+    await openAdvancedDiagnostics(container)
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
     expect(container.textContent).toContain('subjectResponseGate: gated')
     expect(container.textContent).toContain('petSubjectResponseState: gated')
     expect(container.textContent).toContain('lastFeedbackType: subject_gated')
-    const hasAllowedGatedMessage = GATED_POSITION_MESSAGES.some((message) => {
-      return container.textContent?.includes(`lastFeedbackMessage: ${message}`) ?? false
-    })
-    expect(hasAllowedGatedMessage).toBe(true)
+    expect(container.textContent).toContain('resolvedFeedbackEventType: subject_gated')
+    expect(container.textContent).toContain('feedbackChannels: ui, toast')
+    expect(container.textContent).toContain('feedbackLevel: normal')
+    const gatedTemplateIdMatch = container.textContent?.match(/feedbackTemplateId: (\S+)/)
+    expect(gatedTemplateIdMatch).not.toBeNull()
+    expect(gatedTemplateIdMatch?.[1]).toMatch(/^gated-bal-/)
+    const gatedMessageMatch = container.textContent?.match(/lastFeedbackMessage:\s*(.*?)\s*lastSubjectResponseEvent:/)
+    expect(gatedMessageMatch).not.toBeNull()
+    const allowedGatedMessages = new Set(
+      listVisionFeedbackTemplatesForEvent('subject_gated')
+        .filter(template => template.id.startsWith('gated-bal-'))
+        .map(template => template.text),
+    )
+    expect(allowedGatedMessages.has(gatedMessageMatch?.[1].trim() ?? '')).toBe(true)
     expect(container.querySelector('[data-testid="vision-feedback-bubble"]')).toBeNull()
 
     unmount()
@@ -486,6 +578,7 @@ describe('vision Island pet feedback integration path', () => {
       type: 'completion_celebration',
       message: 'Completion celebration',
     })
+    await openAdvancedDiagnostics(container)
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
@@ -507,10 +600,29 @@ describe('vision Island pet feedback integration path', () => {
       type: 'completion_celebration',
       message: 'Completion celebration',
     })
+    await openAdvancedDiagnostics(container)
 
     expect(container.textContent).toContain('Current pet state: quiet')
     expect(container.textContent).toContain('Celebration count: 0')
     expect(container.textContent).toContain('Quiet visual mode active, celebration motion suppressed.')
+
+    unmount()
+  })
+
+  it('ignores non-context events for pet feedback routing', async () => {
+    const { container, unmount } = mountVisionIsland()
+    await emitVisionEvent({
+      id: 3003,
+      type: 'face_gate_enrolled',
+      message: 'Face profile enrolled locally.',
+    })
+    await openAdvancedDiagnostics(container)
+
+    expect(mocks.currentMotion.value.group).toBe('Idle')
+    expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
+    expect(container.textContent).toContain('lastFeedbackType: none')
+    expect(container.textContent).toContain('resolvedFeedbackEventType: none')
+    expect(container.textContent).toContain('Face profile enrolled locally.')
 
     unmount()
   })

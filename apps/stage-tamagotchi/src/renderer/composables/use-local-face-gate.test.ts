@@ -431,29 +431,38 @@ describe('useLocalFaceGate', () => {
     expect(gate.matchScore.value).toBeNull()
   })
 
-  it('exposes deterministic welcome transition gating with cooldown', () => {
+  it('emits welcome once per matched transition and allows a new welcome only after rematch plus cooldown window', () => {
     const gate = useLocalFaceGate({ stableFrames: 2 })
     const profile = createProfile({ stableFrames: 2 })
+    const matchedFace = createFaceResult([createLandmarks('base')])
+    const unmatchedFace = createFaceResult([createLandmarks('different')])
 
     gate.syncProfileFromPayload(profile)
     gate.setGateEnabled(true)
-    gate.evaluateFrame({
-      faceResult: createFaceResult([createLandmarks('base')]),
-      profile,
-      qualityMetrics: createQuality(0.95),
-    })
-    gate.evaluateFrame({
-      faceResult: createFaceResult([createLandmarks('base')]),
-      profile,
-      qualityMetrics: createQuality(0.95),
-    })
+    gate.evaluateFrame({ faceResult: matchedFace, profile, qualityMetrics: createQuality(0.95) })
+    gate.evaluateFrame({ faceResult: matchedFace, profile, qualityMetrics: createQuality(0.95) })
 
     const firstWelcome = gate.consumeJustMatchedWelcome(1_000, 8_000)
     const secondWelcome = gate.consumeJustMatchedWelcome(2_000, 8_000)
-    const afterCooldown = gate.consumeJustMatchedWelcome(10_500, 8_000)
+    const afterCooldownWithoutRematch = gate.consumeJustMatchedWelcome(10_500, 8_000)
 
     expect(firstWelcome).toBe(true)
     expect(secondWelcome).toBe(false)
-    expect(afterCooldown).toBe(false)
+    expect(afterCooldownWithoutRematch).toBe(false)
+
+    gate.setThreshold(0.05)
+    gate.evaluateFrame({ faceResult: unmatchedFace, profile, qualityMetrics: createQuality(0.95) })
+    gate.evaluateFrame({ faceResult: unmatchedFace, profile, qualityMetrics: createQuality(0.95) })
+    expect(gate.profileStatus.value).toBe('unmatched')
+
+    gate.setThreshold(0.5)
+    gate.evaluateFrame({ faceResult: matchedFace, profile, qualityMetrics: createQuality(0.95) })
+    gate.evaluateFrame({ faceResult: matchedFace, profile, qualityMetrics: createQuality(0.95) })
+    expect(gate.profileStatus.value).toBe('matched')
+
+    const rematchBeforeCooldown = gate.consumeJustMatchedWelcome(8_500, 8_000)
+    const rematchAfterCooldown = gate.consumeJustMatchedWelcome(10_600, 8_000)
+    expect(rematchBeforeCooldown).toBe(false)
+    expect(rematchAfterCooldown).toBe(true)
   })
 })

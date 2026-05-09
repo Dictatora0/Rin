@@ -16,6 +16,9 @@ const props = withDefaults(defineProps<{
 })
 
 const collapsed = ref(!props.embedded)
+const advancedDiagnosticsExpanded = ref(false)
+const gestureDiagnosticsExpanded = ref(false)
+const expressionSignalDiagnosticsExpanded = ref(false)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const unlockPassphrase = ref('')
 const unlocking = ref(false)
@@ -178,6 +181,11 @@ const feedbackVariantOptions = [
   { value: 'b', label: 'B' },
 ] as const
 const expressionSignalConfidenceText = computed(() => expressionSignalConfidence.value.toFixed(2))
+const currentExpressionSignalText = computed(() => {
+  if (stableExpressionSignal.value !== 'none')
+    return stableExpressionSignal.value
+  return expressionSignal.value
+})
 const expressionSignalCooldownRemainingMs = computed(() => {
   return Math.max(0, expressionSignalCooldownUntil.value - Date.now())
 })
@@ -200,14 +208,6 @@ const lastInferenceText = computed(() => {
   if (!lastInferenceAt.value)
     return '无'
   return new Date(lastInferenceAt.value).toLocaleTimeString()
-})
-
-const profileHint = computed(() => {
-  if (!hasEncryptedProfile.value)
-    return '无'
-  if (isProfileUnlocked.value)
-    return '已解锁'
-  return '已加密（锁定）'
 })
 
 const cameraStateText = computed(() => {
@@ -286,7 +286,9 @@ const geometryPassRateText = computed(() => geometryPassRate.value.toFixed(2))
 const handSizeRatioText = computed(() => handSizeRatio.value.toFixed(3))
 const holdProgressText = computed(() => `${Math.round(holdProgressMs.value)}ms / ${Math.round(holdDurationMs.value)}ms`)
 const cooldownRemainingText = computed(() => `${Math.max(0, Math.round(cooldownRemainingMs.value))}ms`)
-const showAdvancedGestureDiagnostics = computed(() => gestureControlsEnabled.value)
+const showAdvancedGestureDiagnostics = computed(() => {
+  return gestureControlsEnabled.value && gestureDiagnosticsExpanded.value
+})
 const gestureCalibrationHint = computed(() => {
   if (!gestureControlsEnabled.value)
     return 'Enable experimental gesture controls to view diagnostics.'
@@ -1078,154 +1080,36 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
       </div>
 
       <div v-if="props.embedded || !collapsed" :class="['flex flex-col gap-2']">
-        <div :class="['flex items-center gap-2']">
+        <div :class="['flex flex-wrap items-center gap-2']">
           <Button size="sm" :variant="isEnabled ? 'secondary' : 'primary'" @click="toggleCamera">
             {{ isEnabled ? '关闭摄像头' : '开启摄像头' }}
-          </Button>
-          <Button size="sm" variant="ghost" :disabled="prewarming" @click="handlePrewarmVision">
-            {{ prewarming ? '处理中...' : '预加载/重试 Runtime' }}
-          </Button>
-          <Button size="sm" variant="ghost" :disabled="prewarming" @click="handleRetryRuntime">
-            Retry Runtime
-          </Button>
-          <Button size="sm" variant="ghost" :disabled="prewarming" @click="handleResetRuntime">
-            Reset Runtime
           </Button>
           <Button size="sm" variant="ghost" @click="openEnrollmentPage">
             打开人脸录入页
           </Button>
-        </div>
-
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            Vision Runtime
-          </div>
-          <div>status: {{ runtimeStatusText }}</div>
-          <div>warmupDuration: {{ runtimeWarmupDurationText }}</div>
-          <div>retryCount: {{ runtimeRetryCount }}</div>
-          <div>lastError: {{ runtimeLastError || 'none' }}</div>
-          <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
-            First startup may take a moment.
-          </div>
-          <div :class="['text-neutral-500 dark:text-neutral-400']">
-            Models are reused after warmup.
-          </div>
-          <div :class="['text-neutral-500 dark:text-neutral-400']">
-            Stop Camera releases camera only; models stay ready.
-          </div>
-        </div>
-
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            手势映射
-          </div>
-          <div :class="['mb-1 text-neutral-500 dark:text-neutral-400']">
-            Optional experimental controls (default off)
-          </div>
-          <div>Open Palm: quiet Rin visually</div>
-          <div>Victory: trigger Rin celebration</div>
-          <div>Thumbs Up: acknowledge current prompt</div>
-        </div>
-
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            Advanced / Experimental Gesture Controls
-          </div>
-          <label :class="['mb-2 flex items-center gap-2']">
-            <input
-              type="checkbox"
-              :checked="gestureControlsEnabled"
-              @change="toggleGestureControls"
-            >
-            <span>Enable experimental gesture controls</span>
-          </label>
-          <div>gestureEnabled: {{ gestureControlsEnabled ? 'true' : 'false' }}</div>
-          <div v-if="showAdvancedGestureDiagnostics">
-            <div>candidateGesture: {{ candidateGesture }}</div>
-            <div>stableGesture: {{ stableGesture }}</div>
-            <div>gestureState: {{ gestureState }}</div>
-            <div>gestureConfidence: {{ gestureConfidenceText }}</div>
-            <div>gestureVotes: {{ gestureVoteText }}</div>
-            <div>geometryPassRate: {{ geometryPassRateText }}</div>
-            <div>gestureQualityState: {{ gestureQualityState }}</div>
-            <div>handSize: {{ handSizeRatioText }}</div>
-            <div>handInsideGuideArea: {{ handInsideGuideArea ? 'true' : 'false' }}</div>
-            <div>holdProgress: {{ holdProgressText }}</div>
-            <div>cooldownRemainingMs: {{ cooldownRemainingText }}</div>
-            <div>releaseRequired: {{ releaseRequired ? 'true' : 'false' }}</div>
-            <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
-              {{ gestureCalibrationHint }}
-            </div>
-            <div :class="['text-neutral-500 dark:text-neutral-400']">
-              Move your hand closer.
-            </div>
-            <div :class="['text-neutral-500 dark:text-neutral-400']">
-              Keep your hand inside the guide area.
-            </div>
-            <div :class="['text-neutral-500 dark:text-neutral-400']">
-              Hold the gesture steady.
-            </div>
-            <div :class="['text-neutral-500 dark:text-neutral-400']">
-              Release your hand to trigger again.
-            </div>
-            <div :class="['text-neutral-500 dark:text-neutral-400']">
-              Better lighting may help.
-            </div>
-          </div>
-          <div
-            v-else
-            :class="['text-neutral-500 dark:text-neutral-400']"
+          <Button
+            data-testid="advanced-diagnostics-toggle"
+            size="sm"
+            variant="ghost"
+            @click="advancedDiagnosticsExpanded = !advancedDiagnosticsExpanded"
           >
-            Experimental gesture controls are currently disabled.
-          </div>
+            {{ advancedDiagnosticsExpanded ? '收起 Advanced / Diagnostics' : '展开 Advanced / Diagnostics' }}
+          </Button>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            模型状态
+            Core status
           </div>
-          <div>预热状态：{{ modelWarmupStatusText }}</div>
-          <div>当前来源：{{ modelSourceText }}</div>
-          <div>模型规格：{{ modelProfile }}</div>
-          <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
-            默认仅使用构建期挂载的本地模型与 wasm。不会因为本地模式降级为弱模型。
+          <div>cameraState: {{ cameraStateText }}</div>
+          <div>facePresence: {{ facePresenceText }}</div>
+          <div>faceDirection: {{ faceDirectionText }}</div>
+          <div>faceGate: {{ gateStateText }}</div>
+          <div>matchStatus: {{ gateProfileStatusText }}</div>
+          <div v-if="matchedDisplayName">
+            matchedUser: {{ matchedDisplayName }}
           </div>
-        </div>
-
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            Vision Diagnostics
-          </div>
-          <div>runtimeStatus: {{ runtimeStatusText }}</div>
-          <div>cameraState: {{ cameraState }}</div>
-          <div>cameraPermission: {{ cameraPermissionStateText }}</div>
-          <div>MediaPipe: {{ mediaPipeStatusText }}</div>
-          <div>OpenCV: {{ openCvStatusText }}</div>
-          <div>faceProfile: {{ profileStatus }}</div>
-          <div>faceGate: {{ localFaceGate.gateState }} / {{ gateProfileStatusText }}</div>
-          <div>lastError: {{ visionDiagnosticsLastError }}</div>
-        </div>
-
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            启动耗时
-          </div>
-          <div>权限请求：{{ permissionTimingText }}</div>
-          <div>video.play：{{ videoPlayTimingText }}</div>
-          <div>识别器初始化：{{ recognizerInitTimingText }}</div>
-          <div>可见画面就绪：{{ readyForPreviewTimingText }}</div>
-          <div>总耗时：{{ totalTimingText }}</div>
-        </div>
-
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <div>摄像头：{{ cameraStateText }}</div>
-          <div>人脸在位：{{ facePresenceText }}</div>
-          <div>人脸方向：{{ faceDirectionText }}</div>
-          <div>人脸中心：{{ faceCenterText }}</div>
-          <div>最近手势：{{ gestureText }}</div>
-          <div>最近推理：{{ lastInferenceText }}</div>
-          <div>交互安静模式：{{ isVisionQuiet ? `进行中（${quietRemainingSeconds}秒）` : '未开启' }}</div>
-          <div>本地庆祝计数：{{ localCelebrationCount }}</div>
+          <div>interactiveFeedback: {{ canTriggerInteractiveFeedback ? 'allowed' : 'gated' }}</div>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
@@ -1252,46 +1136,6 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
               </option>
             </select>
           </label>
-          <label :class="['mb-2 flex items-center gap-2']">
-            <span>Locale:</span>
-            <select
-              data-testid="feedback-locale-select"
-              :value="feedbackLocale"
-              :class="[
-                'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-                'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-              ]"
-              @change="onFeedbackLocaleChange"
-            >
-              <option
-                v-for="option in feedbackLocaleOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label :class="['mb-2 flex items-center gap-2']">
-            <span>Variant:</span>
-            <select
-              data-testid="feedback-variant-select"
-              :value="feedbackVariant"
-              :class="[
-                'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-                'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-              ]"
-              @change="onFeedbackVariantChange"
-            >
-              <option
-                v-for="option in feedbackVariantOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
           <div
             v-if="bubbleVisible"
             data-testid="vision-feedback-bubble"
@@ -1309,54 +1153,17 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
               {{ activeBubbleLevelText }} · {{ bubbleRemainingSeconds }}s
             </div>
           </div>
+          <div>latestBubble: {{ activeBubbleMessageText }}</div>
           <div>faceCenter: {{ faceCenterText }}</div>
-          <div>faceDirection: {{ faceDirectionText }}</div>
           <div>subjectPosition: {{ subjectPositionText }}</div>
           <div>stableSubjectPosition: {{ stableSubjectPositionText }}</div>
           <div>subjectResponseState: {{ interactionSubjectResponseStateText }}</div>
           <div>petSubjectResponseState: {{ petSubjectResponseStateText }}</div>
           <div>subjectResponseGate: {{ subjectResponseGateText }}</div>
-          <div>subjectResponseCooldownSec: {{ subjectResponseCooldownSeconds }}</div>
-          <div>lastFeedbackType: {{ lastContextualFeedbackTypeText }}</div>
-          <div>resolvedFeedbackEventType: {{ resolvedFeedbackEventTypeText }}</div>
-          <div>transitionFeedback: {{ transitionFeedbackBadgeText }}</div>
           <div>lastFeedbackMessage: {{ lastContextualFeedbackMessageText }}</div>
-          <div>feedbackLevel: {{ contextualFeedbackLevelText }}</div>
-          <div>feedbackPriority: {{ contextualFeedbackPriorityText }}</div>
-          <div>feedbackChannels: {{ contextualFeedbackChannelsText }}</div>
-          <div>feedbackTemplateId: {{ contextualFeedbackTemplateIdText }}</div>
-          <div>activeBubbleMessage: {{ activeBubbleMessageText }}</div>
-          <div>activeBubbleLevel: {{ activeBubbleLevelText }}</div>
-          <div>activeBubbleEventType: {{ activeBubbleEventTypeText }}</div>
-          <div>activeBubbleTemplateId: {{ activeBubbleTemplateIdText }}</div>
-          <div>bubbleVisibleUntil: {{ bubbleVisibleUntil }}</div>
-          <div>bubbleRemainingSec: {{ bubbleRemainingSeconds }}</div>
-          <div>nextAllowedFeedbackIn: {{ nextAllowedFeedbackSeconds }}</div>
-          <div>dwellStatus: {{ dwellStatusText }}</div>
-          <div>quietSuppressed: {{ feedbackSuppressedByQuiet ? 'yes' : 'no' }}</div>
-          <div>gateBlocked: {{ feedbackBlockedByGate ? 'yes' : 'no' }}</div>
-          <div>subjectPositionChangedAt: {{ subjectPositionChangedText }}</div>
           <div>lastSubjectResponseEvent: {{ lastSubjectResponseSummary }}</div>
           <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
             Rin reacts only to the matched subject.
-          </div>
-          <div :class="['text-neutral-500 dark:text-neutral-400']">
-            Rin reacts with short local feedback.
-          </div>
-          <div :class="['text-neutral-500 dark:text-neutral-400']">
-            Feedback intensity controls how expressive Rin is.
-          </div>
-          <div :class="['text-neutral-500 dark:text-neutral-400']">
-            Feedback intensity changes how often and how expressively Rin responds.
-          </div>
-          <div :class="['text-neutral-500 dark:text-neutral-400']">
-            Transition feedback makes returns and gate changes feel more natural.
-          </div>
-          <div :class="['text-neutral-500 dark:text-neutral-400']">
-            Bubble feedback is local to the vision experiment.
-          </div>
-          <div :class="['text-neutral-500 dark:text-neutral-400']">
-            Locale changes only local feedback templates.
           </div>
           <div :class="['text-neutral-500 dark:text-neutral-400']">
             This is gaze-like feedback, not strict gaze measurement.
@@ -1370,7 +1177,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 
         <div data-testid="expression-signal-panel" :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            Expression Signal
+            Face Motion Signals
           </div>
           <label :class="['mb-2 flex items-center gap-2']">
             <input
@@ -1381,17 +1188,8 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             >
             <span>Enable Expression Signals</span>
           </label>
-          <div>expressionSignal: {{ expressionSignal }}</div>
-          <div>expressionSignalCandidate: {{ expressionSignalCandidate }}</div>
-          <div>stableExpressionSignal: {{ stableExpressionSignal }}</div>
-          <div>confidence: {{ expressionSignalConfidenceText }}</div>
-          <div>reason: {{ expressionSignalReason }}</div>
-          <div>source: {{ expressionSignalSource }}</div>
-          <div>stableFrames: {{ expressionSignalStableFrames }}</div>
-          <div>signalChangedAt: {{ expressionSignalChangedText }}</div>
-          <div>cooldownRemainingSec: {{ expressionSignalCooldownRemainingSeconds }}</div>
-          <div>feedbackAllowed: {{ expressionSignalFeedbackAllowed ? 'yes' : 'no' }}</div>
-          <div>signalUnavailable: {{ expressionSignalUnavailable ? 'yes' : 'no' }}</div>
+          <div>faceMotionSignals: {{ enableExpressionSignals ? 'on' : 'off' }}</div>
+          <div>currentSignal: {{ currentExpressionSignalText }}</div>
           <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
             Expression signals are local visual cues, not emotion detection.
           </div>
@@ -1404,46 +1202,25 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            Pet feedback
-          </div>
-          <div>Current pet state: {{ petFeedbackStateText }}</div>
-          <div>Last pet feedback: {{ lastPetFeedbackSummary }}</div>
-          <div>Quiet remaining seconds: {{ isQuietVisualMode ? petQuietRemainingSeconds : 0 }}</div>
-          <div>Celebration count: {{ petCelebrationCount }}</div>
-          <div
-            v-if="shouldShowPetFeedbackGatedHint"
-            :class="['mt-1 text-amber-600 dark:text-amber-300']"
-          >
-            Gesture detected but pet feedback gated.
-          </div>
-          <div v-if="isQuietVisualMode" :class="['mt-2 flex items-center gap-2']">
-            <Button size="sm" variant="ghost" @click="cancelQuietVisualMode">
-              关闭 quiet visual mode
-            </Button>
-          </div>
-        </div>
-
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
           <div :class="['font-600 text-neutral-700 dark:text-neutral-200']">
             本地人脸门控
           </div>
-          <div>档案：{{ profileHint }}</div>
           <div>门控开关：{{ gateEnabled ? '开启' : '关闭' }}</div>
           <div>门控状态：{{ gateStateText }}</div>
           <div>匹配状态：{{ profileStatusText }}</div>
+          <div>匹配细分：{{ gateProfileStatusText }}</div>
           <div>距离：{{ localFaceGate.matchScore ?? '未知' }}</div>
           <div>交互结果：{{ canTriggerInteractiveFeedback ? '放行' : '拦截' }}</div>
-          <div v-if="matchedDisplayName">
-            当前匹配用户：{{ matchedDisplayName }}
-          </div>
-          <div v-if="gateEnabled && hasEncryptedProfile && !isProfileUnlocked" :class="['mt-1 text-amber-600 dark:text-amber-300']">
-            人脸档案已锁定，解锁后才能启用门控交互。
-          </div>
           <div :class="['mt-2 flex items-center gap-2']">
             <Button size="sm" :variant="gateEnabled ? 'secondary' : 'primary'" @click="toggleGate">
               {{ gateEnabled ? '关闭人脸门控' : '开启人脸门控' }}
             </Button>
+          </div>
+          <div v-if="matchedDisplayName" :class="['mt-1']">
+            当前匹配用户：{{ matchedDisplayName }}
+          </div>
+          <div v-if="gateEnabled && hasEncryptedProfile && !isProfileUnlocked" :class="['mt-1 text-amber-600 dark:text-amber-300']">
+            人脸档案已锁定，解锁后才能启用门控交互。
           </div>
           <div v-if="hasEncryptedProfile && !isProfileUnlocked" :class="['mt-2 flex flex-col gap-1']">
             <input
@@ -1476,42 +1253,292 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           </div>
         </div>
 
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <div :class="['font-600 text-neutral-700 dark:text-neutral-200']">
-            最近事件
+        <div
+          v-if="advancedDiagnosticsExpanded"
+          data-testid="advanced-diagnostics-panel"
+          :class="['rounded-xl border border-neutral-200/80 bg-neutral-50/85 p-2 text-xs dark:border-neutral-700/70 dark:bg-neutral-900/55']"
+        >
+          <div :class="['mb-2 font-600 text-neutral-700 dark:text-neutral-200']">
+            Advanced / Diagnostics
           </div>
-          <div v-if="lastEvent">
-            {{ lastEvent.message }} ({{ new Date(lastEvent.at).toLocaleTimeString() }})
-          </div>
-          <div v-else>
-            无
-          </div>
-        </div>
 
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <div :class="['font-600 text-neutral-700 dark:text-neutral-200']">
-            当前提示
+          <div :class="['mb-2 flex flex-wrap items-center gap-2']">
+            <Button size="sm" variant="ghost" :disabled="prewarming" @click="handlePrewarmVision">
+              {{ prewarming ? '处理中...' : '预加载/重试 Runtime' }}
+            </Button>
+            <Button size="sm" variant="ghost" :disabled="prewarming" @click="handleRetryRuntime">
+              Retry Runtime
+            </Button>
+            <Button size="sm" variant="ghost" :disabled="prewarming" @click="handleResetRuntime">
+              Reset Runtime
+            </Button>
           </div>
-          <div v-if="activePrompt">
-            {{ activePrompt }}
-          </div>
-          <div v-else>
-            无
-          </div>
-        </div>
 
-        <label :class="['flex flex-col gap-1 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
-          <span :class="['font-600 text-neutral-700 dark:text-neutral-200']">推理停滞补偿（毫秒）</span>
-          <input
-            v-model="maxInferenceStallInput"
-            inputmode="numeric"
-            :class="[
-              'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-              'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-            placeholder="1200"
-          >
-        </label>
+          <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+              Vision Runtime
+            </div>
+            <div>status: {{ runtimeStatusText }}</div>
+            <div>warmupDuration: {{ runtimeWarmupDurationText }}</div>
+            <div>retryCount: {{ runtimeRetryCount }}</div>
+            <div>lastError: {{ runtimeLastError || 'none' }}</div>
+            <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+              First startup may take a moment.
+            </div>
+            <div :class="['text-neutral-500 dark:text-neutral-400']">
+              Models are reused after warmup.
+            </div>
+            <div :class="['text-neutral-500 dark:text-neutral-400']">
+              Stop Camera releases camera only; models stay ready.
+            </div>
+          </div>
+
+          <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+              模型状态
+            </div>
+            <div>预热状态：{{ modelWarmupStatusText }}</div>
+            <div>当前来源：{{ modelSourceText }}</div>
+            <div>模型规格：{{ modelProfile }}</div>
+          </div>
+
+          <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+              Vision Diagnostics
+            </div>
+            <div>runtimeStatus: {{ runtimeStatusText }}</div>
+            <div>cameraState: {{ cameraState }}</div>
+            <div>cameraPermission: {{ cameraPermissionStateText }}</div>
+            <div>MediaPipe: {{ mediaPipeStatusText }}</div>
+            <div>OpenCV: {{ openCvStatusText }}</div>
+            <div>faceProfile: {{ profileStatus }}</div>
+            <div>faceGate: {{ localFaceGate.gateState }} / {{ gateProfileStatusText }}</div>
+            <div>lastError: {{ visionDiagnosticsLastError }}</div>
+          </div>
+
+          <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+              启动耗时
+            </div>
+            <div>权限请求：{{ permissionTimingText }}</div>
+            <div>video.play：{{ videoPlayTimingText }}</div>
+            <div>识别器初始化：{{ recognizerInitTimingText }}</div>
+            <div>可见画面就绪：{{ readyForPreviewTimingText }}</div>
+            <div>总耗时：{{ totalTimingText }}</div>
+          </div>
+
+          <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div>最近手势：{{ gestureText }}</div>
+            <div>最近推理：{{ lastInferenceText }}</div>
+            <div>交互安静模式：{{ isVisionQuiet ? `进行中（${quietRemainingSeconds}秒）` : '未开启' }}</div>
+            <div>quietSuppressed: {{ feedbackSuppressedByQuiet ? 'yes' : 'no' }}</div>
+            <div>gateBlocked: {{ feedbackBlockedByGate ? 'yes' : 'no' }}</div>
+            <div>本地庆祝计数：{{ localCelebrationCount }}</div>
+            <div>Current pet state: {{ petFeedbackStateText }}</div>
+            <div>Last pet feedback: {{ lastPetFeedbackSummary }}</div>
+            <div>Quiet remaining seconds: {{ isQuietVisualMode ? petQuietRemainingSeconds : 0 }}</div>
+            <div>Celebration count: {{ petCelebrationCount }}</div>
+            <div
+              v-if="shouldShowPetFeedbackGatedHint"
+              :class="['mt-1 text-amber-600 dark:text-amber-300']"
+            >
+              Gesture detected but pet feedback gated.
+            </div>
+            <div v-if="isQuietVisualMode" :class="['mt-2 flex items-center gap-2']">
+              <Button size="sm" variant="ghost" @click="cancelQuietVisualMode">
+                关闭 quiet visual mode
+              </Button>
+            </div>
+          </div>
+
+          <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+              Contextual feedback diagnostics
+            </div>
+            <label :class="['mb-2 flex items-center gap-2']">
+              <span>Locale:</span>
+              <select
+                data-testid="feedback-locale-select"
+                :value="feedbackLocale"
+                :class="[
+                  'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
+                  'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
+                ]"
+                @change="onFeedbackLocaleChange"
+              >
+                <option
+                  v-for="option in feedbackLocaleOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+            <label :class="['mb-2 flex items-center gap-2']">
+              <span>Variant:</span>
+              <select
+                data-testid="feedback-variant-select"
+                :value="feedbackVariant"
+                :class="[
+                  'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
+                  'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
+                ]"
+                @change="onFeedbackVariantChange"
+              >
+                <option
+                  v-for="option in feedbackVariantOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+            <div>lastFeedbackType: {{ lastContextualFeedbackTypeText }}</div>
+            <div>resolvedFeedbackEventType: {{ resolvedFeedbackEventTypeText }}</div>
+            <div>transitionFeedback: {{ transitionFeedbackBadgeText }}</div>
+            <div>feedbackLevel: {{ contextualFeedbackLevelText }}</div>
+            <div>feedbackPriority: {{ contextualFeedbackPriorityText }}</div>
+            <div>feedbackChannels: {{ contextualFeedbackChannelsText }}</div>
+            <div>feedbackTemplateId: {{ contextualFeedbackTemplateIdText }}</div>
+            <div>activeBubbleLevel: {{ activeBubbleLevelText }}</div>
+            <div>activeBubbleEventType: {{ activeBubbleEventTypeText }}</div>
+            <div>activeBubbleTemplateId: {{ activeBubbleTemplateIdText }}</div>
+            <div>bubbleVisibleUntil: {{ bubbleVisibleUntil }}</div>
+            <div>bubbleRemainingSec: {{ bubbleRemainingSeconds }}</div>
+            <div>nextAllowedFeedbackIn: {{ nextAllowedFeedbackSeconds }}</div>
+            <div>dwellStatus: {{ dwellStatusText }}</div>
+            <div>subjectResponseCooldownSec: {{ subjectResponseCooldownSeconds }}</div>
+            <div>subjectPositionChangedAt: {{ subjectPositionChangedText }}</div>
+          </div>
+
+          <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+              Advanced / Experimental Gesture Controls
+            </div>
+            <label :class="['mb-2 flex items-center gap-2']">
+              <input
+                data-testid="gesture-controls-toggle"
+                type="checkbox"
+                :checked="gestureControlsEnabled"
+                @change="toggleGestureControls"
+              >
+              <span>Enable experimental gesture controls</span>
+            </label>
+            <div>gestureEnabled: {{ gestureControlsEnabled ? 'true' : 'false' }}</div>
+            <Button
+              data-testid="gesture-diagnostics-toggle"
+              size="sm"
+              variant="ghost"
+              @click="gestureDiagnosticsExpanded = !gestureDiagnosticsExpanded"
+            >
+              {{ gestureDiagnosticsExpanded ? 'Hide gesture diagnostics' : 'Show gesture diagnostics' }}
+            </Button>
+            <div v-if="showAdvancedGestureDiagnostics" :class="['mt-2']">
+              <div>candidateGesture: {{ candidateGesture }}</div>
+              <div>stableGesture: {{ stableGesture }}</div>
+              <div>gestureState: {{ gestureState }}</div>
+              <div>gestureConfidence: {{ gestureConfidenceText }}</div>
+              <div>gestureVotes: {{ gestureVoteText }}</div>
+              <div>geometryPassRate: {{ geometryPassRateText }}</div>
+              <div>gestureQualityState: {{ gestureQualityState }}</div>
+              <div>handSize: {{ handSizeRatioText }}</div>
+              <div>handInsideGuideArea: {{ handInsideGuideArea ? 'true' : 'false' }}</div>
+              <div>holdProgress: {{ holdProgressText }}</div>
+              <div>cooldownRemainingMs: {{ cooldownRemainingText }}</div>
+              <div>releaseRequired: {{ releaseRequired ? 'true' : 'false' }}</div>
+              <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+                {{ gestureCalibrationHint }}
+              </div>
+              <div :class="['text-neutral-500 dark:text-neutral-400']">
+                Move your hand closer.
+              </div>
+              <div :class="['text-neutral-500 dark:text-neutral-400']">
+                Keep your hand inside the guide area.
+              </div>
+              <div :class="['text-neutral-500 dark:text-neutral-400']">
+                Hold the gesture steady.
+              </div>
+              <div :class="['text-neutral-500 dark:text-neutral-400']">
+                Release your hand to trigger again.
+              </div>
+              <div :class="['text-neutral-500 dark:text-neutral-400']">
+                Better lighting may help.
+              </div>
+            </div>
+            <div
+              v-else
+              :class="['mt-1 text-neutral-500 dark:text-neutral-400']"
+            >
+              Gesture diagnostics are collapsed by default.
+            </div>
+          </div>
+
+          <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+              Expression Signal diagnostics
+            </div>
+            <Button
+              data-testid="expression-diagnostics-toggle"
+              size="sm"
+              variant="ghost"
+              @click="expressionSignalDiagnosticsExpanded = !expressionSignalDiagnosticsExpanded"
+            >
+              {{ expressionSignalDiagnosticsExpanded ? 'Hide expression diagnostics' : 'Show expression diagnostics' }}
+            </Button>
+            <div v-if="expressionSignalDiagnosticsExpanded" :class="['mt-2']">
+              <div>expressionSignal: {{ expressionSignal }}</div>
+              <div>expressionSignalCandidate: {{ expressionSignalCandidate }}</div>
+              <div>stableExpressionSignal: {{ stableExpressionSignal }}</div>
+              <div>confidence: {{ expressionSignalConfidenceText }}</div>
+              <div>reason: {{ expressionSignalReason }}</div>
+              <div>source: {{ expressionSignalSource }}</div>
+              <div>stableFrames: {{ expressionSignalStableFrames }}</div>
+              <div>signalChangedAt: {{ expressionSignalChangedText }}</div>
+              <div>cooldownRemainingSec: {{ expressionSignalCooldownRemainingSeconds }}</div>
+              <div>feedbackAllowed: {{ expressionSignalFeedbackAllowed ? 'yes' : 'no' }}</div>
+              <div>signalUnavailable: {{ expressionSignalUnavailable ? 'yes' : 'no' }}</div>
+            </div>
+          </div>
+
+          <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div :class="['font-600 text-neutral-700 dark:text-neutral-200']">
+              最近事件
+            </div>
+            <div v-if="lastEvent">
+              {{ lastEvent.message }} ({{ new Date(lastEvent.at).toLocaleTimeString() }})
+            </div>
+            <div v-else>
+              无
+            </div>
+          </div>
+
+          <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <div :class="['font-600 text-neutral-700 dark:text-neutral-200']">
+              当前提示
+            </div>
+            <div v-if="activePrompt">
+              {{ activePrompt }}
+            </div>
+            <div v-else>
+              无
+            </div>
+          </div>
+
+          <label :class="['mt-2 flex flex-col gap-1 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+            <span :class="['font-600 text-neutral-700 dark:text-neutral-200']">推理停滞补偿（毫秒）</span>
+            <input
+              v-model="maxInferenceStallInput"
+              inputmode="numeric"
+              :class="[
+                'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
+                'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
+              ]"
+              placeholder="1200"
+            >
+          </label>
+        </div>
 
         <div v-if="errorMessage" :class="['rounded-xl bg-rose-50 p-2 text-xs text-rose-600 dark:bg-rose-950/35 dark:text-rose-300']">
           {{ errorMessage }}

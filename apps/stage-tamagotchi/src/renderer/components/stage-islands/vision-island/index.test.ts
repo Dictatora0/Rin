@@ -283,7 +283,16 @@ async function clickButton(container: HTMLElement, text: string) {
   await nextTick()
 }
 
-describe('visionIsland UI behavior', () => {
+async function openAdvancedDiagnostics(container: HTMLElement) {
+  const toggle = container.querySelector('[data-testid="advanced-diagnostics-toggle"]') as HTMLButtonElement | null
+  if (!toggle)
+    throw new Error('advanced diagnostics toggle not found')
+  toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await Promise.resolve()
+  await nextTick()
+}
+
+describe('visionIsland presentation layer (mocked composables)', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.start.mockReset()
@@ -318,49 +327,45 @@ describe('visionIsland UI behavior', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows default privacy guidance, mapping hints, and camera-off status', async () => {
+  it('shows simplified default state and keeps diagnostics hidden until expanded', async () => {
     const { container, unmount } = mountVisionIsland()
     await nextTick()
 
     const text = container.textContent ?? ''
     expect(text).toContain('视觉交互')
-    expect(text).toContain('摄像头：关闭')
-    expect(text).toContain('Open Palm: quiet Rin visually')
-    expect(text).toContain('Victory: trigger Rin celebration')
-    expect(text).toContain('Thumbs Up: acknowledge current prompt')
-    expect(text).toContain('Advanced / Experimental Gesture Controls')
-    expect(text).toContain('gestureEnabled: false')
-    expect(text).toContain('Experimental gesture controls are currently disabled.')
-    expect(text.includes('candidateGesture:')).toBe(false)
+    expect(text).toContain('开启摄像头')
+    expect(text).toContain('打开人脸录入页')
+    expect(text).toContain('Core status')
+    expect(text).toContain('cameraState: 关闭')
+    expect(text).toContain('faceGate: 未启用')
+    expect(text).toContain('matchStatus: not_enrolled')
     expect(text).toContain('本地人脸门控')
-    expect(text).toContain('摄像头默认关闭。')
-    expect(text).toContain('识别仅在本地运行。')
-    expect(text).toContain('不会上传任何摄像头数据。')
-    expect(text).toContain('Vision Runtime')
-    expect(text).toContain('status: idle')
-    expect(text).toContain('retryCount: 0')
-    expect(text).toContain('Vision Diagnostics')
-    expect(text).toContain('runtimeStatus: idle')
-    expect(text).toContain('cameraState: off')
-    expect(text).toContain('cameraPermission: unknown')
-    expect(text).toContain('MediaPipe: idle')
-    expect(text).toContain('OpenCV: ready')
-    expect(text).toContain('lastError: none')
     expect(text).toContain('Subject-position response')
     expect(text).toContain('subjectPosition: unknown')
     expect(text).toContain('stableSubjectPosition: unknown')
     expect(text).toContain('subjectResponseState: idle')
     expect(text).toContain('subjectResponseGate: allowed')
     expect(text).toContain('Feedback intensity:')
-    expect(text).toContain('Expression Signal')
+    expect(text).toContain('latestBubble: none')
+    expect(text).toContain('Face Motion Signals')
     expect(text).toContain('Enable Expression Signals')
-    expect(text).toContain('expressionSignal: none')
+    expect(text).toContain('faceMotionSignals: off')
+    expect(text).toContain('currentSignal: none')
     expect(text).toContain('Expression signals are local visual cues, not emotion detection.')
     expect(text).toContain('No expression data is uploaded.')
-    expect(text).toContain('lastFeedbackType: none')
     expect(text).toContain('lastFeedbackMessage: none')
-    expect(text).toContain('feedbackPriority: low')
     expect(text).toContain('This is gaze-like feedback, not strict gaze measurement.')
+    expect(text).toContain('展开 Advanced / Diagnostics')
+    expect(text).toContain('摄像头默认关闭。')
+    expect(text).toContain('识别仅在本地运行。')
+    expect(text).toContain('不会上传任何摄像头数据。')
+    expect(text.includes('Vision Runtime')).toBe(false)
+    expect(text.includes('Vision Diagnostics')).toBe(false)
+    expect(text.includes('feedbackTemplateId:')).toBe(false)
+    expect(text.includes('feedbackChannels:')).toBe(false)
+    expect(text.includes('cooldownRemainingSec:')).toBe(false)
+    expect(text.includes('gestureQualityState:')).toBe(false)
+    expect(text.includes('expressionSignalCandidate:')).toBe(false)
     expect(text.includes('eye tracking')).toBe(false)
     expect(text.includes('Emotion Recognition')).toBe(false)
     expect(mocks.warmupVisionRuntime).toHaveBeenCalledTimes(0)
@@ -390,6 +395,7 @@ describe('visionIsland UI behavior', () => {
     await clickButton(container, '关闭摄像头')
     expect(mocks.stop).toHaveBeenCalledTimes(1)
 
+    await openAdvancedDiagnostics(container)
     await clickButton(container, '预加载/重试 Runtime')
     expect(mocks.warmupVisionRuntime).toHaveBeenCalledTimes(1)
     expect(mocks.warmupVisionRuntime).toHaveBeenLastCalledWith({
@@ -412,17 +418,25 @@ describe('visionIsland UI behavior', () => {
     unmount()
   })
 
-  it('toggles experimental gesture controls and shows diagnostics only when enabled', async () => {
+  it('keeps gesture diagnostics collapsed by default and only shows them after explicit expand', async () => {
     const { container, unmount } = mountVisionIsland()
     await nextTick()
 
-    expect(container.textContent ?? '').toContain('gestureEnabled: false')
+    expect(container.textContent ?? '').not.toContain('Advanced / Experimental Gesture Controls')
+    expect(container.textContent ?? '').not.toContain('gestureEnabled:')
     expect(container.textContent ?? '').not.toContain('gestureQualityState:')
 
-    const gestureToggle = container.querySelector('input[type="checkbox"]')
+    await openAdvancedDiagnostics(container)
+    expect(container.textContent ?? '').toContain('Advanced / Experimental Gesture Controls')
+    expect(container.textContent ?? '').toContain('gestureEnabled: false')
+    expect(container.textContent ?? '').toContain('Gesture diagnostics are collapsed by default.')
+    expect(container.textContent ?? '').not.toContain('gestureQualityState:')
+
+    const gestureToggle = container.querySelector('[data-testid="gesture-controls-toggle"]') as HTMLInputElement | null
     if (!gestureToggle) {
       throw new Error('experimental gesture toggle not found')
-    }(gestureToggle as HTMLInputElement).checked = true
+    }
+    gestureToggle.checked = true
     gestureToggle.dispatchEvent(new Event('change', { bubbles: true }))
     await nextTick()
 
@@ -446,6 +460,7 @@ describe('visionIsland UI behavior', () => {
     mocks.interactionState.releaseRequired.value = true
     await nextTick()
 
+    await clickButton(container, 'Show gesture diagnostics')
     const text = container.textContent ?? ''
     expect(text).toContain('gestureEnabled: true')
     expect(text).toContain('candidateGesture: victory')
@@ -461,7 +476,7 @@ describe('visionIsland UI behavior', () => {
     expect(text).toContain('Better lighting may help.')
     expect(text.includes('eye tracking')).toBe(false)
 
-    ;(gestureToggle as HTMLInputElement).checked = false
+    gestureToggle.checked = false
     gestureToggle.dispatchEvent(new Event('change', { bubbles: true }))
     await nextTick()
 
@@ -470,7 +485,7 @@ describe('visionIsland UI behavior', () => {
     unmount()
   })
 
-  it('toggles expression signals and renders expression diagnostics in panel', async () => {
+  it('shows lightweight expression signal state by default and raw diagnostics only in advanced', async () => {
     const { container, unmount } = mountVisionIsland()
     await nextTick()
 
@@ -496,14 +511,22 @@ describe('visionIsland UI behavior', () => {
     mocks.interactionState.expressionSignalFeedbackAllowed.value = true
     await nextTick()
 
-    const text = container.textContent ?? ''
-    expect(text).toContain('expressionSignal: smile_like_signal')
-    expect(text).toContain('stableExpressionSignal: smile_like_signal')
-    expect(text).toContain('confidence: 0.58')
-    expect(text).toContain('reason: smile-like face motion')
-    expect(text).toContain('source: blendshape')
-    expect(text).toContain('feedbackAllowed: yes')
-    expect(text.includes('Emotion Recognition')).toBe(false)
+    const lightweightText = container.textContent ?? ''
+    expect(lightweightText).toContain('faceMotionSignals: on')
+    expect(lightweightText).toContain('currentSignal: smile_like_signal')
+    expect(lightweightText).not.toContain('expressionSignalCandidate:')
+    expect(lightweightText).not.toContain('confidence: 0.58')
+    expect(lightweightText.includes('Emotion Recognition')).toBe(false)
+
+    await openAdvancedDiagnostics(container)
+    await clickButton(container, 'Show expression diagnostics')
+    const diagnosticsText = container.textContent ?? ''
+    expect(diagnosticsText).toContain('expressionSignal: smile_like_signal')
+    expect(diagnosticsText).toContain('stableExpressionSignal: smile_like_signal')
+    expect(diagnosticsText).toContain('confidence: 0.58')
+    expect(diagnosticsText).toContain('reason: smile-like face motion')
+    expect(diagnosticsText).toContain('source: blendshape')
+    expect(diagnosticsText).toContain('feedbackAllowed: yes')
 
     expressionToggle.checked = false
     expressionToggle.dispatchEvent(new Event('change', { bubbles: true }))
@@ -511,133 +534,6 @@ describe('visionIsland UI behavior', () => {
 
     expect(mocks.setExpressionSignalsEnabled).toHaveBeenCalledWith(false)
 
-    unmount()
-  })
-
-  it('routes expression signal events to expression feedback trigger with gate-safe options', async () => {
-    const { unmount } = mountVisionIsland()
-    await nextTick()
-
-    mocks.interactionState.expressionSignalConfidence.value = 0.51
-    mocks.interactionState.expressionSignalReason.value = 'smile-like face motion'
-    mocks.interactionState.expressionSignalSource.value = 'blendshape'
-    mocks.interactionState.expressionSignalFeedbackAllowed.value = true
-    mocks.interactionState.lastEvent.value = {
-      id: 9901,
-      type: 'expression_smile_like_detected',
-      message: 'Smile-like signal detected.',
-      at: Date.now(),
-    }
-    await nextTick()
-
-    expect(mocks.triggerExpressionSignalFeedback).toHaveBeenCalledTimes(1)
-    expect(mocks.triggerExpressionSignalFeedback).toHaveBeenCalledWith(expect.objectContaining({
-      signal: 'smile_like_signal',
-      confidence: 0.51,
-      reason: 'smile-like face motion',
-      source: 'blendshape',
-      gateAllowed: true,
-      sourceEventId: 9901,
-    }))
-
-    unmount()
-  })
-
-  it('renders pet feedback and gate status changes deterministically', async () => {
-    const { container, unmount } = mountVisionIsland()
-    await nextTick()
-
-    mocks.interactionState.gateEnabled.value = true
-    mocks.interactionState.localFaceGate.gateState.value = 'locked'
-    mocks.interactionState.localFaceGate.profileStatus.value = 'multiple_faces'
-    mocks.interactionState.canTriggerInteractiveFeedback.value = false
-    mocks.interactionState.canTriggerSubjectPositionResponse.value = false
-    mocks.interactionState.profileStatus.value = 'encrypted'
-    mocks.interactionState.cameraPermissionState.value = 'denied'
-    mocks.interactionState.mediaPipeStatus.value = 'failed'
-    mocks.interactionState.openCvFaceQuality.status.value = 'fallback'
-    mocks.interactionState.openCvFaceQuality.errorMessage.value = 'OpenCV initialization failed'
-    mocks.interactionState.errorMessage.value = 'Vision prewarm failed'
-    mocks.interactionState.lastEvent.value = {
-      id: 71,
-      type: 'detected_but_gated',
-      message: 'Victory detected but gated',
-      at: Date.now(),
-    }
-    mocks.petFeedbackState.petFeedbackState.value = 'quiet'
-    mocks.petFeedbackState.isQuietVisualMode.value = true
-    mocks.petFeedbackState.quietRemainingMs.value = 4_500
-    mocks.petFeedbackState.celebrationCount.value = 3
-    mocks.petFeedbackState.lastPetFeedback.value = {
-      summary: 'Quiet visual mode activated.',
-      at: Date.now(),
-    }
-    await nextTick()
-
-    const text = container.textContent ?? ''
-    expect(text).toContain('门控状态：锁定')
-    expect(text).toContain('交互结果：拦截')
-    expect(text).toContain('Current pet state: quiet')
-    expect(text).toContain('Quiet remaining seconds: 5')
-    expect(text).toContain('Celebration count: 3')
-    expect(text).toContain('Gesture detected but pet feedback gated.')
-    expect(text).toContain('cameraPermission: denied')
-    expect(text).toContain('MediaPipe: failed')
-    expect(text).toContain('OpenCV: fallback')
-    expect(text).toContain('faceGate: locked / multiple_faces')
-    expect(text).toContain('lastError: Vision prewarm failed')
-    expect(text).toContain('subjectResponseGate: gated')
-    expect(mocks.triggerVisionPetFeedback).toHaveBeenCalledWith('gated', expect.objectContaining({
-      allowVisualFeedback: false,
-      gateEnabled: true,
-      gateState: 'locked',
-      sourceEventId: 71,
-    }))
-
-    unmount()
-  })
-
-  it('routes stable subject-position events to subject response feedback handler', async () => {
-    const { container, unmount } = mountVisionIsland()
-    await nextTick()
-
-    mocks.triggerContextualVisionFeedback.mockClear()
-    mocks.interactionState.lastEvent.value = {
-      id: 901,
-      type: 'user_moved_left',
-      message: 'I noticed you moved left.',
-      at: Date.now(),
-      subjectPosition: 'left',
-    }
-    await nextTick()
-
-    expect(mocks.triggerContextualVisionFeedback).toHaveBeenCalledTimes(1)
-    expect(mocks.triggerContextualVisionFeedback).toHaveBeenCalledWith('subject_moved_left', expect.objectContaining({
-      allowVisualFeedback: true,
-      gateEnabled: false,
-      gateState: 'disabled',
-      sourceEventId: 901,
-      direction: 'left',
-    }))
-
-    mocks.triggerContextualVisionFeedback.mockClear()
-    mocks.interactionState.lastEvent.value = {
-      id: 902,
-      type: 'subject_position_gated',
-      message: 'Subject position detected but gated.',
-      at: Date.now(),
-      subjectPosition: 'right',
-    }
-    await nextTick()
-
-    expect(mocks.triggerContextualVisionFeedback).toHaveBeenCalledTimes(1)
-    expect(mocks.triggerContextualVisionFeedback).toHaveBeenCalledWith('subject_gated', expect.objectContaining({
-      allowVisualFeedback: false,
-      sourceEventId: 902,
-      direction: 'right',
-    }))
-
-    expect(container.textContent ?? '').toContain('Subject-position response')
     unmount()
   })
 
@@ -665,9 +561,13 @@ describe('visionIsland UI behavior', () => {
     mocks.petFeedbackState.nextAllowedFeedbackIn.value = 2_400
     await nextTick()
 
+    const coreText = container.textContent ?? ''
+    expect(coreText).toContain('lastFeedbackMessage: Right side detected.')
+    expect(coreText.includes('lastFeedbackType: subject_moved_right')).toBe(false)
+
+    await openAdvancedDiagnostics(container)
     const text = container.textContent ?? ''
     expect(text).toContain('lastFeedbackType: subject_moved_right')
-    expect(text).toContain('lastFeedbackMessage: Right side detected.')
     expect(text).toContain('feedbackLevel: normal')
     expect(text).toContain('feedbackPriority: low')
     expect(text).toContain('quietSuppressed: yes')
@@ -680,6 +580,7 @@ describe('visionIsland UI behavior', () => {
     const { container, unmount } = mountVisionIsland()
     await nextTick()
 
+    await openAdvancedDiagnostics(container)
     const localeSelect = container.querySelector('[data-testid="feedback-locale-select"]') as HTMLSelectElement | null
     const variantSelect = container.querySelector('[data-testid="feedback-variant-select"]') as HTMLSelectElement | null
     if (!localeSelect || !variantSelect)
@@ -709,8 +610,7 @@ describe('visionIsland UI behavior', () => {
     expect(bubble?.textContent ?? '').toContain('Rin: 欢迎回来。')
 
     const text = container.textContent ?? ''
-    expect(text).toContain('Bubble feedback is local to the vision experiment.')
-    expect(text).toContain('Locale changes only local feedback templates.')
+    expect(text).toContain('latestBubble: 欢迎回来。')
     expect(text.includes('eye tracking')).toBe(false)
 
     mocks.petFeedbackState.activeBubbleMessage.value = ''
@@ -725,6 +625,7 @@ describe('visionIsland UI behavior', () => {
     const { container, unmount } = mountVisionIsland()
     await nextTick()
 
+    await openAdvancedDiagnostics(container)
     await clickButton(container, 'Retry Runtime')
     expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
     expect(mocks.toastError).toHaveBeenCalledTimes(1)
@@ -735,9 +636,7 @@ describe('visionIsland UI behavior', () => {
     expect(mocks.toastMessage).toHaveBeenCalledWith('Vision runtime reset complete.')
 
     const text = container.textContent ?? ''
-    expect(text).toContain('Open Palm: quiet Rin visually')
-    expect(text).toContain('Victory: trigger Rin celebration')
-    expect(text).toContain('Thumbs Up: acknowledge current prompt')
+    expect(text).toContain('Advanced / Diagnostics')
     expect(text).toContain('摄像头默认关闭。')
     expect(text).toContain('识别仅在本地运行。')
     expect(text).toContain('不会上传任何摄像头数据。')
@@ -764,28 +663,13 @@ describe('visionIsland UI behavior', () => {
     expect(mocks.start).toHaveBeenCalledTimes(1)
 
     const text = container.textContent ?? ''
-    expect(text).toContain('Vision Runtime')
-    expect(text).toContain('Vision Diagnostics')
-    unmount()
-  })
+    expect(text.includes('Vision Runtime')).toBe(false)
+    expect(text.includes('Vision Diagnostics')).toBe(false)
 
-  it('does not emit pet feedback for non-gesture/non-direction events', async () => {
-    const { container, unmount } = mountVisionIsland()
-    await nextTick()
-
-    mocks.triggerVisionPetFeedback.mockClear()
-    mocks.interactionState.lastEvent.value = {
-      id: 802,
-      type: 'face_gate_enrolled',
-      message: 'Face profile enrolled locally.',
-      at: Date.now(),
-    }
-    await nextTick()
-
-    expect(mocks.triggerVisionPetFeedback).toHaveBeenCalledTimes(0)
-    const text = container.textContent ?? ''
-    expect(text).toContain('Face profile enrolled locally.')
-    expect(text).toContain('Vision Diagnostics')
+    await openAdvancedDiagnostics(container)
+    const diagnosticsText = container.textContent ?? ''
+    expect(diagnosticsText).toContain('Vision Runtime')
+    expect(diagnosticsText).toContain('Vision Diagnostics')
     unmount()
   })
 })

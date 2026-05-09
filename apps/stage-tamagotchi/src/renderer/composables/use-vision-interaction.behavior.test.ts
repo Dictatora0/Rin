@@ -508,12 +508,36 @@ describe('useVisionInteraction behavior locks', () => {
       video: videoElement,
       gesture: 'Open_Palm',
       face: [createFaceAt(0.5, 0.5)],
-      count: 13,
+      count: 8,
       startNowMs: 200,
       startTimeSeconds: 1,
       stepMs: 120,
     })
+    expect(interaction.lastEvent.value?.type).not.toBe('quiet_mode_requested')
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Open_Palm',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 5,
+      startNowMs: 1_200,
+      startTimeSeconds: 9,
+      stepMs: 120,
+    })
     expect(interaction.lastEvent.value?.type).toBe('quiet_mode_requested')
+    const quietEventId = interaction.lastEvent.value?.id
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Open_Palm',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 6,
+      startNowMs: 2_000,
+      startTimeSeconds: 14,
+      stepMs: 120,
+    })
+    expect(interaction.lastEvent.value?.type).toBe('quiet_mode_requested')
+    expect(interaction.lastEvent.value?.id).toBe(quietEventId)
 
     await interaction.stop()
     app.unmount()
@@ -573,9 +597,19 @@ describe('useVisionInteraction behavior locks', () => {
       video: videoElement,
       gesture: 'Open_Palm',
       face: [createFaceAt(0.5, 0.5)],
-      count: 12,
+      count: 6,
       startNowMs: 200,
       startTimeSeconds: 1,
+    })
+    expect(interaction.lastEvent.value?.type).not.toBe('quiet_mode_requested')
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'Open_Palm',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 6,
+      startNowMs: 1_400,
+      startTimeSeconds: 7,
     })
     expect(interaction.lastEvent.value?.type).toBe('quiet_mode_requested')
     const firstEventId = interaction.lastEvent.value?.id ?? -1

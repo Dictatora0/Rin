@@ -1325,7 +1325,16 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
             ? 'expression_looking_away_detected'
             : 'expression_unclear_detected'
 
-    const allowVisualFeedback = options.gateAllowed ?? true
+    const blockedByGateProfile = options.gateEnabled
+      && (
+        options.gateState === 'locked'
+        || options.gateState === 'gated'
+        || options.gateProfileStatus === 'unmatched'
+        || options.gateProfileStatus === 'multiple_faces'
+        || options.gateProfileStatus === 'no_face'
+        || options.gateProfileStatus === 'uncertain'
+      )
+    const allowVisualFeedback = (options.gateAllowed ?? true) && !blockedByGateProfile
     const eventLevel = options.signal === 'unclear_face_signal' || options.signal === 'low_confidence'
       ? 'subtle'
       : undefined

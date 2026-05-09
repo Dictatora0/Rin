@@ -679,7 +679,7 @@ describe('useVisionPetFeedback', () => {
     unmount()
   })
 
-  it('blocks expression signal feedback when gate disallows or multiple subjects are present', () => {
+  it('blocks expression signal feedback when gate disallows and when multiple subjects are reported', () => {
     const { feedback, unmount } = createFeedbackHarness()
 
     const blockedByGate = feedback.triggerExpressionSignalFeedback({
@@ -695,6 +695,27 @@ describe('useVisionPetFeedback', () => {
     })
     expect(blockedByGate).toBe(true)
     expect(feedback.lastResolvedFeedbackEventType.value).toBe('subject_gated')
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.expression).toBeUndefined()
+    expect(feedback.activeBubbleMessage.value).toBe('')
+
+    const blockedByMultipleSubjects = feedback.triggerExpressionSignalFeedback({
+      signal: 'smile_like_signal',
+      confidence: 0.86,
+      reason: 'smile-like face motion',
+      source: 'blendshape',
+      gateAllowed: true,
+      gateEnabled: true,
+      gateState: 'enabled',
+      gateProfileStatus: 'multiple_faces',
+      presence: 'present',
+      force: true,
+    })
+
+    expect(blockedByMultipleSubjects).toBe(true)
+    expect(feedback.lastResolvedFeedbackEventType.value).toBe('subject_gated')
+    expect(feedback.lastFeedbackType.value).toBe('subject_gated')
+    expect(feedback.lastSubjectResponseEvent.value?.gated).toBe(true)
     expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
     expect(feedback.lastSubjectResponseEvent.value?.expression).toBeUndefined()
     expect(feedback.activeBubbleMessage.value).toBe('')
@@ -921,6 +942,10 @@ describe('useVisionPetFeedback', () => {
     expect(feedback.activeBubbleMessage.value).toBe('')
     expect(feedback.lastResolvedFeedbackEventType.value).toBe('transition_gated_to_matched')
     expect(feedback.lastFeedbackLevel.value).toBe('strong')
+    expect(feedback.lastSubjectResponseEvent.value?.suppressedByQuiet).toBe(true)
+    expect(feedback.lastSubjectResponseEvent.value?.toastMessage).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.motion).toBeUndefined()
+    expect(feedback.lastSubjectResponseEvent.value?.expression).toBeUndefined()
     unmount()
   })
 
