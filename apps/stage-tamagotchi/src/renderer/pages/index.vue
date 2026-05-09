@@ -33,7 +33,6 @@ import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/
 import { refDebounced, useAsyncState, useBroadcastChannel } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
 
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
@@ -61,7 +60,6 @@ const shouldFadeOnCursorWithin = ref(false)
 
 const onboardingStore = useOnboardingStore()
 const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
-const { t } = useI18n()
 const eventaContext = useElectronEventaContext()
 const isLinux = useElectronEventaInvoke(electron.app.isLinux)
 const { state: isLinuxRef } = useAsyncState(() => isLinux(), false)
@@ -501,8 +499,8 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
           'transition-opacity duration-250 ease-in-out',
         ]"
       >
-        <StatusIsland ref="statusIslandRef" />
-        <ResourceStatusIsland />
+        <StatusIsland ref="statusIslandRef" class="relative z-60" />
+        <ResourceStatusIsland class="relative z-60" />
         <WidgetStage
           ref="widgetStageRef"
           v-model:state="componentStateStage"
@@ -517,6 +515,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
         <HoloCoupon />
         <ControlsIsland
           ref="controlsIslandRef"
+          class="relative z-120"
         />
       </div>
     </div>
@@ -548,7 +547,6 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
   <StageMoveOverlay
     :enabled="moveModeEnabled && !isLoading"
     :is-linux="isLinuxRef"
-    :hint="t('tamagotchi.stage.controls-island.move-mode.hint')"
     @start-drag="handleMoveOverlayDragStart"
   />
   <Transition

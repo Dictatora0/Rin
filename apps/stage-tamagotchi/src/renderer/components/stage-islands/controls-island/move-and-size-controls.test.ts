@@ -6,9 +6,8 @@ import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 import ControlsIsland from './index.vue'
 
 const mocks = vi.hoisted(() => {
-  const moveModeEnabled = { value: false }
   return {
-    moveModeEnabled,
+    moveModeEnabled: { value: false },
     isOutside: { value: false } as { value: boolean },
     openSettings: vi.fn(),
     openChat: vi.fn(),
@@ -20,7 +19,7 @@ const mocks = vi.hoisted(() => {
     getPrimaryDisplay: vi.fn(async () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } })),
     unknownEvents: [] as string[],
     toggleMoveMode: vi.fn(() => {
-      moveModeEnabled.value = !moveModeEnabled.value
+      mocks.moveModeEnabled.value = !mocks.moveModeEnabled.value
     }),
   }
 })
@@ -241,7 +240,7 @@ describe('controls island move mode and size controls', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.isOutside = ref(false)
-    mocks.moveModeEnabled.value = false
+    mocks.moveModeEnabled = ref(false)
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
     mocks.closeWindow.mockReset()
@@ -265,22 +264,36 @@ describe('controls island move mode and size controls', () => {
     clickExpand(container)
     await nextTick()
 
+    const controlsRoot = container.querySelector('[data-testid="controls-island-root"]') as HTMLDivElement | null
+    expect(controlsRoot).not.toBeNull()
+    expect(controlsRoot?.className).toContain('controls-island-root')
+    expect(controlsRoot?.className).toContain('z-120')
+
     const toggleButton = container.querySelector('[data-testid="controls-move-mode-toggle"]') as HTMLButtonElement | null
     expect(toggleButton).not.toBeNull()
     expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.move-mode.toggle')
+    expect(toggleButton?.getAttribute('aria-pressed')).toBe('false')
     expect(mocks.moveModeEnabled.value).toBe(false)
+    expect(container.querySelector('[data-testid="controls-move-mode-status"]')).toBeNull()
 
     toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
     expect(mocks.toggleMoveMode).toHaveBeenCalledTimes(1)
     expect(mocks.moveModeEnabled.value).toBe(true)
+    expect(toggleButton?.getAttribute('aria-pressed')).toBe('true')
+    const status = container.querySelector('[data-testid="controls-move-mode-status"]')
+    expect(status).not.toBeNull()
+    expect(status?.textContent).toContain('tamagotchi.stage.controls-island.move-mode.status-on')
+    expect(status?.textContent).toContain('tamagotchi.stage.controls-island.move-mode.status-hint')
 
     toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
     expect(mocks.toggleMoveMode).toHaveBeenCalledTimes(2)
     expect(mocks.moveModeEnabled.value).toBe(false)
+    expect(toggleButton?.getAttribute('aria-pressed')).toBe('false')
+    expect(container.querySelector('[data-testid="controls-move-mode-status"]')).toBeNull()
 
     unmount()
   })

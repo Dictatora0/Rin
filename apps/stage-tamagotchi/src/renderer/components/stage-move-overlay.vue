@@ -1,9 +1,11 @@
 <script setup lang="ts">
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   enabled: boolean
   isLinux: boolean
-  hint: string
-}>()
+  debug?: boolean
+}>(), {
+  debug: false,
+})
 
 const emit = defineEmits<{
   (event: 'startDrag'): void
@@ -29,32 +31,46 @@ function handleDragMouseDown() {
       v-if="enabled"
       data-testid="stage-move-overlay"
       :class="[
-        'absolute left-0 top-0 z-40 h-full w-full',
-        'pointer-events-none flex items-center justify-center',
+        'stage-move-overlay',
+        'absolute left-0 top-0 z-30 h-full w-full pointer-events-none',
       ]"
     >
       <div
-        data-testid="stage-move-overlay-panel"
+        data-testid="stage-move-hit-area"
         :class="[
-          'h-[60%] w-[76%] max-h-96 max-w-96 rounded-xl',
-          'pointer-events-auto cursor-grab select-none',
-          'border border-primary-300/70 bg-white/60 backdrop-blur-md',
-          'dark:border-primary-500/50 dark:bg-neutral-950/55',
+          'stage-move-hit-area',
+          'absolute pointer-events-auto cursor-move select-none',
+          props.debug ? 'stage-move-hit-area-debug' : '',
           props.isLinux ? 'drag-region' : '',
         ]"
         @mousedown="handleDragMouseDown"
-      >
-        <div
-          :class="[
-            'h-full w-full flex items-center justify-center rounded-xl',
-            'animate-flash animate-duration-5s animate-count-infinite',
-            'text-center text-3.5 text-primary-700 dark:text-primary-300',
-            props.isLinux ? 'drag-region' : '',
-          ]"
-        >
-          {{ hint }}
-        </div>
-      </div>
+      />
     </div>
   </Transition>
 </template>
+
+<style scoped>
+.stage-move-overlay {
+  --stage-move-hit-area-width: min(70vw, 420px);
+  --stage-move-hit-area-height: min(72vh, 560px);
+  --stage-move-hit-area-offset-y: -42%;
+  --stage-move-hit-area-right-safe: 112px;
+}
+
+.stage-move-hit-area {
+  top: 50%;
+  left: calc(50% - 24px);
+  transform: translate(-50%, var(--stage-move-hit-area-offset-y));
+  width: var(--stage-move-hit-area-width);
+  height: var(--stage-move-hit-area-height);
+  max-width: calc(100% - var(--stage-move-hit-area-right-safe));
+  max-height: calc(100% - 72px);
+  min-height: 220px;
+}
+
+.stage-move-hit-area-debug {
+  border-radius: 12px;
+  outline: 1px dashed rgb(56 189 248 / 45%);
+  background: rgb(56 189 248 / 6%);
+}
+</style>

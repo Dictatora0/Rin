@@ -21,7 +21,8 @@ docs:
     toggle: 移动模式
     enable: 开启移动模式
     disable: 关闭移动模式
-    hint: '移动模式：拖动舞台可重新放置 Rin'
+    status-on: 移动模式已开启
+    status-hint: 拖动 Rin 附近区域可移动，再按一次退出。
   'zoom-in': 放大
   'zoom-out': 缩小
   'reset-size': 重置尺寸

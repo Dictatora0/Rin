@@ -179,7 +179,7 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
 </script>
 
 <template>
-  <div ref="islandRef" fixed bottom-2 right-2>
+  <div ref="islandRef" data-testid="controls-island-root" class="controls-island-root z-120" fixed bottom-2 right-2>
     <div flex flex-col items-end gap-1>
       <!-- iOS Style Drawer Panel -->
       <Transition
@@ -302,7 +302,7 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                 ]"
                 @click="toggleMoveMode"
               >
-                <div i-ph:hand-grab :class="adjustStyleClasses.icon" />
+                <div :class="[adjustStyleClasses.icon, moveModeEnabled ? 'i-ph:hand-grab-fill' : 'i-ph:hand-grab']" />
               </ControlButton>
               <template #tooltip>
                 {{ moveModeEnabled ? t('tamagotchi.stage.controls-island.move-mode.disable') : t('tamagotchi.stage.controls-island.move-mode.enable') }}
@@ -352,6 +352,19 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
             </ControlButtonTooltip>
           </div>
 
+          <div
+            v-if="moveModeEnabled"
+            data-testid="controls-move-mode-status"
+            :class="[
+              'w-full max-w-66 rounded-lg px-2 py-1.5',
+              'text-2.75 text-left leading-4 text-sky-700',
+              'bg-sky-100/70 dark:bg-sky-900/35 dark:text-sky-200',
+            ]"
+          >
+            <span class="font-semibold">{{ t('tamagotchi.stage.controls-island.move-mode.status-on') }}</span>
+            <span class="ml-1">{{ t('tamagotchi.stage.controls-island.move-mode.status-hint') }}</span>
+          </div>
+
           <VisionIsland v-if="visionPanelVisible" embedded />
         </div>
       </Transition>
@@ -399,3 +412,13 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.controls-island-root {
+  -webkit-app-region: no-drag;
+}
+
+.controls-island-root .drag-region {
+  -webkit-app-region: drag;
+}
+</style>

@@ -5,7 +5,7 @@ import { createApp, defineComponent, h } from 'vue'
 
 import StageMoveOverlay from './stage-move-overlay.vue'
 
-function mountOverlay(props: { enabled: boolean, isLinux: boolean, hint: string }, onStartDrag = vi.fn()) {
+function mountOverlay(props: { enabled: boolean, isLinux: boolean, debug?: boolean }, onStartDrag = vi.fn()) {
   const host = defineComponent({
     setup() {
       return () => h(StageMoveOverlay, {
@@ -39,30 +39,31 @@ describe('stage move overlay', () => {
     const { container, unmount } = mountOverlay({
       enabled: false,
       isLinux: false,
-      hint: 'Move mode',
     })
 
     expect(container.querySelector('[data-testid="stage-move-overlay"]')).toBeNull()
+    expect(container.querySelector('[data-testid="stage-move-hit-area"]')).toBeNull()
     unmount()
   })
 
-  it('renders overlay structure and emits drag start on non-linux', () => {
+  it('renders invisible hit area and emits drag start on non-linux', () => {
     const { container, onStartDrag, unmount } = mountOverlay({
       enabled: true,
       isLinux: false,
-      hint: 'Move mode: drag the stage to reposition Rin',
     })
 
     const overlay = container.querySelector('[data-testid="stage-move-overlay"]') as HTMLDivElement | null
-    const panel = container.querySelector('[data-testid="stage-move-overlay-panel"]') as HTMLDivElement | null
+    const hitArea = container.querySelector('[data-testid="stage-move-hit-area"]') as HTMLDivElement | null
 
     expect(overlay).not.toBeNull()
-    expect(panel).not.toBeNull()
+    expect(hitArea).not.toBeNull()
     expect(overlay?.className).toContain('pointer-events-none')
-    expect(panel?.className).toContain('pointer-events-auto')
-    expect(panel?.className).not.toContain('drag-region')
+    expect(hitArea?.className).toContain('pointer-events-auto')
+    expect(hitArea?.className).not.toContain('drag-region')
+    expect(container.textContent).not.toContain('Move mode: drag the stage to reposition Rin')
+    expect(container.textContent).not.toContain('移动模式：拖动舞台可重新放置 Rin')
 
-    panel?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    hitArea?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
     expect(onStartDrag).toHaveBeenCalledTimes(1)
 
     unmount()
@@ -72,16 +73,27 @@ describe('stage move overlay', () => {
     const { container, onStartDrag, unmount } = mountOverlay({
       enabled: true,
       isLinux: true,
-      hint: 'Move mode: drag the stage to reposition Rin',
     })
 
-    const panel = container.querySelector('[data-testid="stage-move-overlay-panel"]') as HTMLDivElement | null
-    expect(panel).not.toBeNull()
-    expect(panel?.className).toContain('drag-region')
+    const hitArea = container.querySelector('[data-testid="stage-move-hit-area"]') as HTMLDivElement | null
+    expect(hitArea).not.toBeNull()
+    expect(hitArea?.className).toContain('drag-region')
 
-    panel?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    hitArea?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
     expect(onStartDrag).toHaveBeenCalledTimes(0)
 
+    unmount()
+  })
+
+  it('keeps outline hidden unless debug mode is enabled', () => {
+    const { container, unmount } = mountOverlay({
+      enabled: true,
+      isLinux: false,
+      debug: false,
+    })
+
+    const hitArea = container.querySelector('[data-testid="stage-move-hit-area"]') as HTMLDivElement | null
+    expect(hitArea?.className).not.toContain('stage-move-hit-area-debug')
     unmount()
   })
 })
