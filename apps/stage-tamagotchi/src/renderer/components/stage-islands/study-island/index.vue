@@ -3,9 +3,11 @@ import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 
+import { useStudyReminderPolicy } from '../../../composables/use-study-reminder-policy'
+
 const studyStore = useStudyCompanionStore()
-const { persisted, formattedRemaining, modeDisplayText } = storeToRefs(studyStore)
-const { startFocus, startBreak, pause, resume, resetSession } = studyStore
+const { persisted, formattedRemaining, modeDisplayText, isMuted } = storeToRefs(studyStore)
+const { startFocus, startBreak, pause, resume, resetSession, muteFor30Min, unmute } = studyStore
 
 const isIdle = computed(() => persisted.value.mode === 'idle')
 const isPaused = computed(() => persisted.value.mode === 'paused')
@@ -16,6 +18,8 @@ const isRunning = computed(() => isFocusing.value || isBreaking.value)
 const todayFocusSessions = computed(() => persisted.value.todayFocusSessions)
 const todayFocusMinutes = computed(() => persisted.value.todayFocusMinutes)
 
+const { currentReminder, dismissReminder, todayReminderCount } = useStudyReminderPolicy()
+
 function handleMainAction() {
   if (isIdle.value) {
     startFocus()
@@ -25,6 +29,15 @@ function handleMainAction() {
   }
   else if (isRunning.value) {
     pause()
+  }
+}
+
+function handleMuteToggle() {
+  if (isMuted.value) {
+    unmute()
+  }
+  else {
+    muteFor30Min()
   }
 }
 
@@ -60,6 +73,42 @@ const mainButtonIcon = computed(() => {
       'dark:border-neutral-700',
     ]"
   >
+    <!-- Reminder Toast -->
+    <Transition
+      enter-active-class="transition-all duration-300 ease-out"
+      enter-from-class="opacity-0 -translate-y-2"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition-all duration-200 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 -translate-y-2"
+    >
+      <div
+        v-if="currentReminder"
+        :class="[
+          'flex items-center gap-2 w-full',
+          'rounded-lg px-3 py-2 text-sm font-medium',
+          currentReminder.type === 'focus_completed'
+            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+            : 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+        ]"
+      >
+        <div
+          :class="[
+            'shrink-0 size-4',
+            currentReminder.type === 'focus_completed'
+              ? 'i-solar:check-circle-bold'
+              : 'i-solar:alarm-bold',
+          ]"
+        />
+        <span :class="['flex-1']">{{ currentReminder.message }}</span>
+        <button
+          type="button"
+          :class="['shrink-0 size-4 i-solar:close-circle-bold', 'opacity-60 hover:opacity-100 transition-opacity']"
+          @click="dismissReminder"
+        />
+      </div>
+    </Transition>
+
     <!-- Mode & Time Display -->
     <div :class="['flex items-center gap-3']">
       <div
@@ -136,6 +185,27 @@ const mainButtonIcon = computed(() => {
         <div class="i-solar:restart-bold size-4" />
         Reset
       </button>
+
+      <!-- Mute Toggle Button -->
+      <button
+        type="button"
+        :class="[
+          'flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition-all',
+          'hover:scale-105 active:scale-95',
+          isMuted
+            ? 'bg-orange-100 text-orange-600 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50'
+            : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700',
+        ]"
+        :title="isMuted ? 'Unmute reminders' : 'Mute reminders for 30 min'"
+        @click="handleMuteToggle"
+      >
+        <div
+          :class="[
+            'size-4',
+            isMuted ? 'i-solar:bell-off-bold' : 'i-solar:bell-bold',
+          ]"
+        />
+      </button>
     </div>
 
     <!-- Stats Panel -->
@@ -147,6 +217,10 @@ const mainButtonIcon = computed(() => {
       <div :class="['flex items-center gap-1']">
         <div class="i-solar:clock-circle-bold size-3.5" />
         <span>{{ todayFocusMinutes }} mins</span>
+      </div>
+      <div v-if="todayReminderCount > 0" :class="['flex items-center gap-1']">
+        <div class="i-solar:bell-bold size-3.5" />
+        <span>{{ todayReminderCount }} reminders</span>
       </div>
     </div>
   </div>
