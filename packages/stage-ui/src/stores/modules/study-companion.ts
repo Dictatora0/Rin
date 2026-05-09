@@ -289,6 +289,24 @@ export const useStudyCompanionStore = defineStore('modules:study-companion', () 
     appendEvent('focus_reset')
   }
 
+  /** Suppress all visual reminders for 30 minutes. */
+  function muteFor30Min() {
+    const MUTE_DURATION_MS = 30 * 60 * 1000
+    persisted.value.mutedUntil = Date.now() + MUTE_DURATION_MS
+    appendEvent('muted', 'Muted for 30 minutes')
+  }
+
+  /** Cancel an active mute immediately. */
+  function unmute() {
+    persisted.value.mutedUntil = 0
+    appendEvent('unmuted')
+  }
+
+  /** Increment today's reminder counter by one. */
+  function incrementReminderCount() {
+    persisted.value.todayReminderCount += 1
+  }
+
   // Computed
   const isRunning = computed(() => {
     return (persisted.value.mode === 'focus' || persisted.value.mode === 'break') && persisted.value.segmentEndsAt !== null
@@ -341,5 +359,8 @@ export const useStudyCompanionStore = defineStore('modules:study-companion', () 
     syncFromWallClock,
     rolloverIfNeeded,
     appendEvent,
+    muteFor30Min,
+    unmute,
+    incrementReminderCount,
   }
 })
