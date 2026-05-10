@@ -109,4 +109,114 @@ describe('useStudyCompanionStore', () => {
     expect(store.persisted.tasks).toEqual([])
     expect(store.persisted.studyEvents.some(e => e.type === 'day_rollover')).toBe(true)
   })
+
+  /**
+   * @example
+   * ```ts
+   * const snapshot = store.exportStudySnapshot()
+   * expect(snapshot.summary.taskPending).toBe(1)
+   * ```
+   */
+  it('exports a JSON-safe study snapshot and appends export event', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.statsDate = '2026-05-06'
+    store.persisted.todayFocusSessions = 2
+    store.persisted.todayFocusMinutes = 50
+    store.persisted.cycleCount = 4
+    store.persisted.todayReminderCount = 3
+    store.persisted.mode = 'paused'
+    store.persisted.remainingMs = 12_345
+    store.persisted.segmentEndsAt = null
+    store.persisted.focusDurationMs = 1_500_000
+    store.persisted.breakDurationMs = 300_000
+    store.persisted.tasks = [
+      { id: 'task-1', title: 'Read chapter', done: true, createdAt: 1 },
+      { id: 'task-2', title: 'Solve problems', done: false, createdAt: 2 },
+    ]
+    store.persisted.mutedUntil = Date.now() + 5_000
+    store.persisted.studyEvents = [
+      { id: 'evt-1', at: 100, type: 'focus_started', detail: { from: 'idle' } },
+    ]
+
+    const snapshot = store.exportStudySnapshot()
+
+    expect(snapshot.project).toBe('Rin Study Companion')
+    expect(snapshot.statsDate).toBe('2026-05-06')
+    expect(snapshot.summary.todayFocusSessions).toBe(2)
+    expect(snapshot.summary.todayFocusMinutes).toBe(50)
+    expect(snapshot.summary.cycleCount).toBe(4)
+    expect(snapshot.summary.todayReminderCount).toBe(3)
+    expect(snapshot.summary.taskTotal).toBe(2)
+    expect(snapshot.summary.taskCompleted).toBe(1)
+    expect(snapshot.summary.taskPending).toBe(1)
+    expect(snapshot.summary.mode).toBe('paused')
+    expect(snapshot.summary.isRunning).toBe(false)
+    expect(snapshot.summary.isMuted).toBe(true)
+    expect(snapshot.timer.remainingMs).toBe(12_345)
+    expect(snapshot.timer.segmentEndsAt).toBeNull()
+    expect(snapshot.tasks).toEqual(store.persisted.tasks)
+    expect(snapshot.events.at(-1)?.type).toBe('study_log_exported')
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('study_log_exported')
+    expect(() => JSON.stringify(snapshot)).not.toThrow()
+  })
+
+  /**
+   * @example
+   * ```ts
+   * store.clearStudyEvents()
+   * expect(store.persisted.studyEvents).toEqual([])
+   * ```
+   */
+  it('clears activity events and preserves a clear marker event', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.studyEvents = [
+      { id: 'evt-1', at: 100, type: 'focus_started' },
+      { id: 'evt-2', at: 200, type: 'focus_completed' },
+    ]
+
+    store.clearStudyEvents()
+
+    expect(store.persisted.studyEvents).toHaveLength(1)
+    expect(store.persisted.studyEvents[0]?.type).toBe('study_events_cleared')
+  })
+
+  /**
+   * @example
+   * ```ts
+   * store.clearTodayStudyStats()
+   * expect(store.persisted.todayFocusSessions).toBe(0)
+   * ```
+   */
+  it('clears only today counters and today event log', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.todayFocusSessions = 5
+    store.persisted.todayFocusMinutes = 120
+    store.persisted.todayReminderCount = 8
+    store.persisted.studyEvents = [
+      { id: 'evt-1', at: 100, type: 'focus_started' },
+      { id: 'evt-2', at: 200, type: 'focus_completed' },
+    ]
+    store.persisted.cycleCount = 10
+    store.persisted.mode = 'focus'
+    store.persisted.remainingMs = 60_000
+    store.persisted.segmentEndsAt = Date.now() + 60_000
+    store.persisted.focusDurationMs = 1_500_000
+    store.persisted.breakDurationMs = 300_000
+    store.persisted.tasks = [{ id: 'task-1', title: 'Read chapter', done: false, createdAt: 1 }]
+
+    store.clearTodayStudyStats()
+
+    expect(store.persisted.todayFocusSessions).toBe(0)
+    expect(store.persisted.todayFocusMinutes).toBe(0)
+    expect(store.persisted.todayReminderCount).toBe(0)
+    expect(store.persisted.studyEvents).toHaveLength(1)
+    expect(store.persisted.studyEvents[0]?.type).toBe('study_stats_cleared')
+    expect(store.persisted.cycleCount).toBe(10)
+    expect(store.persisted.mode).toBe('focus')
+    expect(store.persisted.remainingMs).toBe(60_000)
+    expect(store.persisted.segmentEndsAt).toBe(Date.now() + 60_000)
+    expect(store.persisted.focusDurationMs).toBe(1_500_000)
+    expect(store.persisted.breakDurationMs).toBe(300_000)
+    expect(store.persisted.tasks).toEqual([{ id: 'task-1', title: 'Read chapter', done: false, createdAt: 1 }])
+  })
 })

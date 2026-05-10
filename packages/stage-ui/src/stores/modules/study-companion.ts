@@ -74,12 +74,73 @@ export interface StudyCompanionPersisted {
   studyEvents: StudyEventLogEntry[]
 }
 
+/**
+ * Serializable snapshot payload for study statistics export.
+ */
+export interface StudyCompanionSnapshot {
+  project: 'Rin Study Companion'
+  exportedAt: string
+  statsDate: string
+  summary: {
+    todayFocusSessions: number
+    todayFocusMinutes: number
+    cycleCount: number
+    todayReminderCount: number
+    taskTotal: number
+    taskCompleted: number
+    taskPending: number
+    mode: StudyCompanionMode
+    isRunning: boolean
+    isMuted: boolean
+  }
+  timer: {
+    remainingMs: number
+    segmentEndsAt: number | null
+    focusDurationMs: number
+    breakDurationMs: number
+  }
+  tasks: StudyTask[]
+  events: StudyEventLogEntry[]
+}
+
 function utcCalendarDay(d = new Date()): string {
   return d.toISOString().slice(0, 10)
 }
 
 function randomId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+function cloneJsonRecord(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!record)
+    return undefined
+
+  try {
+    return JSON.parse(JSON.stringify(record)) as Record<string, unknown>
+  }
+  catch {
+    return {
+      notice: 'detail_not_serializable',
+    }
+  }
+}
+
+function cloneStudyTasks(tasks: StudyTask[]): StudyTask[] {
+  return tasks.map(task => ({
+    id: `${task.id}`,
+    title: `${task.title}`,
+    done: Boolean(task.done),
+    createdAt: Number.isFinite(task.createdAt) ? task.createdAt : 0,
+  }))
+}
+
+function cloneStudyEvents(events: StudyEventLogEntry[]): StudyEventLogEntry[] {
+  return events.map(event => ({
+    id: `${event.id}`,
+    at: Number.isFinite(event.at) ? event.at : 0,
+    type: event.type,
+    detail: cloneJsonRecord(event.detail),
+  }))
 }
 
 /**
@@ -342,6 +403,64 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     tick()
   }
 
+  /**
+   * Creates a JSON-ready snapshot for Study Island stats/log export.
+   */
+  function exportStudySnapshot(): StudyCompanionSnapshot {
+    const p = persisted.value
+    appendEvent('study_log_exported', { statsDate: p.statsDate })
+
+    const taskSnapshot = cloneStudyTasks(p.tasks)
+    const eventSnapshot = cloneStudyEvents(p.studyEvents)
+    const taskCompleted = taskSnapshot.filter(task => task.done).length
+
+    return {
+      project: 'Rin Study Companion',
+      exportedAt: new Date().toISOString(),
+      statsDate: p.statsDate,
+      summary: {
+        todayFocusSessions: p.todayFocusSessions,
+        todayFocusMinutes: p.todayFocusMinutes,
+        cycleCount: p.cycleCount,
+        todayReminderCount: p.todayReminderCount,
+        taskTotal: taskSnapshot.length,
+        taskCompleted,
+        taskPending: taskSnapshot.length - taskCompleted,
+        mode: p.mode,
+        isRunning: isRunning.value,
+        isMuted: isMuted.value,
+      },
+      timer: {
+        remainingMs: p.remainingMs,
+        segmentEndsAt: p.segmentEndsAt,
+        focusDurationMs: p.focusDurationMs,
+        breakDurationMs: p.breakDurationMs,
+      },
+      tasks: taskSnapshot,
+      events: eventSnapshot,
+    }
+  }
+
+  /**
+   * Clears the activity log and keeps a single marker event.
+   */
+  function clearStudyEvents() {
+    persisted.value.studyEvents = []
+    appendEvent('study_events_cleared', { statsDate: persisted.value.statsDate })
+  }
+
+  /**
+   * Clears today's counters and today's event log only.
+   */
+  function clearTodayStudyStats() {
+    const p = persisted.value
+    p.todayFocusSessions = 0
+    p.todayFocusMinutes = 0
+    p.todayReminderCount = 0
+    p.studyEvents = []
+    appendEvent('study_stats_cleared', { statsDate: p.statsDate })
+  }
+
   return {
     persisted,
     isRunning,
@@ -354,5 +473,8 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     syncFromWallClock,
     rolloverIfNeeded,
     appendEvent,
+    exportStudySnapshot,
+    clearStudyEvents,
+    clearTodayStudyStats,
   }
 })
