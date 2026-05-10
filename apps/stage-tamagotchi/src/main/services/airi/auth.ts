@@ -105,13 +105,63 @@ export function createAuthService(params: {
       const state = generateState()
 
       // Start loopback server to receive the callback
-      const loopback = await startLoopbackServer()
-      closeLoopback = loopback.close
-
       // Use the server-side relay as redirect_uri. The relay page serves HTML
       // that forwards the authorization code to the loopback via JS fetch().
       // The loopback port is encoded in the state parameter as "{port}:{state}".
       const redirectUri = `${SERVER_URL}/api/auth/oidc/electron-callback`
+      const loopback = await startLoopbackServer({
+        redirectUri,
+        onCallbackEvent: (event) => {
+          if (event.type === 'hit') {
+            log.withFields({
+              loopbackPort: event.loopbackPort,
+              callbackHitCount: event.callbackHitCount,
+              queryKeys: event.queryKeys ?? [],
+            }).log('OIDC loopback callback endpoint hit')
+            return
+          }
+
+          if (event.type === 'missing-params') {
+            log.withFields({
+              loopbackPort: event.loopbackPort,
+              callbackHitCount: event.callbackHitCount,
+              hasCode: event.hasCode ?? false,
+              hasState: event.hasState ?? false,
+              queryKeys: event.queryKeys ?? [],
+            }).warn('OIDC loopback callback missing required parameters')
+            return
+          }
+
+          if (event.type === 'error-param') {
+            log.withFields({
+              loopbackPort: event.loopbackPort,
+              callbackHitCount: event.callbackHitCount,
+              error: event.error,
+              description: event.description,
+              queryKeys: event.queryKeys ?? [],
+            }).warn('OIDC loopback callback returned provider error')
+            return
+          }
+
+          if (event.type === 'success') {
+            log.withFields({
+              loopbackPort: event.loopbackPort,
+              callbackHitCount: event.callbackHitCount,
+            }).log('OIDC loopback callback received authorization code')
+            return
+          }
+
+          if (event.type === 'timeout') {
+            log.withFields({
+              loopbackPort: event.loopbackPort,
+              callbackHitCount: event.callbackHitCount,
+              redirectUri: event.redirectUri,
+            }).warn('OIDC loopback callback timed out')
+          }
+        },
+      })
+      closeLoopback = loopback.close
+
       const stateWithPort = `${loopback.port}:${state}`
 
       // Build authorization URL

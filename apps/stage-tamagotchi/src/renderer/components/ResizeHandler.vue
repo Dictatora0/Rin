@@ -2,22 +2,37 @@
 import { electron } from '@proj-airi/electron-eventa'
 import { useElectronEventaInvoke, useElectronWindowResize } from '@proj-airi/electron-vueuse'
 import { useAsyncState } from '@vueuse/core'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 
 const isWindows = useElectronEventaInvoke(electron.app.isWindows)
 const { handleResizeStart } = useElectronWindowResize()
-const isWindowsRef = useAsyncState(() => isWindows(), false)
+const route = useRoute()
+const isStageLayout = computed(() => route.meta.layout === 'stage')
+const { state: isWindowsRef } = useAsyncState(() => isWindows(), false)
+
+const resizeDirections = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
 </script>
 
 <template>
-  <div v-if="isWindowsRef" class="resize-handles">
-    <div class="handle n" @mousedown="handleResizeStart($event, 'n')" />
-    <div class="handle s" @mousedown="handleResizeStart($event, 's')" />
-    <div class="handle e" @mousedown="handleResizeStart($event, 'e')" />
-    <div class="handle w" @mousedown="handleResizeStart($event, 'w')" />
-    <div class="handle ne" @mousedown="handleResizeStart($event, 'ne')" />
-    <div class="handle nw" @mousedown="handleResizeStart($event, 'nw')" />
-    <div class="handle se" @mousedown="handleResizeStart($event, 'se')" />
-    <div class="handle sw" @mousedown="handleResizeStart($event, 'sw')" />
+  <div
+    v-if="isWindowsRef"
+    data-testid="resize-handles-root"
+    :class="[
+      'resize-handles',
+      isStageLayout ? 'resize-handles-stage' : '',
+    ]"
+  >
+    <div
+      v-for="direction in resizeDirections"
+      :key="direction"
+      :data-testid="`resize-handle-${direction}`"
+      :class="[
+        'handle',
+        direction,
+      ]"
+      @mousedown="handleResizeStart($event, direction)"
+    />
   </div>
 </template>
 
@@ -46,4 +61,22 @@ const isWindowsRef = useAsyncState(() => isWindows(), false)
 .handle.ne { top: 0; right: 0; width: 10px; height: 10px; cursor: ne-resize; }
 .handle.sw { bottom: 0; left: 0; width: 10px; height: 10px; cursor: sw-resize; }
 .handle.se { bottom: 0; right: 0; width: 10px; height: 10px; cursor: se-resize; }
+
+.resize-handles-stage .handle.n,
+.resize-handles-stage .handle.s {
+  height: 8px;
+}
+
+.resize-handles-stage .handle.e,
+.resize-handles-stage .handle.w {
+  width: 8px;
+}
+
+.resize-handles-stage .handle.nw,
+.resize-handles-stage .handle.ne,
+.resize-handles-stage .handle.sw,
+.resize-handles-stage .handle.se {
+  width: 14px;
+  height: 14px;
+}
 </style>

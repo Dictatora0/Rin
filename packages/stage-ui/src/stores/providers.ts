@@ -2067,6 +2067,12 @@ export const useProvidersStore = defineStore('providers', () => {
   // Initialize all providers
   Object.keys(providerMetadata).forEach(initializeProvider)
 
+  function shouldRunPeriodicRuntimeValidation(providerId: string) {
+    const isAdded = addedProviders.value[providerId] === true
+    const isConfigured = providerRuntimeState.value[providerId]?.isConfigured === true
+    return isAdded || isConfigured
+  }
+
   function startPeriodicRuntimeValidation() {
     for (const [providerId, intervalMs] of providerValidationIntervalMsById.entries()) {
       if (!providerMetadata[providerId] || intervalMs <= 0)
@@ -2077,6 +2083,9 @@ export const useProvidersStore = defineStore('providers', () => {
       }
 
       const loop = useIntervalFn(() => {
+        if (!shouldRunPeriodicRuntimeValidation(providerId))
+          return
+
         void validateProvider(providerId, { force: true })
       }, intervalMs, { immediate: false, immediateCallback: false })
       loop.resume()

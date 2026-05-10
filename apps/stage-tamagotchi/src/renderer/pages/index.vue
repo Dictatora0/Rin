@@ -5,9 +5,11 @@ import type { ModelSettingsRuntimeChannelEvent } from '../../shared/model-settin
 
 import workletUrl from '@proj-airi/stage-ui/workers/vad/process.worklet?worker&url'
 
+import { defineInvoke } from '@moeru/eventa'
 import { tryCatch } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
 import {
+  useElectronEventaContext,
   useElectronEventaInvoke,
   useElectronMouseAroundWindowBorder,
   useElectronMouseInElement,
@@ -29,7 +31,7 @@ import { useHearingSpeechInputPipeline } from '@proj-airi/stage-ui/stores/module
 import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
-import { refDebounced, useBroadcastChannel } from '@vueuse/core'
+import { refDebounced, useAsyncState, useBroadcastChannel } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
@@ -37,8 +39,9 @@ import ControlsIsland from '../components/stage-islands/controls-island/index.vu
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 import StatusIsland from '../components/stage-islands/status-island/index.vue'
 import StudyBubble from '../components/stage-islands/study-bubble/index.vue'
+import StageMoveOverlay from '../components/stage-move-overlay.vue'
 
-import { electronOpenOnboarding } from '../../shared/eventa'
+import { electronOpenOnboarding, electronStartDraggingWindow } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
 import { useStudyCompanionBubble } from '../composables/use-study-companion-bubble'
 import { useStudyStageFeedback } from '../composables/use-study-stage-feedback'
@@ -63,6 +66,9 @@ const shouldFadeOnCursorWithin = ref(false)
 
 const onboardingStore = useOnboardingStore()
 const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
+const eventaContext = useElectronEventaContext()
+const isLinux = useElectronEventaInvoke(electron.app.isLinux)
+const { state: isLinuxRef } = useAsyncState(() => isLinux(), false)
 
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const { isOutside } = useElectronMouseInElement(controlsIslandRef)
@@ -91,7 +97,8 @@ const { stageModelRenderer, stageModelSelectedUrl } = storeToRefs(settingsStore)
 const modelStore = useModelStore()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
-const { fadeOnHoverEnabled } = storeToRefs(useControlsIslandStore())
+const controlsIslandStore = useControlsIslandStore()
+const { fadeOnHoverEnabled, moveModeEnabled, controlsPanelExpanded } = storeToRefs(controlsIslandStore)
 const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
 const { data: modelSettingsRuntimeChannelEvent, post: postModelSettingsRuntimeChannelEvent } = useBroadcastChannel<ModelSettingsRuntimeChannelEvent, ModelSettingsRuntimeChannelEvent>({ name: modelSettingsRuntimeSnapshotChannelName })
 const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransparency({
@@ -117,6 +124,13 @@ const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBo
 const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
+const startDraggingWindow = defineInvoke(eventaContext.value, electronStartDraggingWindow)
+
+function handleMoveOverlayDragStart() {
+  if (!isLinuxRef.value) {
+    startDraggingWindow()
+  }
+}
 
 const live2dStore = useLive2d()
 const { scale, positionInPercentageString } = storeToRefs(live2dStore)
@@ -179,8 +193,35 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
   })
 })
 
-watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, hearingDialogOpen, studyPanelPinned, fadeOnHoverEnabled, stagePaused], () => {
+watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, hearingDialogOpen, studyPanelPinned, fadeOnHoverEnabled, moveModeEnabled, controlsPanelExpanded, stagePaused], () => {
   if (stagePaused.value) {
+    isIgnoringMouseEvents.value = false
+    shouldFadeOnCursorWithin.value = false
+    setIgnoreMouseEvents([false, { forward: true }])
+    pause()
+    return
+  }
+
+  if (moveModeEnabled.value) {
+    // Move mode needs reliable pointer events on stage to avoid click-through conflicts.
+    isIgnoringMouseEvents.value = false
+    shouldFadeOnCursorWithin.value = false
+    setIgnoreMouseEvents([false, { forward: true }])
+    pause()
+    return
+  }
+
+  if (controlsPanelExpanded.value) {
+    // Keep control drawer interactive and visible regardless of hover-fade state.
+    isIgnoringMouseEvents.value = false
+    shouldFadeOnCursorWithin.value = false
+    setIgnoreMouseEvents([false, { forward: true }])
+    pause()
+    return
+  }
+
+  if (studyPanelPinned.value) {
+    // Study panel text editing should stay interactive and avoid click-through.
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
@@ -190,15 +231,6 @@ watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor
 
   if (hearingDialogOpen.value) {
     // Hearing dialog/drawer is open; keep window interactive
-    isIgnoringMouseEvents.value = false
-    shouldFadeOnCursorWithin.value = false
-    setIgnoreMouseEvents([false, { forward: true }])
-    pause()
-    return
-  }
-
-  if (studyPanelPinned.value) {
-    // Study panel is pinned for editing; keep window interactive and avoid click-through.
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
@@ -269,6 +301,11 @@ type CaptionChannelEvent
   = | { type: 'caption-speaker', text: string }
     | { type: 'caption-assistant', text: string }
 const { post: postCaption } = useBroadcastChannel<CaptionChannelEvent, CaptionChannelEvent>({ name: 'airi-caption-overlay' })
+function handleVisibilityChange() {
+  if (!document.hidden) {
+    useStudyCompanionStore().syncFromWallClock()
+  }
+}
 
 function handleStreamingSentenceEnd(delta: string) {
   console.info('[Main Page] Received transcription delta:', delta)
@@ -429,24 +466,19 @@ onMounted(() => {
   if (onboardingStore.needsOnboarding) {
     openOnboarding()
   }
-
-  // Sync study companion timer when page becomes visible
-  const handleVisibilityChange = () => {
-    if (!document.hidden) {
-      useStudyCompanionStore().syncFromWallClock()
-    }
-  }
   document.addEventListener('visibilitychange', handleVisibilityChange)
+})
 
-  onUnmounted(() => {
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  tryCatch(() => {
     postModelSettingsRuntimeChannelEvent({
       type: 'owner-gone',
       ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
     })
-    stopAudioInteraction()
-    chatSyncStore.dispose()
   })
+  stopAudioInteraction()
+  chatSyncStore.dispose()
 })
 
 watch(stream, async (currentStream) => {
@@ -480,7 +512,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     max-h="[100vh]"
     max-w="[100vw]"
     flex="~ col"
-    relative z-2 h-full overflow-hidden rounded-xl
+    relative h-full overflow-hidden rounded-xl
     transition="opacity duration-500 ease-in-out"
   >
     <!-- Stage is always in DOM so TresCanvas can measure dimensions -->
@@ -500,8 +532,8 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
           'transition-opacity duration-250 ease-in-out',
         ]"
       >
-        <StatusIsland ref="statusIslandRef" />
-        <ResourceStatusIsland />
+        <StatusIsland ref="statusIslandRef" class="relative z-60" />
+        <ResourceStatusIsland class="relative z-60" />
         <WidgetStage
           ref="widgetStageRef"
           v-model:state="componentStateStage"
@@ -517,9 +549,6 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
         <StudyBubble
           :message="currentBubble"
           :lift-for-input="studyPanelInputActive"
-        />
-        <ControlsIsland
-          ref="controlsIslandRef"
         />
       </div>
     </div>
@@ -548,30 +577,23 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
       </div>
     </div>
   </div>
-  <Transition
-    enter-active-class="transition-opacity duration-250"
-    enter-from-class="opacity-0"
-    enter-to-class="opacity-100"
-    leave-active-class="transition-opacity duration-250"
-    leave-from-class="opacity-100"
-    leave-to-class="opacity-0"
+  <div
+    data-control-layer="floating-controls-layer"
+    :class="[
+      'pointer-events-none fixed inset-0 z-[170]',
+      '[-webkit-app-region:no-drag]',
+    ]"
   >
-    <div
-      v-if="false"
-      class="absolute left-0 top-0 z-99 h-full w-full flex cursor-grab items-center justify-center overflow-hidden drag-region"
-    >
-      <div
-        class="absolute h-32 w-full flex items-center justify-center overflow-hidden rounded-xl"
-        bg="white/80 dark:neutral-950/80" backdrop-blur="md"
-      >
-        <div class="wall absolute top-0 h-8" />
-        <div class="absolute left-0 top-0 h-full w-full flex animate-flash animate-duration-5s animate-count-infinite select-none items-center justify-center text-1.5rem text-primary-400 font-normal drag-region">
-          DRAG HERE TO MOVE
-        </div>
-        <div class="wall absolute bottom-0 h-8 drag-region" />
-      </div>
-    </div>
-  </Transition>
+    <ControlsIsland
+      ref="controlsIslandRef"
+      class="pointer-events-auto"
+    />
+  </div>
+  <StageMoveOverlay
+    :enabled="moveModeEnabled && !isLoading"
+    :is-linux="isLinuxRef"
+    @start-drag="handleMoveOverlayDragStart"
+  />
   <Transition
     enter-active-class="transition-opacity duration-250 ease-in-out"
     enter-from-class="opacity-50"
@@ -590,32 +612,6 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     </div>
   </Transition>
 </template>
-
-<style scoped>
-@keyframes wall-move {
-  0% {
-    transform: translateX(calc(var(--wall-width) * -2));
-  }
-  100% {
-    transform: translateX(calc(var(--wall-width) * 1));
-  }
-}
-
-.wall {
-  --at-apply: text-primary-300;
-
-  --wall-width: 8px;
-  animation: wall-move 1s linear infinite;
-  background-image: repeating-linear-gradient(
-    45deg,
-    currentColor,
-    currentColor var(--wall-width),
-    #ff00 var(--wall-width),
-    #ff00 calc(var(--wall-width) * 2)
-  );
-  width: calc(100% + 4 * var(--wall-width));
-}
-</style>
 
 <route lang="yaml">
 meta:

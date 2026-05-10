@@ -270,6 +270,62 @@ export const electronWindowSetAlwaysOnTop = defineInvokeEventa<void, boolean>('e
 export const electronAppOpenUserDataFolder = defineInvokeEventa<{ path: string }>('eventa:invoke:electron:app:open-user-data-folder')
 export const electronAppQuit = defineInvokeEventa<void>('eventa:invoke:electron:app:quit')
 
+/**
+ * Payload for persisting a local trusted passphrase for encrypted face profile auto-unlock.
+ *
+ * Use when:
+ * - Renderer wants to enable "trust this device" after manual unlock succeeds
+ *
+ * Expects:
+ * - `key` is a stable storage key scoped to one feature
+ * - `value` is the plaintext passphrase; Electron main secures it at rest
+ *
+ * Returns:
+ * - N/A
+ */
+export interface ElectronSecureStoreSetPayload {
+  key: string
+  value: string
+}
+
+/**
+ * Payload for reading or deleting an item from secure local storage.
+ *
+ * Use when:
+ * - Renderer wants to read or clear a trusted local secret
+ *
+ * Expects:
+ * - `key` matches the key used during set
+ *
+ * Returns:
+ * - N/A
+ */
+export interface ElectronSecureStoreGetPayload {
+  key: string
+}
+
+/**
+ * Result for secure local storage read operations.
+ *
+ * Use when:
+ * - Renderer needs to know whether trusted local secret exists
+ *
+ * Expects:
+ * - `hasValue` indicates presence
+ * - `value` only exists when `hasValue` is true
+ *
+ * Returns:
+ * - N/A
+ */
+export interface ElectronSecureStoreGetResult {
+  hasValue: boolean
+  value?: string
+}
+
+export const electronSecureStoreSet = defineInvokeEventa<void, ElectronSecureStoreSetPayload>('eventa:invoke:electron:secure-store:set')
+export const electronSecureStoreGet = defineInvokeEventa<ElectronSecureStoreGetResult, ElectronSecureStoreGetPayload>('eventa:invoke:electron:secure-store:get')
+export const electronSecureStoreDelete = defineInvokeEventa<void, ElectronSecureStoreGetPayload>('eventa:invoke:electron:secure-store:delete')
+
 export type ElectronGodotStageState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
 
 /**

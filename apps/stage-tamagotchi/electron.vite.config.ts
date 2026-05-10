@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 import VueI18n from '@intlify/unplugin-vue-i18n/vite'
@@ -18,6 +19,74 @@ import { defineConfig } from 'electron-vite'
 
 const stageUIAssetsRoot = resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src', 'assets'))
 const sharedCacheDir = resolve(join(import.meta.dirname, '..', '..', '.cache'))
+const rendererPublicRoot = resolve(join(import.meta.dirname, 'src', 'renderer', 'public'))
+const tamagotchiDevWatchIgnored = [
+  '**/.git/**',
+  '**/node_modules/**',
+  '**/.pnpm/**',
+  '**/.cache/**',
+  '**/.turbo/**',
+  '**/coverage/**',
+  '**/dist/**',
+  '**/out/**',
+  '**/docs/**',
+  '**/scripts/**',
+  '**/services/**',
+  '**/bucket/**',
+  '**/plugins/**',
+  '**/crates/**',
+]
+const requiredVisionAssetPaths = [
+  resolve(join(rendererPublicRoot, 'assets', 'vision', 'models', 'face_landmarker.task')),
+  resolve(join(rendererPublicRoot, 'assets', 'vision', 'models', 'gesture_recognizer.task')),
+  resolve(join(rendererPublicRoot, 'assets', 'vision', 'wasm', 'vision_wasm_internal.js')),
+  resolve(join(rendererPublicRoot, 'assets', 'vision', 'wasm', 'vision_wasm_internal.wasm')),
+  resolve(join(rendererPublicRoot, 'assets', 'vision', 'wasm', 'vision_wasm_module_internal.js')),
+  resolve(join(rendererPublicRoot, 'assets', 'vision', 'wasm', 'vision_wasm_module_internal.wasm')),
+  resolve(join(rendererPublicRoot, 'assets', 'vision', 'wasm', 'vision_wasm_nosimd_internal.js')),
+  resolve(join(rendererPublicRoot, 'assets', 'vision', 'wasm', 'vision_wasm_nosimd_internal.wasm')),
+]
+
+function verifyLocalVisionAssetsPlugin() {
+  return {
+    name: 'proj-airi:verify-local-vision-assets',
+    apply: 'build' as const,
+    async buildStart() {
+      const missingAssets: string[] = []
+      const emptyAssets: string[] = []
+
+      for (const assetPath of requiredVisionAssetPaths) {
+        try {
+          const assetStat = await stat(assetPath)
+          if (!assetStat.isFile() || assetStat.size <= 0)
+            emptyAssets.push(assetPath)
+        }
+        catch {
+          missingAssets.push(assetPath)
+        }
+      }
+
+      if (!missingAssets.length && !emptyAssets.length)
+        return
+
+      const missingMessage = missingAssets.length
+        ? `缺失文件:\n- ${missingAssets.join('\n- ')}`
+        : ''
+      const emptyMessage = emptyAssets.length
+        ? `空文件或无效文件:\n- ${emptyAssets.join('\n- ')}`
+        : ''
+      const details = [missingMessage, emptyMessage].filter(Boolean).join('\n')
+
+      throw new Error(
+        [
+          '本地视觉模型资源校验失败，构建已中止。',
+          details,
+          '请先补齐 apps/stage-tamagotchi/src/renderer/public/assets/vision 下的模型与 wasm 资源后重试。',
+        ].filter(Boolean).join('\n\n'),
+      )
+    },
+  }
+}
 
 export default defineConfig({
   main: {
@@ -191,6 +260,13 @@ export default defineConfig({
           `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src'))}/*.vue`,
         ],
       },
+      watch: {
+        // NOTICE:
+        // Renderer dev mode can hit EMFILE in monorepo environments with aggressive file watching.
+        // Keep watching focused on directories required by stage-tamagotchi runtime editing.
+        // Source/context: repeated `EMFILE: too many open files, watch` during `pnpm dev:tamagotchi`.
+        ignored: tamagotchiDevWatchIgnored,
+      },
     },
 
     worker: {
@@ -284,6 +360,7 @@ export default defineConfig({
       Download('https://dist.ayaka.moe/live2d-models/hiyori_pro_zh.zip', 'hiyori_pro_zh.zip', 'live2d/models', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
       Download('https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-A/AvatarSample_A.vrm', 'AvatarSample_A.vrm', 'vrm/models/AvatarSample-A', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
       Download('https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-B/AvatarSample_B.vrm', 'AvatarSample_B.vrm', 'vrm/models/AvatarSample-B', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
+      verifyLocalVisionAssetsPlugin(),
     ],
   },
 })

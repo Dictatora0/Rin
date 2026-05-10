@@ -262,3 +262,12 @@ These guidelines apply to all TypeScript code across the monorepo:
 - Do not split modules into sections using separators like `========`; split into modules instead, except for types/interfaces used nowhere else.
 - Do not overuse table-driven style. In many cases, keep table arrays inline and map directly with `.map(...)`.
 - Prefer early returns, keep functions simple, and limit nesting to one or two levels.
+
+
+Testing rules:
+- Tests must assert business behavior, not implementation accidents.
+- Avoid weak assertions such as notNull, length > 0, truthy checks, or no-throw checks unless they directly encode the requirement.
+- Do not mock the unit under test or its core collaborators.
+- Every bug fix must include a regression test that fails before the fix.
+- Do not weaken tests to match the current implementation.
+- Do not hide failures behind fallbacks, broad catch blocks, or default empty results.
