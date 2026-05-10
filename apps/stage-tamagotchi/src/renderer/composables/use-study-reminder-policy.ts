@@ -17,7 +17,7 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
 export interface StudyReminder {
   id: number
   message: string
-  type: 'focus_completed' | 'break_completed'
+  type: 'focus_completed' | 'break_completed' | 'task_completed'
   timestamp: number
 }
 
@@ -114,6 +114,17 @@ export function useStudyReminderPolicy() {
       if (oldMode === 'break' && newMode === 'idle') {
         tryShowReminder('Break is over. Ready to focus?', 'break_completed')
       }
+    },
+  )
+
+  watch(
+    () => persisted.value.studyEvents.at(-1)?.id,
+    () => {
+      const latestEvent = persisted.value.studyEvents.at(-1)
+      if (!latestEvent || latestEvent.type !== 'task_completed')
+        return
+
+      tryShowReminder('Task completed. Keep it up!', 'task_completed')
     },
   )
 

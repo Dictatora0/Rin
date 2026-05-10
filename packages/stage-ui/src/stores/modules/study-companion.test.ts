@@ -1,4 +1,4 @@
-import { createPinia, setActivePinia } from 'pinia'
+import { createPinia, setActivePinia, storeToRefs } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -108,6 +108,65 @@ describe('useStudyCompanionStore', () => {
     expect(store.persisted.todayReminderCount).toBe(0)
     expect(store.persisted.tasks).toEqual([])
     expect(store.persisted.studyEvents.some(e => e.type === 'day_rollover')).toBe(true)
+  })
+
+  it('manages today tasks and writes task lifecycle events', () => {
+    const store = useStudyCompanionStore()
+    const { taskTotal, taskCompleted, taskPending } = storeToRefs(store)
+
+    store.addTask('   ')
+    expect(store.persisted.tasks).toHaveLength(0)
+    expect(taskTotal.value).toBe(0)
+
+    store.addTask('  复习离散数学  ')
+    expect(store.persisted.tasks).toHaveLength(1)
+    expect(store.persisted.tasks[0]?.title).toBe('复习离散数学')
+    expect(store.persisted.tasks[0]?.done).toBe(false)
+    expect(taskTotal.value).toBe(1)
+    expect(taskCompleted.value).toBe(0)
+    expect(taskPending.value).toBe(1)
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('task_added')
+
+    const taskId = store.persisted.tasks[0]!.id
+    store.toggleTaskDone(taskId)
+    expect(store.persisted.tasks[0]?.done).toBe(true)
+    expect(store.persisted.tasks[0]?.completedAt).toBeTypeOf('number')
+    expect(taskCompleted.value).toBe(1)
+    expect(taskPending.value).toBe(0)
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('task_completed')
+
+    store.toggleTaskDone(taskId)
+    expect(store.persisted.tasks[0]?.done).toBe(false)
+    expect(store.persisted.tasks[0]?.completedAt).toBeUndefined()
+    expect(taskCompleted.value).toBe(0)
+    expect(taskPending.value).toBe(1)
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('task_reopened')
+
+    store.deleteTask(taskId)
+    expect(store.persisted.tasks).toEqual([])
+    expect(taskTotal.value).toBe(0)
+    expect(taskCompleted.value).toBe(0)
+    expect(taskPending.value).toBe(0)
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('task_deleted')
+  })
+
+  it('clears only completed tasks in the task list', () => {
+    const store = useStudyCompanionStore()
+    const { taskTotal, taskCompleted, taskPending } = storeToRefs(store)
+    store.persisted.tasks = [
+      { id: 'task-1', title: '阅读', done: true, createdAt: 1, completedAt: 2 },
+      { id: 'task-2', title: '整理笔记', done: false, createdAt: 3 },
+      { id: 'task-3', title: '做题', done: true, createdAt: 4, completedAt: 5 },
+    ]
+
+    store.clearCompletedTasks()
+
+    expect(store.persisted.tasks).toEqual([
+      { id: 'task-2', title: '整理笔记', done: false, createdAt: 3 },
+    ])
+    expect(taskTotal.value).toBe(1)
+    expect(taskCompleted.value).toBe(0)
+    expect(taskPending.value).toBe(1)
   })
 
   /**

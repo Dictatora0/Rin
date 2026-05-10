@@ -33,14 +33,10 @@ const todayStatsRows = computed(() => [
 ])
 
 const taskSummaryRows = computed(() => {
-  const taskTotal = studyCompanion.persisted.tasks.length
-  const taskCompleted = studyCompanion.persisted.tasks.filter(task => task.done).length
-  const taskPending = taskTotal - taskCompleted
-
   return [
-    { label: '任务总数', value: String(taskTotal) },
-    { label: '已完成', value: String(taskCompleted) },
-    { label: '未完成', value: String(taskPending) },
+    { label: '任务总数', value: String(studyCompanion.taskTotal) },
+    { label: '已完成', value: String(studyCompanion.taskCompleted) },
+    { label: '未完成', value: String(studyCompanion.taskPending) },
   ]
 })
 

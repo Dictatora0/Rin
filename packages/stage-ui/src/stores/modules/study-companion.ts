@@ -32,6 +32,7 @@ export interface StudyTask {
   title: string
   done: boolean
   createdAt: number
+  completedAt?: number
 }
 
 /**
@@ -126,12 +127,19 @@ function cloneJsonRecord(record: Record<string, unknown> | undefined): Record<st
 }
 
 function cloneStudyTasks(tasks: StudyTask[]): StudyTask[] {
-  return tasks.map(task => ({
-    id: `${task.id}`,
-    title: `${task.title}`,
-    done: Boolean(task.done),
-    createdAt: Number.isFinite(task.createdAt) ? task.createdAt : 0,
-  }))
+  return tasks.map((task) => {
+    const normalizedCompletedAt = Number.isFinite(task.completedAt)
+      ? task.completedAt
+      : undefined
+
+    return {
+      id: `${task.id}`,
+      title: `${task.title}`,
+      done: Boolean(task.done),
+      createdAt: Number.isFinite(task.createdAt) ? task.createdAt : 0,
+      ...(normalizedCompletedAt == null ? {} : { completedAt: normalizedCompletedAt }),
+    }
+  })
 }
 
 function cloneStudyEvents(events: StudyEventLogEntry[]): StudyEventLogEntry[] {
@@ -309,6 +317,9 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
   })
 
   const isMuted = computed(() => persisted.value.mutedUntil > Date.now())
+  const taskTotal = computed(() => persisted.value.tasks.length)
+  const taskCompleted = computed(() => persisted.value.tasks.filter(task => task.done).length)
+  const taskPending = computed(() => taskTotal.value - taskCompleted.value)
 
   /**
    * Starts a focus segment from `idle`, or resumes when already paused in focus.
@@ -404,6 +415,96 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
   }
 
   /**
+   * Adds a lightweight today-task row and records it in study events.
+   */
+  function addTask(title: string) {
+    rolloverIfNeeded()
+    const normalizedTitle = title.trim()
+    if (!normalizedTitle)
+      return
+
+    const nextTask: StudyTask = {
+      id: randomId(),
+      title: normalizedTitle,
+      done: false,
+      createdAt: Date.now(),
+    }
+
+    persisted.value = {
+      ...persisted.value,
+      tasks: [...persisted.value.tasks, nextTask],
+    }
+    appendEvent('task_added', {
+      id: nextTask.id,
+      title: nextTask.title,
+    })
+  }
+
+  /**
+   * Toggles task completion and records either complete or reopen events.
+   */
+  function toggleTaskDone(id: string) {
+    rolloverIfNeeded()
+    const task = persisted.value.tasks.find(item => item.id === id)
+    if (!task)
+      return
+
+    const toggledDone = !task.done
+    const toggledTask: StudyTask = {
+      ...task,
+      done: toggledDone,
+      completedAt: toggledDone ? Date.now() : undefined,
+    }
+    persisted.value = {
+      ...persisted.value,
+      tasks: persisted.value.tasks.map(existingTask => existingTask.id === id ? toggledTask : existingTask),
+    }
+
+    if (task.done) {
+      appendEvent('task_reopened', {
+        id: toggledTask.id,
+        title: toggledTask.title,
+      })
+      return
+    }
+
+    appendEvent('task_completed', {
+      id: toggledTask.id,
+      title: toggledTask.title,
+    })
+  }
+
+  /**
+   * Removes one task by id and records a delete event.
+   */
+  function deleteTask(id: string) {
+    rolloverIfNeeded()
+    const targetTask = persisted.value.tasks.find(task => task.id === id)
+    if (!targetTask)
+      return
+
+    persisted.value = {
+      ...persisted.value,
+      tasks: persisted.value.tasks.filter(task => task.id !== id),
+    }
+    appendEvent('task_deleted', {
+      id: targetTask.id,
+      title: targetTask.title,
+    })
+  }
+
+  /**
+   * Clears all completed tasks and keeps pending tasks untouched.
+   */
+  function clearCompletedTasks() {
+    rolloverIfNeeded()
+    persisted.value = {
+      ...persisted.value,
+      tasks: persisted.value.tasks.filter(task => !task.done),
+    }
+  }
+
+  /**
    * Creates a JSON-ready snapshot for Study Island stats/log export.
    */
   function exportStudySnapshot(): StudyCompanionSnapshot {
@@ -465,6 +566,9 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     persisted,
     isRunning,
     isMuted,
+    taskTotal,
+    taskCompleted,
+    taskPending,
     startFocus,
     startBreak,
     pause,
@@ -473,6 +577,10 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     syncFromWallClock,
     rolloverIfNeeded,
     appendEvent,
+    addTask,
+    toggleTaskDone,
+    deleteTask,
+    clearCompletedTasks,
     exportStudySnapshot,
     clearStudyEvents,
     clearTodayStudyStats,

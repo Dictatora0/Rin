@@ -43,6 +43,7 @@ describe('resolveStudyFeedbackEmotion', () => {
     expect(resolveStudyFeedbackEmotion('break', false)).toBe('curious')
     expect(resolveStudyFeedbackEmotion('paused', false)).toBe('question')
     expect(resolveStudyFeedbackEmotion('focus_completed', false)).toBe('happy')
+    expect(resolveStudyFeedbackEmotion('task_completed', false)).toBe('happy')
     expect(resolveStudyFeedbackEmotion('task_overload', false)).toBe('awkward')
   })
 

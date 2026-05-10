@@ -3,6 +3,8 @@ import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 
+import TaskList from './TaskList.vue'
+
 import { useStudyReminderPolicy } from '../../../composables/use-study-reminder-policy'
 
 const studyStore = useStudyCompanionStore()
@@ -77,6 +79,8 @@ function localizedReminderMessage(message: string) {
     return '专注完成，休息一下吧。'
   if (message === 'Break is over. Ready to focus?')
     return '休息结束，准备开始专注。'
+  if (message === 'Task completed. Keep it up!')
+    return '完成一项，继续保持。'
   return message
 }
 
@@ -251,5 +255,7 @@ const mainButtonIcon = computed(() => {
         <span>已静音</span>
       </div>
     </div>
+
+    <TaskList />
   </div>
 </template>
