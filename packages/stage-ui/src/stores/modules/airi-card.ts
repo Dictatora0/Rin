@@ -7,7 +7,7 @@ import { defineStore, storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import SystemPromptV2 from '../../constants/prompts/system-v2'
+import SystemPromptV2, { rinMessage } from '../../constants/prompts/system-v2'
 
 import { DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT } from '../../constants/prompts/character-defaults'
 import { useSettingsStageModel } from '../settings/stage-model'
@@ -131,6 +131,9 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   }
 
   function resolveAiriExtension(card: Card | ccv3.CharacterCardV3): AiriExtension {
+    // 新增：判断是否为 Rin 卡片（通过 name 或 ID，这里用 name 更通用）
+    const isRinCard = 'name' in card && card.name === 'Rin'
+
     // Get existing extension if available
     const existingExtension = ('data' in card
       ? card.data?.extensions?.airi
@@ -146,17 +149,21 @@ export const useAiriCardStore = defineStore('airi-card', () => {
         provider: activeSpeechProvider.value,
         model: activeSpeechModel.value,
         voice_id: activeSpeechVoiceId.value,
+        // Rin 专属：低打扰语音配置（语速更慢、音调更温柔）
+        pitch: isRinCard ? 1.1 : undefined, // 略高的音调，贴合少女感
+        rate: isRinCard ? 0.9 : undefined, // 略慢的语速，低打扰
+        language: isRinCard ? 'en-US' : undefined,
       },
       displayModelId: stageModelStore.stageModelSelected,
       artistry: {
         enabled: false,
         provider: artistryStore.globalProvider,
         model: artistryStore.globalModel,
-        promptPrefix: artistryStore.globalPromptPrefix,
-        widgetInstruction: DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT,
+        promptPrefix: isRinCard ? 'Rin study companion: low disturbance, short words' : artistryStore.globalPromptPrefix,
+        widgetInstruction: isRinCard ? '' : DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT,
         spawnMode: 'bg_widget' as const,
         options: artistryStore.globalProviderOptions,
-        autonomousEnabled: false,
+        autonomousEnabled: !isRinCard,
         autonomousThreshold: 70,
         autonomousTarget: 'assistant' as const,
       },
@@ -257,16 +264,54 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   }
 
   function initialize() {
-    if (cards.value.has('default'))
-      return
-    cards.value.set('default', newAiriCard({
-      name: 'ReLU',
-      version: '1.0.0',
-      description: SystemPromptV2(
-        t('base.prompt.prefix'),
-        t('base.prompt.suffix'),
-      ).content,
-    }))
+    const savedCards = localStorage.getItem('airi-cards')
+    if (savedCards) {
+      try {
+        cards.value = new Map(JSON.parse(savedCards))
+      }
+      catch (e) {}
+    }
+
+    if (!cards.value.has('default')) {
+      cards.value.set('default', newAiriCard({
+        name: 'ReLU',
+        version: '1.0.0',
+        description: SystemPromptV2(
+          t('base.prompt.prefix'),
+          t('base.prompt.suffix'),
+        ).content,
+      }))
+    }
+
+    // 新增 Rin 专属卡片（独立 ID：rin-study-companion，不影响 default 卡片）
+    if (!cards.value.has('rin-study-companion')) {
+      console.log('✅ 创建 Rin 学习陪伴卡片')
+      cards.value.set('rin-study-companion', newAiriCard({
+        name: 'Rin', // 角色名
+        version: '1.0.0',
+        // 绑定 Rin 专属的系统提示（从 i18n 的 rin_prefix/rin_suffix 读取）
+        description: rinMessage(
+          t('base.prompt.rin_prefix'),
+          t('base.prompt.rin_suffix'),
+        ).content,
+        // 补充 Rin 专属的 persona 字段（贴合学习陪伴）
+        personality: 'Gentle, patient, low-disturbance, 16-year-old study companion',
+        scenario: 'Rin is sitting next to the user, quietly accompanying them to study, only speaking when necessary with short, warm words',
+        greetings: [
+          '<{"|"}ACT:{"state":"normal","intensity":1}{"|"}> Hi~ Let\'s start studying together 📖',
+          '<{"|"}ACT:{"state":"normal","intensity":1}{"|"}> Ready to focus? I\'m here with you ✨',
+        ],
+        // 其他字段保持默认，或补充学习陪伴相关
+        systemPrompt: rinMessage(t('base.prompt.rin_prefix'), t('base.prompt.rin_suffix')).content,
+      }))
+      console.log('✅ 创建完成 Rin 学习陪伴卡片')
+    }
+
+    localStorage.setItem(
+      'airi-cards',
+      JSON.stringify(Array.from(cards.value.entries())),
+    )
+
     if (!activeCardId.value)
       activeCardId.value = 'default'
   }
