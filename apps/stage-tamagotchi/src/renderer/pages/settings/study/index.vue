@@ -5,10 +5,13 @@ import { useDownload } from '@proj-airi/stage-ui/composables/download'
 import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { Button, Callout, DoubleCheckButton } from '@proj-airi/ui'
 import { useNow } from '@vueuse/core'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const studyCompanion = useStudyCompanionStore()
 const now = useNow({ interval: 1000 })
+const expandedEventIds = ref<Set<string>>(new Set())
+
+const EVENT_DETAIL_PREVIEW_LIMIT = 120
 
 const mutedUntilText = computed(() => {
   const mutedUntil = studyCompanion.persisted.mutedUntil
@@ -21,14 +24,20 @@ const mutedUntilText = computed(() => {
   })
 })
 
+const modeText = computed(() => formatMode(studyCompanion.persisted.mode))
+const isMutedText = computed(() => (studyCompanion.isMuted ? '是' : '否'))
+const isDemoModeText = computed(() => (studyCompanion.demoModeEnabled ? '是' : '否'))
+
 const todayStatsRows = computed(() => [
   { label: '统计日期', value: studyCompanion.persisted.statsDate },
-  { label: '今日专注次数', value: String(studyCompanion.persisted.todayFocusSessions) },
-  { label: '今日专注分钟', value: String(studyCompanion.persisted.todayFocusMinutes) },
-  { label: '累计循环次数', value: String(studyCompanion.persisted.cycleCount) },
+  { label: '今日专注轮数', value: String(studyCompanion.persisted.todayFocusSessions) },
+  { label: '今日累计专注分钟', value: String(studyCompanion.persisted.todayFocusMinutes) },
+  { label: '今日完成任务数', value: String(studyCompanion.taskCompleted) },
   { label: '今日提醒次数', value: String(studyCompanion.persisted.todayReminderCount) },
+  { label: '当前模式', value: modeText.value },
+  { label: '是否静音', value: isMutedText.value },
+  { label: '是否演示模式', value: isDemoModeText.value },
   { label: '静音到', value: mutedUntilText.value },
-  { label: '当前模式', value: studyCompanion.persisted.mode },
   { label: '剩余时间', value: formatRemaining(studyCompanion.persisted.remainingMs) },
 ])
 
@@ -48,9 +57,20 @@ const recentEvents = computed(() => {
       id: event.id || `${event.type}-${event.at}-${index}`,
       at: formatEventTime(event.at),
       type: event.type,
+      typeLabel: formatEventType(event.type),
       detail: formatEventDetail(event.detail),
     }))
 })
+
+function formatMode(mode: string) {
+  if (mode === 'focus')
+    return '专注中'
+  if (mode === 'break')
+    return '休息中'
+  if (mode === 'paused')
+    return '已暂停'
+  return '空闲'
+}
 
 function formatRemaining(remainingMs: number) {
   const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000))
@@ -79,6 +99,65 @@ function formatEventDetail(detail: StudyEventLogEntry['detail']) {
   catch {
     return '[详情不可序列化]'
   }
+}
+
+function formatEventType(type: StudyEventLogEntry['type']) {
+  if (type === 'focus_started')
+    return '开始专注'
+  if (type === 'focus_completed')
+    return '专注完成'
+  if (type === 'session_paused')
+    return '会话暂停'
+  if (type === 'session_resumed')
+    return '会话继续'
+  if (type === 'focus_reset')
+    return '重置会话'
+  if (type === 'break_started')
+    return '开始休息'
+  if (type === 'break_completed')
+    return '休息完成'
+  if (type === 'task_added')
+    return '新增任务'
+  if (type === 'task_completed')
+    return '完成任务'
+  if (type === 'task_reopened')
+    return '任务重开'
+  if (type === 'task_deleted')
+    return '删除任务'
+  if (type === 'demo_mode_enabled')
+    return '开启演示模式'
+  if (type === 'demo_mode_disabled')
+    return '关闭演示模式'
+  if (type === 'day_rollover')
+    return '跨日重置'
+  if (type === 'study_log_exported')
+    return '导出日志'
+  if (type === 'study_events_cleared')
+    return '清空日志'
+  if (type === 'study_stats_cleared')
+    return '清空今日统计'
+  if (type === 'reminder_shown')
+    return '触发提醒'
+  return type
+}
+
+function getEventDetailPreview(detail: string) {
+  if (detail.length <= EVENT_DETAIL_PREVIEW_LIMIT)
+    return detail
+  return `${detail.slice(0, EVENT_DETAIL_PREVIEW_LIMIT - 3)}...`
+}
+
+function toggleEventDetail(id: string) {
+  if (expandedEventIds.value.has(id)) {
+    expandedEventIds.value.delete(id)
+  }
+  else {
+    expandedEventIds.value.add(id)
+  }
+}
+
+function isEventDetailExpanded(id: string) {
+  return expandedEventIds.value.has(id)
 }
 
 function handleExportJson() {
@@ -190,7 +269,7 @@ function handleClearTodayStats() {
           'text-neutral-500 dark:border-neutral-700/70 dark:text-neutral-400',
         ]"
       >
-        今日暂无活动日志。
+        暂无学习记录。
       </div>
 
       <div
@@ -212,10 +291,20 @@ function handleClearTodayStats() {
             {{ event.at }}
           </div>
           <div :class="['sm:col-span-3 font-medium text-neutral-700 dark:text-neutral-200']">
-            {{ event.type }}
+            {{ event.typeLabel }}
           </div>
-          <div :class="['sm:col-span-6 break-all text-neutral-600 dark:text-neutral-300']">
-            {{ event.detail }}
+          <div :class="['sm:col-span-6 text-neutral-600 dark:text-neutral-300']">
+            <p :class="['break-all']">
+              {{ isEventDetailExpanded(event.id) ? event.detail : getEventDetailPreview(event.detail) }}
+            </p>
+            <button
+              v-if="event.detail.length > EVENT_DETAIL_PREVIEW_LIMIT"
+              type="button"
+              :class="['mt-1 text-[11px] text-primary-600 hover:underline dark:text-primary-300']"
+              @click="toggleEventDetail(event.id)"
+            >
+              {{ isEventDetailExpanded(event.id) ? '收起' : '展开' }}
+            </button>
           </div>
         </div>
       </div>

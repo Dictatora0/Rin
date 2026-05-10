@@ -2,6 +2,10 @@ import { createPinia, setActivePinia, storeToRefs } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  DEFAULT_BREAK_DURATION_MS,
+  DEFAULT_FOCUS_DURATION_MS,
+  DEMO_BREAK_DURATION_MS,
+  DEMO_FOCUS_DURATION_MS,
   useStudyCompanionStore,
 } from './study-companion'
 
@@ -89,6 +93,7 @@ describe('useStudyCompanionStore', () => {
     store.resume()
     expect(store.persisted.mode).toBe('focus')
     expect(store.persisted.segmentEndsAt).toBe(Date.now() + 6_000)
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('session_resumed')
   })
 
   it('rolls daily counters when statsDate is behind UTC calendar day', () => {
@@ -169,6 +174,47 @@ describe('useStudyCompanionStore', () => {
     expect(taskPending.value).toBe(1)
   })
 
+  it('toggles demo mode durations and restores previous values', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.focusDurationMs = 35 * 60 * 1000
+    store.persisted.breakDurationMs = 7 * 60 * 1000
+
+    store.enableDemoMode()
+    expect(store.persisted.demoModeEnabled).toBe(true)
+    expect(store.persisted.focusDurationMs).toBe(DEMO_FOCUS_DURATION_MS)
+    expect(store.persisted.breakDurationMs).toBe(DEMO_BREAK_DURATION_MS)
+    expect(store.persisted.previousFocusDurationMs).toBe(35 * 60 * 1000)
+    expect(store.persisted.previousBreakDurationMs).toBe(7 * 60 * 1000)
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('demo_mode_enabled')
+
+    store.disableDemoMode()
+    expect(store.persisted.demoModeEnabled).toBe(false)
+    expect(store.persisted.focusDurationMs).toBe(35 * 60 * 1000)
+    expect(store.persisted.breakDurationMs).toBe(7 * 60 * 1000)
+    expect(store.persisted.previousFocusDurationMs).toBeNull()
+    expect(store.persisted.previousBreakDurationMs).toBeNull()
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('demo_mode_disabled')
+
+    store.toggleDemoMode()
+    expect(store.persisted.demoModeEnabled).toBe(true)
+    store.toggleDemoMode()
+    expect(store.persisted.demoModeEnabled).toBe(false)
+  })
+
+  it('uses default durations if demo mode has no previous values', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.demoModeEnabled = true
+    store.persisted.previousFocusDurationMs = null
+    store.persisted.previousBreakDurationMs = null
+    store.persisted.focusDurationMs = DEMO_FOCUS_DURATION_MS
+    store.persisted.breakDurationMs = DEMO_BREAK_DURATION_MS
+
+    store.disableDemoMode()
+
+    expect(store.persisted.focusDurationMs).toBe(DEFAULT_FOCUS_DURATION_MS)
+    expect(store.persisted.breakDurationMs).toBe(DEFAULT_BREAK_DURATION_MS)
+  })
+
   /**
    * @example
    * ```ts
@@ -199,7 +245,11 @@ describe('useStudyCompanionStore', () => {
 
     const snapshot = store.exportStudySnapshot()
 
+    expect(snapshot.schemaVersion).toBe(1)
+    expect(snapshot.app).toBe('Rin')
+    expect(snapshot.feature).toBe('study-companion')
     expect(snapshot.project).toBe('Rin Study Companion')
+    expect(snapshot.demoModeEnabled).toBe(false)
     expect(snapshot.statsDate).toBe('2026-05-06')
     expect(snapshot.summary.todayFocusSessions).toBe(2)
     expect(snapshot.summary.todayFocusMinutes).toBe(50)

@@ -8,8 +8,8 @@ import TaskList from './TaskList.vue'
 import { useStudyReminderPolicy } from '../../../composables/use-study-reminder-policy'
 
 const studyStore = useStudyCompanionStore()
-const { persisted, isMuted } = storeToRefs(studyStore)
-const { startFocus, startBreak, pause, resume, resetSession, appendEvent } = studyStore
+const { persisted, isMuted, demoModeEnabled } = storeToRefs(studyStore)
+const { startFocus, startBreak, pause, resume, resetSession, appendEvent, toggleDemoMode } = studyStore
 
 const MUTE_DURATION_MS = 30 * 60 * 1000
 
@@ -38,20 +38,9 @@ const modeDisplayText = computed(() => {
 
 const todayFocusSessions = computed(() => persisted.value.todayFocusSessions)
 const todayFocusMinutes = computed(() => persisted.value.todayFocusMinutes)
+const showNoStudyRecord = computed(() => persisted.value.studyEvents.length === 0)
 
 const { currentReminder, dismissReminder, todayReminderCount } = useStudyReminderPolicy()
-
-function handleMainAction() {
-  if (isIdle.value) {
-    startFocus()
-  }
-  else if (isPaused.value) {
-    resume()
-  }
-  else if (isRunning.value) {
-    pause()
-  }
-}
 
 function handleMuteToggle() {
   if (isMuted.value) {
@@ -64,15 +53,10 @@ function handleMuteToggle() {
   }
 }
 
-const mainButtonLabel = computed(() => {
-  if (isIdle.value)
-    return '开始专注'
-  if (isPaused.value)
-    return '继续'
-  if (isRunning.value)
-    return '暂停'
-  return ''
-})
+const canStartFocus = computed(() => isIdle.value)
+const canStartBreak = computed(() => isIdle.value)
+const canPause = computed(() => isRunning.value)
+const canResume = computed(() => isPaused.value)
 
 function localizedReminderMessage(message: string) {
   if (message === 'Focus complete! Time for a break.')
@@ -84,27 +68,58 @@ function localizedReminderMessage(message: string) {
   return message
 }
 
-const mainButtonIcon = computed(() => {
-  if (isIdle.value)
-    return 'i-solar:play-bold'
+const modeHintText = computed(() => {
+  if (isFocusing.value)
+    return '保持当前节奏，Rin 会安静陪你。'
+  if (isBreaking.value)
+    return '短暂休息一下，稍后再继续。'
   if (isPaused.value)
-    return 'i-solar:play-bold'
-  if (isRunning.value)
-    return 'i-solar:pause-bold'
-  return ''
+    return '已暂停，可继续或重置。'
+  return '准备开始今天的专注。'
+})
+
+const demoDurationText = computed(() => {
+  const focusSeconds = Math.round(persisted.value.focusDurationMs / 1000)
+  const breakSeconds = Math.round(persisted.value.breakDurationMs / 1000)
+  return `专注 ${focusSeconds} 秒 / 休息 ${breakSeconds} 秒`
 })
 </script>
 
 <template>
   <div
     :class="[
-      'w-full max-w-[19rem]',
-      'max-h-[52vh] overflow-y-auto',
-      'flex flex-col gap-2',
+      'w-full max-w-[20rem]',
+      'max-h-[62vh] overflow-y-auto',
+      'flex flex-col gap-2.5',
       'rounded-xl border border-neutral-200/60 px-3 py-3',
       'bg-white/90 shadow-md backdrop-blur-md dark:border-neutral-700/70 dark:bg-neutral-900/90',
     ]"
   >
+    <div :class="['flex items-center justify-between gap-2']">
+      <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-100']">学习计时</span>
+      <button
+        type="button"
+        :class="[
+          'rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
+          demoModeEnabled
+            ? 'bg-orange-500 text-white hover:bg-orange-400'
+            : 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600',
+        ]"
+        @click="toggleDemoMode"
+      >
+        {{ demoModeEnabled ? '演示模式：开' : '演示模式：关' }}
+      </button>
+    </div>
+    <p
+      v-if="demoModeEnabled"
+      :class="[
+        'rounded-md border border-orange-200/80 bg-orange-50/80 px-2 py-1 text-[11px]',
+        'text-orange-700 dark:border-orange-800/70 dark:bg-orange-950/40 dark:text-orange-200',
+      ]"
+    >
+      演示模式已启用，{{ demoDurationText }}
+    </p>
+
     <!-- Reminder Toast -->
     <Transition
       enter-active-class="transition-all duration-300 ease-out"
@@ -142,7 +157,7 @@ const mainButtonIcon = computed(() => {
     </Transition>
 
     <!-- Mode & Time Display -->
-    <div :class="['flex items-center gap-3']">
+    <div :class="['flex items-center justify-between gap-2']">
       <div
         :class="[
           'shrink-0 rounded-full px-3 py-1 text-xs font-medium',
@@ -157,7 +172,7 @@ const mainButtonIcon = computed(() => {
 
       <div
         :class="[
-          'font-mono text-xl font-semibold tabular-nums',
+          'font-mono text-lg font-semibold tabular-nums',
           isFocusing ? 'text-rose-600 dark:text-rose-400'
           : isBreaking ? 'text-emerald-600 dark:text-emerald-400'
             : 'text-neutral-800 dark:text-neutral-200',
@@ -166,36 +181,35 @@ const mainButtonIcon = computed(() => {
         {{ formattedRemaining }}
       </div>
     </div>
+    <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+      {{ modeHintText }}
+    </p>
 
     <!-- Control Buttons -->
-    <div :class="['flex flex-wrap items-center gap-1.5']">
-      <!-- Start/Pause/Resume Button -->
+    <div :class="['grid grid-cols-2 gap-1.5']">
       <button
         type="button"
+        :disabled="!canStartFocus"
         :class="[
           'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
-          'hover:scale-105 active:scale-95',
-          isIdle ? 'bg-rose-500 text-white hover:bg-rose-600'
-          : isPaused ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-            : 'bg-amber-500 text-white hover:bg-amber-600',
+          canStartFocus
+            ? 'bg-rose-500 text-white hover:bg-rose-600'
+            : 'cursor-not-allowed bg-neutral-200 text-neutral-400 dark:bg-neutral-700 dark:text-neutral-500',
         ]"
-        @click="handleMainAction"
+        @click="startFocus"
       >
-        <div :class="[mainButtonIcon, 'size-4']" />
-        {{ mainButtonLabel }}
+        <div class="i-solar:play-bold size-4" />
+        开始专注
       </button>
 
-      <!-- Start Break Button -->
       <button
-        v-if="isIdle || isPaused"
         type="button"
-        :disabled="isFocusing"
+        :disabled="!canStartBreak"
         :class="[
           'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
-          'hover:scale-105 active:scale-95',
-          isFocusing
-            ? 'cursor-not-allowed bg-neutral-200 text-neutral-400 dark:bg-neutral-700 dark:text-neutral-500'
-            : 'bg-emerald-500 text-white hover:bg-emerald-600',
+          canStartBreak
+            ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+            : 'cursor-not-allowed bg-neutral-200 text-neutral-400 dark:bg-neutral-700 dark:text-neutral-500',
         ]"
         @click="startBreak"
       >
@@ -203,22 +217,48 @@ const mainButtonIcon = computed(() => {
         开始休息
       </button>
 
-      <!-- Reset Button -->
+      <button
+        v-if="canPause"
+        type="button"
+        :class="[
+          'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+          'bg-amber-500 text-white hover:bg-amber-600',
+        ]"
+        @click="pause"
+      >
+        <div class="i-solar:pause-bold size-4" />
+        暂停
+      </button>
+
+      <button
+        v-if="canResume"
+        type="button"
+        :class="[
+          'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+          'bg-sky-500 text-white hover:bg-sky-600',
+        ]"
+        @click="resume"
+      >
+        <div class="i-solar:play-bold size-4" />
+        继续
+      </button>
+
       <button
         v-if="!isIdle"
         type="button"
         :class="[
-          'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
-          'bg-neutral-200 text-neutral-600 hover:scale-105 hover:bg-neutral-300 active:scale-95',
-          'dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600',
+          'col-span-2 flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+          'bg-neutral-200 text-neutral-700 hover:bg-neutral-300',
+          'dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600',
         ]"
         @click="resetSession"
       >
         <div class="i-solar:restart-bold size-4" />
         重置
       </button>
+    </div>
 
-      <!-- Mute Toggle Button -->
+    <div :class="['flex items-center justify-end']">
       <button
         type="button"
         :class="[
@@ -253,6 +293,9 @@ const mainButtonIcon = computed(() => {
       <div v-if="isMuted" :class="['mt-1 flex items-center gap-1']">
         <div class="i-solar:bell-off-bold size-3.5" />
         <span>已静音</span>
+      </div>
+      <div v-if="showNoStudyRecord" :class="['mt-1 text-neutral-400 dark:text-neutral-500']">
+        暂无学习记录。
       </div>
     </div>
 

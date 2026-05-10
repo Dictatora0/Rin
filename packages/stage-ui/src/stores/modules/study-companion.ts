@@ -19,6 +19,8 @@ export const DEFAULT_FOCUS_DURATION_MS = 25 * 60 * 1000
  * @default 5 * 60 * 1000
  */
 export const DEFAULT_BREAK_DURATION_MS = 5 * 60 * 1000
+export const DEMO_FOCUS_DURATION_MS = 60 * 1000
+export const DEMO_BREAK_DURATION_MS = 15 * 1000
 
 const STORAGE_KEY = 'settings/study-companion/v1'
 
@@ -67,6 +69,9 @@ export interface StudyCompanionPersisted {
   pausedCarry: 'focus' | 'break' | null
   focusDurationMs: number
   breakDurationMs: number
+  demoModeEnabled: boolean
+  previousFocusDurationMs: number | null
+  previousBreakDurationMs: number | null
   tasks: StudyTask[]
   /** Shown / fired reminders today (member 5). */
   todayReminderCount: number
@@ -79,8 +84,12 @@ export interface StudyCompanionPersisted {
  * Serializable snapshot payload for study statistics export.
  */
 export interface StudyCompanionSnapshot {
+  schemaVersion: 1
+  app: 'Rin'
+  feature: 'study-companion'
   project: 'Rin Study Companion'
   exportedAt: string
+  demoModeEnabled: boolean
   statsDate: string
   summary: {
     todayFocusSessions: number
@@ -166,6 +175,9 @@ export function createDefaultStudyCompanionPersisted(): StudyCompanionPersisted 
     pausedCarry: null,
     focusDurationMs: DEFAULT_FOCUS_DURATION_MS,
     breakDurationMs: DEFAULT_BREAK_DURATION_MS,
+    demoModeEnabled: false,
+    previousFocusDurationMs: null,
+    previousBreakDurationMs: null,
     tasks: [],
     todayReminderCount: 0,
     mutedUntil: 0,
@@ -197,6 +209,13 @@ function coercePersisted(raw: unknown): StudyCompanionPersisted {
       : base.pausedCarry,
     focusDurationMs: typeof o.focusDurationMs === 'number' && o.focusDurationMs > 0 ? o.focusDurationMs : base.focusDurationMs,
     breakDurationMs: typeof o.breakDurationMs === 'number' && o.breakDurationMs > 0 ? o.breakDurationMs : base.breakDurationMs,
+    demoModeEnabled: typeof o.demoModeEnabled === 'boolean' ? o.demoModeEnabled : base.demoModeEnabled,
+    previousFocusDurationMs: typeof o.previousFocusDurationMs === 'number' && o.previousFocusDurationMs > 0
+      ? o.previousFocusDurationMs
+      : base.previousFocusDurationMs,
+    previousBreakDurationMs: typeof o.previousBreakDurationMs === 'number' && o.previousBreakDurationMs > 0
+      ? o.previousBreakDurationMs
+      : base.previousBreakDurationMs,
     tasks: Array.isArray(o.tasks) ? o.tasks as StudyTask[] : base.tasks,
     todayReminderCount: typeof o.todayReminderCount === 'number' ? o.todayReminderCount : base.todayReminderCount,
     mutedUntil: typeof o.mutedUntil === 'number' ? o.mutedUntil : base.mutedUntil,
@@ -317,6 +336,7 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
   })
 
   const isMuted = computed(() => persisted.value.mutedUntil > Date.now())
+  const demoModeEnabled = computed(() => persisted.value.demoModeEnabled)
   const taskTotal = computed(() => persisted.value.tasks.length)
   const taskCompleted = computed(() => persisted.value.tasks.filter(task => task.done).length)
   const taskPending = computed(() => taskTotal.value - taskCompleted.value)
@@ -391,8 +411,10 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     if (p.mode !== 'paused' || !p.pausedCarry)
       return
 
+    const carry = p.pausedCarry
     p.mode = p.pausedCarry
     p.segmentEndsAt = Date.now() + p.remainingMs
+    appendEvent('session_resumed', { carry })
   }
 
   /**
@@ -412,6 +434,87 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
    */
   function syncFromWallClock() {
     tick()
+  }
+
+  function alignRunningSegmentDuration(targetDurationMs: number) {
+    const p = persisted.value
+    const clampedRemaining = Math.min(Math.max(0, p.remainingMs), targetDurationMs)
+    p.remainingMs = clampedRemaining
+
+    if (p.segmentEndsAt != null)
+      p.segmentEndsAt = Date.now() + clampedRemaining
+  }
+
+  /**
+   * Enables quick demo durations for course presentation mode.
+   */
+  function enableDemoMode() {
+    const p = persisted.value
+    if (p.demoModeEnabled)
+      return
+
+    p.previousFocusDurationMs = p.focusDurationMs
+    p.previousBreakDurationMs = p.breakDurationMs
+    p.demoModeEnabled = true
+    p.focusDurationMs = DEMO_FOCUS_DURATION_MS
+    p.breakDurationMs = DEMO_BREAK_DURATION_MS
+
+    if (p.mode === 'idle') {
+      p.remainingMs = p.focusDurationMs
+    }
+    else if (p.mode === 'focus' || (p.mode === 'paused' && p.pausedCarry === 'focus')) {
+      alignRunningSegmentDuration(p.focusDurationMs)
+    }
+    else if (p.mode === 'break' || (p.mode === 'paused' && p.pausedCarry === 'break')) {
+      alignRunningSegmentDuration(p.breakDurationMs)
+    }
+
+    appendEvent('demo_mode_enabled', {
+      focusDurationMs: p.focusDurationMs,
+      breakDurationMs: p.breakDurationMs,
+    })
+  }
+
+  /**
+   * Restores normal durations after demo mode.
+   */
+  function disableDemoMode() {
+    const p = persisted.value
+    if (!p.demoModeEnabled)
+      return
+
+    const restoredFocusDuration = p.previousFocusDurationMs ?? DEFAULT_FOCUS_DURATION_MS
+    const restoredBreakDuration = p.previousBreakDurationMs ?? DEFAULT_BREAK_DURATION_MS
+
+    p.focusDurationMs = restoredFocusDuration
+    p.breakDurationMs = restoredBreakDuration
+    p.demoModeEnabled = false
+    p.previousFocusDurationMs = null
+    p.previousBreakDurationMs = null
+
+    if (p.mode === 'idle') {
+      p.remainingMs = p.focusDurationMs
+    }
+    else if (p.mode === 'focus' || (p.mode === 'paused' && p.pausedCarry === 'focus')) {
+      alignRunningSegmentDuration(p.focusDurationMs)
+    }
+    else if (p.mode === 'break' || (p.mode === 'paused' && p.pausedCarry === 'break')) {
+      alignRunningSegmentDuration(p.breakDurationMs)
+    }
+
+    appendEvent('demo_mode_disabled', {
+      focusDurationMs: p.focusDurationMs,
+      breakDurationMs: p.breakDurationMs,
+    })
+  }
+
+  function toggleDemoMode() {
+    if (persisted.value.demoModeEnabled) {
+      disableDemoMode()
+      return
+    }
+
+    enableDemoMode()
   }
 
   /**
@@ -516,8 +619,12 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     const taskCompleted = taskSnapshot.filter(task => task.done).length
 
     return {
+      schemaVersion: 1,
+      app: 'Rin',
+      feature: 'study-companion',
       project: 'Rin Study Companion',
       exportedAt: new Date().toISOString(),
+      demoModeEnabled: p.demoModeEnabled,
       statsDate: p.statsDate,
       summary: {
         todayFocusSessions: p.todayFocusSessions,
@@ -566,6 +673,7 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     persisted,
     isRunning,
     isMuted,
+    demoModeEnabled,
     taskTotal,
     taskCompleted,
     taskPending,
@@ -577,6 +685,9 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     syncFromWallClock,
     rolloverIfNeeded,
     appendEvent,
+    enableDemoMode,
+    disableDemoMode,
+    toggleDemoMode,
     addTask,
     toggleTaskDone,
     deleteTask,

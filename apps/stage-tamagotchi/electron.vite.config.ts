@@ -27,6 +27,17 @@ export default defineConfig({
           'electron-click-drag-plugin',
         ],
       },
+      watch: {
+        exclude: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/out/**',
+          '**/dist/**',
+          '**/coverage/**',
+          '**/.turbo/**',
+          '**/.vite/**',
+        ],
+      },
     },
     plugins: [
       {
@@ -75,6 +86,17 @@ export default defineConfig({
 
   preload: {
     build: {
+      watch: {
+        exclude: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/out/**',
+          '**/dist/**',
+          '**/coverage/**',
+          '**/.turbo/**',
+          '**/.vite/**',
+        ],
+      },
       lib: {
         entry: {
           'index': resolve(join(import.meta.dirname, 'src', 'preload', 'index.ts')),
@@ -151,6 +173,17 @@ export default defineConfig({
         //
         // See: https://vite.dev/config/server-options#server-fs-strict
         strict: false,
+      },
+      watch: {
+        ignored: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/out/**',
+          '**/dist/**',
+          '**/coverage/**',
+          '**/.turbo/**',
+          '**/.vite/**',
+        ],
       },
       warmup: {
         clientFiles: [

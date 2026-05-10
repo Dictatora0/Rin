@@ -242,7 +242,7 @@ function refreshWindow() {
             <div
               v-if="studyPanelExpanded"
               :class="[
-                'mt-2 w-[19rem] max-w-[75vw]',
+                'mt-2 w-[20rem] max-w-[76vw]',
                 'max-h-[55vh] overflow-y-auto',
               ]"
             >
