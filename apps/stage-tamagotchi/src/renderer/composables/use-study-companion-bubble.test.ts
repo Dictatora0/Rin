@@ -1,6 +1,7 @@
 import { createDefaultStudyCompanionPersisted } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { describe, expect, it } from 'vitest'
 
+import { STUDY_BUBBLE_COPY_BY_EVENT } from './study-companion-bubble-copy-resolver'
 import {
   createStudyBubbleCopyHistory,
   createStudyBubblePolicyHistory,
@@ -31,7 +32,7 @@ describe('resolveStudyBubbleText', () => {
     demoRound.todayFocusSessions = 1
     demoRound.demoModeEnabled = true
     const demoRoundCopy = resolveStudyBubbleText({ type: 'focus_started' }, demoRound, history)
-    expect(demoRoundCopy?.text.includes('演示')).toBe(true)
+    expect(STUDY_BUBBLE_COPY_BY_EVENT.focus_started_demo.includes(demoRoundCopy?.text ?? '')).toBe(true)
   })
 
   it('returns task_completed copy based on pending task count', () => {
@@ -63,6 +64,20 @@ describe('resolveStudyBubbleText', () => {
     expect(first?.text).not.toBe(second?.text)
     expect(first?.text).not.toBe(third?.text)
     expect(second?.text).not.toBe(third?.text)
+  })
+
+  it('prefers unseen copy lines before recycling used lines for the same event', () => {
+    const history = createStudyBubbleCopyHistory()
+    const snapshot = createSnapshot()
+    const expectedUniqueCount = STUDY_BUBBLE_COPY_BY_EVENT.session_resumed.length
+    const seen = new Set<string>()
+
+    for (let index = 0; index < expectedUniqueCount; index += 1) {
+      const payload = resolveStudyBubbleText({ type: 'session_resumed' }, snapshot, history)
+      expect(payload?.text).toBeDefined()
+      seen.add(payload!.text)
+      expect(seen.size).toBe(index + 1)
+    }
   })
 })
 
@@ -147,5 +162,67 @@ describe('shouldShowStudyBubble', () => {
     expect(shouldShowStudyBubble(firstPayload, { mode: 'idle', isMuted: false, now: 1000 }, history)).toBe(true)
     expect(shouldShowStudyBubble(secondPayload, { mode: 'idle', isMuted: false, now: 10_000 }, history)).toBe(false)
     expect(shouldShowStudyBubble(secondPayload, { mode: 'idle', isMuted: false, now: 32_000 }, history)).toBe(true)
+  })
+
+  it('replays key study scenes with copy variety, throttle, and mute suppression', () => {
+    const snapshot = createSnapshot()
+    snapshot.tasks = [
+      { id: '1', title: 'A', done: true, createdAt: Date.now(), completedAt: Date.now() },
+      { id: '2', title: 'B', done: false, createdAt: Date.now() },
+    ]
+
+    const copyHistory = createStudyBubbleCopyHistory()
+    const policyHistory = createStudyBubblePolicyHistory()
+    const shownTexts: string[] = []
+    let now = 1000
+
+    const focusStartedPayload = resolveStudyBubbleText({ type: 'focus_started' }, snapshot, copyHistory)
+    expect(focusStartedPayload).not.toBeNull()
+    snapshot.mode = 'focus'
+    expect(shouldShowStudyBubble(focusStartedPayload!, { mode: snapshot.mode, isMuted: false, now }, policyHistory)).toBe(true)
+    shownTexts.push(focusStartedPayload!.text)
+
+    now += 31_000
+    snapshot.mode = 'idle'
+    snapshot.todayFocusSessions = 1
+    snapshot.todayFocusMinutes = 25
+    const focusCompletedPayload = resolveStudyBubbleText({ type: 'focus_completed' }, snapshot, copyHistory)
+    expect(focusCompletedPayload).not.toBeNull()
+    expect(shouldShowStudyBubble(focusCompletedPayload!, { mode: snapshot.mode, isMuted: false, now }, policyHistory)).toBe(true)
+    shownTexts.push(focusCompletedPayload!.text)
+
+    now += 31_000
+    snapshot.mode = 'break'
+    const breakStartedPayload = resolveStudyBubbleText({ type: 'break_started' }, snapshot, copyHistory)
+    expect(breakStartedPayload).not.toBeNull()
+    expect(shouldShowStudyBubble(breakStartedPayload!, { mode: snapshot.mode, isMuted: false, now }, policyHistory)).toBe(true)
+    shownTexts.push(breakStartedPayload!.text)
+
+    now += 31_000
+    snapshot.mode = 'idle'
+    const taskCompletedPayload = resolveStudyBubbleText({ type: 'task_completed' }, snapshot, copyHistory)
+    expect(taskCompletedPayload).not.toBeNull()
+    expect(shouldShowStudyBubble(taskCompletedPayload!, { mode: snapshot.mode, isMuted: false, now }, policyHistory)).toBe(true)
+    shownTexts.push(taskCompletedPayload!.text)
+
+    for (let index = 1; index < shownTexts.length; index += 1)
+      expect(shownTexts[index]).not.toBe(shownTexts[index - 1])
+
+    now += 1_000
+    snapshot.mode = 'idle'
+    snapshot.mutedUntil = now + 60_000
+    const pausedPayload = resolveStudyBubbleText({ type: 'session_paused' }, snapshot, copyHistory)
+    expect(pausedPayload).not.toBeNull()
+    expect(shouldShowStudyBubble(pausedPayload!, { mode: snapshot.mode, isMuted: true, now }, policyHistory)).toBe(false)
+
+    now += 31_000
+    const mutedPayload = resolveStudyBubbleText({ type: 'muted' }, snapshot, copyHistory)
+    expect(mutedPayload).not.toBeNull()
+    expect(shouldShowStudyBubble(mutedPayload!, { mode: snapshot.mode, isMuted: true, now }, policyHistory)).toBe(true)
+
+    now += 2_000
+    const mutedPayloadAgain = resolveStudyBubbleText({ type: 'muted' }, snapshot, copyHistory)
+    expect(mutedPayloadAgain).not.toBeNull()
+    expect(shouldShowStudyBubble(mutedPayloadAgain!, { mode: snapshot.mode, isMuted: true, now }, policyHistory)).toBe(false)
   })
 })

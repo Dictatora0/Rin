@@ -128,6 +128,7 @@ const { pause, resume } = watch(isTransparent, (transparent) => {
 
 const hearingDialogOpen = computed(() => controlsIslandRef.value?.hearingDialogOpen ?? false)
 const studyPanelPinned = computed(() => controlsIslandRef.value?.studyPanelPinned ?? false)
+const studyPanelInputActive = computed(() => controlsIslandRef.value?.studyPanelInputActive ?? false)
 
 const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() => {
   const hasModel = !!stageModelSelectedUrl.value
@@ -513,7 +514,10 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
           :y-offset="positionInPercentageString.y"
         />
         <HoloCoupon />
-        <StudyBubble :message="currentBubble" />
+        <StudyBubble
+          :message="currentBubble"
+          :lift-for-input="studyPanelInputActive"
+        />
         <ControlsIsland
           ref="controlsIslandRef"
         />

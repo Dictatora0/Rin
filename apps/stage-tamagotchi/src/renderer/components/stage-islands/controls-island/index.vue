@@ -61,6 +61,7 @@ defineExpose({
   get hearingDialogOpen() { return blockingOverlays.has('hearing') },
   set hearingDialogOpen(v: boolean) { setOverlay('hearing', v) },
   get studyPanelPinned() { return studyPanelExpanded.value || studyPanelInteractionLocked.value },
+  get studyPanelInputActive() { return studyPanelInteractionLocked.value },
 })
 
 const { isOutside } = useElectronMouseInElement(islandRef)

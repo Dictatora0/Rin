@@ -5,6 +5,7 @@ import { computed } from 'vue'
 
 const props = defineProps<{
   message: StudyBubbleMessage | null
+  liftForInput?: boolean
 }>()
 
 const bubbleToneClass = computed(() => {
@@ -26,6 +27,13 @@ const bubbleToneClass = computed(() => {
 
   return 'border-neutral-200/70 bg-white/85 text-neutral-800 dark:border-neutral-500/40 dark:bg-neutral-900/75 dark:text-neutral-100'
 })
+
+const bubblePositionClass = computed(() => {
+  if (props.liftForInput)
+    return 'left-2 bottom-36'
+
+  return 'left-4 bottom-24'
+})
 </script>
 
 <template>
@@ -40,7 +48,8 @@ const bubbleToneClass = computed(() => {
     <div
       v-if="message"
       :class="[
-        'pointer-events-none absolute left-4 bottom-24 z-40',
+        'pointer-events-none absolute z-40',
+        bubblePositionClass,
         'max-w-[min(72vw,20rem)]',
       ]"
     >
