@@ -6,10 +6,10 @@ import { createApp, defineComponent, h, nextTick, onBeforeUnmount, ref } from 'v
 import ControlsIsland from './index.vue'
 
 const mocks = vi.hoisted(() => {
-  const moveModeEnabled = { value: false }
   return {
     isOutside: { value: false } as { value: boolean },
-    moveModeEnabled,
+    moveModeEnabled: { value: false } as { value: boolean },
+    controlsPanelExpanded: { value: false } as { value: boolean },
     visionUnmountStop: vi.fn(),
     openSettings: vi.fn(),
     openChat: vi.fn(),
@@ -17,7 +17,13 @@ const mocks = vi.hoisted(() => {
     setAlwaysOnTop: vi.fn(),
     startDraggingWindow: vi.fn(),
     toggleMoveMode: vi.fn(() => {
-      moveModeEnabled.value = !moveModeEnabled.value
+      mocks.moveModeEnabled.value = !mocks.moveModeEnabled.value
+    }),
+    toggleControlsPanel: vi.fn(() => {
+      mocks.controlsPanelExpanded.value = !mocks.controlsPanelExpanded.value
+    }),
+    setControlsPanelExpanded: vi.fn((expanded: boolean) => {
+      mocks.controlsPanelExpanded.value = expanded
     }),
   }
 })
@@ -56,7 +62,10 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
 vi.mock('../../../stores/controls-island', () => ({
   useControlsIslandStore: () => ({
     moveModeEnabled: mocks.moveModeEnabled,
+    controlsPanelExpanded: mocks.controlsPanelExpanded,
     toggleMoveMode: mocks.toggleMoveMode,
+    toggleControlsPanel: mocks.toggleControlsPanel,
+    setControlsPanelExpanded: mocks.setControlsPanelExpanded,
   }),
 }))
 
@@ -237,10 +246,19 @@ function findButtonByTooltipText(container: HTMLElement, text: string) {
   return button
 }
 
+function findToggleButton(container: HTMLElement) {
+  const button = container.querySelector('[data-testid="controls-toggle-button"]') as HTMLButtonElement | null
+  if (!button)
+    throw new Error('controls toggle button missing')
+  return button
+}
+
 describe('controls island vision panel interaction flow', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.isOutside = ref(false)
+    mocks.moveModeEnabled = ref(false)
+    mocks.controlsPanelExpanded = ref(false)
     mocks.visionUnmountStop.mockReset()
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
@@ -248,7 +266,8 @@ describe('controls island vision panel interaction flow', () => {
     mocks.setAlwaysOnTop.mockReset()
     mocks.startDraggingWindow.mockReset()
     mocks.toggleMoveMode.mockReset()
-    mocks.moveModeEnabled.value = false
+    mocks.toggleControlsPanel.mockReset()
+    mocks.setControlsPanelExpanded.mockReset()
   })
 
   afterEach(() => {
@@ -260,9 +279,11 @@ describe('controls island vision panel interaction flow', () => {
   it('keeps vision panel mounted after mouse leaves for 2s and does not trigger stop', async () => {
     const { container, unmount } = mountControlsIsland()
 
-    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
+    const expandButton = findToggleButton(container)
+    expect(expandButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.expand')
     expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
+    expect(expandButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.collapse')
 
     const cameraButton = findButtonByTooltipText(container, '打开视觉交互')
     cameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -285,7 +306,7 @@ describe('controls island vision panel interaction flow', () => {
   it('keeps vision runtime mounted when collapsing controls drawer manually', async () => {
     const { container, unmount } = mountControlsIsland()
 
-    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
+    const expandButton = findToggleButton(container)
     expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
@@ -294,7 +315,7 @@ describe('controls island vision panel interaction flow', () => {
     await nextTick()
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
 
-    const collapseButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.collapse')
+    const collapseButton = findToggleButton(container)
     collapseButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 

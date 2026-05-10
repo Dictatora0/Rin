@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { TooltipContent, TooltipProvider, TooltipRoot, TooltipTrigger } from 'reka-ui'
 
-const { side = 'top' } = defineProps<{
+const { side = 'left' } = defineProps<{
   side?: 'top' | 'right' | 'bottom' | 'left'
 }>()
 </script>
@@ -12,20 +12,29 @@ const { side = 'top' } = defineProps<{
     :skip-delay-duration="0"
   >
     <TooltipRoot>
-      <TooltipTrigger>
-        <slot />
+      <TooltipTrigger as-child>
+        <span
+          data-testid="controls-button-wrapper"
+          data-controls-button-wrapper
+          class="relative z-0 inline-flex items-center justify-center focus-within:z-20 hover:z-20"
+        >
+          <slot />
+        </span>
       </TooltipTrigger>
       <Transition name="fade">
         <TooltipContent
+          data-testid="controls-tooltip"
+          data-controls-tooltip
           :class="[
             'border-1 border-solid border-neutral-200/60 dark:border-neutral-800/10',
             'bg-neutral-50/80 dark:bg-neutral-800/70',
             'w-fit flex items-center self-end justify-center px-1.5 py-1',
             'rounded-lg backdrop-blur-md',
-            'text-xs',
+            'text-xs whitespace-nowrap',
+            'z-[240] pointer-events-none',
           ]"
           :side="side"
-          :side-offset="4"
+          :side-offset="6"
         >
           <slot name="tooltip" />
         </TooltipContent>

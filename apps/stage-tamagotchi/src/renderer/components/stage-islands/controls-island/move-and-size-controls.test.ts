@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 
@@ -7,7 +10,8 @@ import ControlsIsland from './index.vue'
 
 const mocks = vi.hoisted(() => {
   return {
-    moveModeEnabled: { value: false },
+    moveModeEnabled: { value: false } as { value: boolean },
+    controlsPanelExpanded: { value: false } as { value: boolean },
     isOutside: { value: false } as { value: boolean },
     openSettings: vi.fn(),
     openChat: vi.fn(),
@@ -20,6 +24,12 @@ const mocks = vi.hoisted(() => {
     unknownEvents: [] as string[],
     toggleMoveMode: vi.fn(() => {
       mocks.moveModeEnabled.value = !mocks.moveModeEnabled.value
+    }),
+    toggleControlsPanel: vi.fn(() => {
+      mocks.controlsPanelExpanded.value = !mocks.controlsPanelExpanded.value
+    }),
+    setControlsPanelExpanded: vi.fn((expanded: boolean) => {
+      mocks.controlsPanelExpanded.value = expanded
     }),
   }
 })
@@ -58,7 +68,10 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
 vi.mock('../../../stores/controls-island', () => ({
   useControlsIslandStore: () => ({
     moveModeEnabled: mocks.moveModeEnabled,
+    controlsPanelExpanded: mocks.controlsPanelExpanded,
     toggleMoveMode: mocks.toggleMoveMode,
+    toggleControlsPanel: mocks.toggleControlsPanel,
+    setControlsPanelExpanded: mocks.setControlsPanelExpanded,
   }),
 }))
 
@@ -226,13 +239,9 @@ function mountControlsIsland() {
 }
 
 function clickExpand(container: HTMLElement) {
-  const tooltipNode = Array.from(container.querySelectorAll('.tooltip-text'))
-    .find(node => node.textContent?.includes('tamagotchi.stage.controls-island.expand'))
-  if (!tooltipNode)
-    throw new Error('expand tooltip not found')
-  const button = tooltipNode.previousElementSibling as HTMLButtonElement | null
+  const button = container.querySelector('[data-testid="controls-toggle-button"]') as HTMLButtonElement | null
   if (!button)
-    throw new Error('expand button not found')
+    throw new Error('controls toggle button not found')
   button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 }
 
@@ -241,6 +250,7 @@ describe('controls island move mode and size controls', () => {
     vi.useFakeTimers()
     mocks.isOutside = ref(false)
     mocks.moveModeEnabled = ref(false)
+    mocks.controlsPanelExpanded = ref(false)
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
     mocks.closeWindow.mockReset()
@@ -250,6 +260,8 @@ describe('controls island move mode and size controls', () => {
     mocks.setBounds.mockClear()
     mocks.getPrimaryDisplay.mockClear()
     mocks.toggleMoveMode.mockClear()
+    mocks.toggleControlsPanel.mockClear()
+    mocks.setControlsPanelExpanded.mockClear()
     mocks.unknownEvents.length = 0
   })
 
@@ -261,19 +273,43 @@ describe('controls island move mode and size controls', () => {
 
   it('toggles move mode through controls button', async () => {
     const { container, unmount } = mountControlsIsland()
+    const togglePanelButton = container.querySelector('[data-testid="controls-toggle-button"]') as HTMLButtonElement | null
+    expect(togglePanelButton).not.toBeNull()
+    expect(togglePanelButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.expand')
+    expect(togglePanelButton?.getAttribute('data-testid')).toBe('controls-toggle-button')
+
     clickExpand(container)
     await nextTick()
+    expect(togglePanelButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.collapse')
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
+    expect(mocks.toggleControlsPanel).toHaveBeenCalledTimes(1)
 
     const controlsRoot = container.querySelector('[data-testid="controls-island-root"]') as HTMLDivElement | null
     expect(controlsRoot).not.toBeNull()
     expect(controlsRoot?.className).toContain('controls-island-root')
     expect(controlsRoot?.className).toContain('z-120')
+    expect(controlsRoot?.className).toContain('pointer-events-auto')
+    expect(controlsRoot?.className).toContain('[-webkit-app-region:no-drag]')
+    expect(controlsRoot?.getAttribute('data-control-layer')).toBe('controls-island')
+    const controlsPanelScrollContainer = container.querySelector('[data-controls-panel-scroll]') as HTMLDivElement | null
+    const controlsPanelViewport = container.querySelector('[data-testid="controls-panel-viewport"]') as HTMLDivElement | null
+    expect(controlsPanelViewport).not.toBeNull()
+    expect(controlsPanelViewport?.className).toContain('min-h-0')
+    expect(controlsPanelViewport?.className).toContain('flex-1')
+    expect(controlsPanelViewport?.className).toContain('items-end')
+    expect(controlsPanelScrollContainer).not.toBeNull()
+    expect(controlsPanelScrollContainer?.className).toContain('max-h-full')
+    expect(controlsPanelScrollContainer?.className).toContain('overflow-y-auto')
+    expect(controlsPanelScrollContainer?.className).toContain('overscroll-contain')
 
     const toggleButton = container.querySelector('[data-testid="controls-move-mode-toggle"]') as HTMLButtonElement | null
     expect(toggleButton).not.toBeNull()
-    expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.move-mode.toggle')
+    expect(toggleButton?.getAttribute('aria-label')).toBe('Enable move mode')
+    expect(toggleButton?.getAttribute('title')).toBe('Enable move mode')
     expect(toggleButton?.getAttribute('aria-pressed')).toBe('false')
+    expect(toggleButton?.className).toContain('text-neutral-800')
     expect(mocks.moveModeEnabled.value).toBe(false)
+    expect(container.querySelector('[data-testid="controls-move-mode-icon"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="controls-move-mode-status"]')).toBeNull()
 
     toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -281,17 +317,32 @@ describe('controls island move mode and size controls', () => {
 
     expect(mocks.toggleMoveMode).toHaveBeenCalledTimes(1)
     expect(mocks.moveModeEnabled.value).toBe(true)
+    expect(toggleButton?.getAttribute('aria-label')).toBe('Disable move mode')
+    expect(toggleButton?.getAttribute('title')).toBe('Disable move mode')
     expect(toggleButton?.getAttribute('aria-pressed')).toBe('true')
+    expect(toggleButton?.className).toContain('ring-2')
     const status = container.querySelector('[data-testid="controls-move-mode-status"]')
     expect(status).not.toBeNull()
     expect(status?.textContent).toContain('tamagotchi.stage.controls-island.move-mode.status-on')
     expect(status?.textContent).toContain('tamagotchi.stage.controls-island.move-mode.status-hint')
+    expect(container.querySelector('[data-testid="controls-toggle-button"]')).not.toBeNull()
+
+    togglePanelButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(togglePanelButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.expand')
+    expect(mocks.controlsPanelExpanded.value).toBe(false)
+
+    togglePanelButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(togglePanelButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.collapse')
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
 
     toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
     expect(mocks.toggleMoveMode).toHaveBeenCalledTimes(2)
     expect(mocks.moveModeEnabled.value).toBe(false)
+    expect(toggleButton?.getAttribute('aria-label')).toBe('Enable move mode')
     expect(toggleButton?.getAttribute('aria-pressed')).toBe('false')
     expect(container.querySelector('[data-testid="controls-move-mode-status"]')).toBeNull()
 
@@ -306,13 +357,23 @@ describe('controls island move mode and size controls', () => {
     const zoomInButton = container.querySelector('[data-testid="controls-zoom-in"]') as HTMLButtonElement | null
     const zoomOutButton = container.querySelector('[data-testid="controls-zoom-out"]') as HTMLButtonElement | null
     const resetButton = container.querySelector('[data-testid="controls-reset-size"]') as HTMLButtonElement | null
+    const windowGrid = container.querySelector('[data-testid="controls-window-grid"]') as HTMLDivElement | null
 
+    expect(windowGrid).not.toBeNull()
+    expect(windowGrid?.hasAttribute('grid-cols-4')).toBe(true)
     expect(zoomInButton).not.toBeNull()
     expect(zoomOutButton).not.toBeNull()
     expect(resetButton).not.toBeNull()
     expect(zoomInButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.zoom-in')
     expect(zoomOutButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.zoom-out')
     expect(resetButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.reset-size')
+
+    const clickableButtons = Array.from(windowGrid?.querySelectorAll('button') ?? [])
+    expect(clickableButtons.length).toBe(4)
+    for (const button of clickableButtons) {
+      const ariaLabel = button.getAttribute('aria-label')
+      expect(ariaLabel).toBeTruthy()
+    }
 
     zoomInButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     zoomOutButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -342,5 +403,14 @@ describe('controls island move mode and size controls', () => {
     expect(resetPayload.height).toBe(600)
 
     unmount()
+  })
+
+  it('keeps tooltip layering rules above grid buttons', () => {
+    const tooltipSource = readFileSync(resolve(process.cwd(), 'src/renderer/components/stage-islands/controls-island/control-button-tooltip.vue'), 'utf8')
+    expect(tooltipSource).toContain('data-controls-button-wrapper')
+    expect(tooltipSource).toContain('hover:z-20 focus-within:z-20')
+    expect(tooltipSource).toContain('data-controls-tooltip')
+    expect(tooltipSource).toContain('z-[240] pointer-events-none')
+    expect(tooltipSource).toContain('whitespace-nowrap')
   })
 })

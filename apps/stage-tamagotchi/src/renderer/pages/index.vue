@@ -92,7 +92,7 @@ const modelStore = useModelStore()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
 const controlsIslandStore = useControlsIslandStore()
-const { fadeOnHoverEnabled, moveModeEnabled } = storeToRefs(controlsIslandStore)
+const { fadeOnHoverEnabled, moveModeEnabled, controlsPanelExpanded } = storeToRefs(controlsIslandStore)
 const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
 const { data: modelSettingsRuntimeChannelEvent, post: postModelSettingsRuntimeChannelEvent } = useBroadcastChannel<ModelSettingsRuntimeChannelEvent, ModelSettingsRuntimeChannelEvent>({ name: modelSettingsRuntimeSnapshotChannelName })
 const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransparency({
@@ -185,7 +185,7 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
   })
 })
 
-watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, hearingDialogOpen, fadeOnHoverEnabled, moveModeEnabled, stagePaused], () => {
+watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, hearingDialogOpen, fadeOnHoverEnabled, moveModeEnabled, controlsPanelExpanded, stagePaused], () => {
   if (stagePaused.value) {
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
@@ -196,6 +196,15 @@ watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor
 
   if (moveModeEnabled.value) {
     // Move mode needs reliable pointer events on stage to avoid click-through conflicts.
+    isIgnoringMouseEvents.value = false
+    shouldFadeOnCursorWithin.value = false
+    setIgnoreMouseEvents([false, { forward: true }])
+    pause()
+    return
+  }
+
+  if (controlsPanelExpanded.value) {
+    // Keep control drawer interactive and visible regardless of hover-fade state.
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
@@ -479,7 +488,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     max-h="[100vh]"
     max-w="[100vw]"
     flex="~ col"
-    relative z-2 h-full overflow-hidden rounded-xl
+    relative h-full overflow-hidden rounded-xl
     transition="opacity duration-500 ease-in-out"
   >
     <!-- Stage is always in DOM so TresCanvas can measure dimensions -->
@@ -513,10 +522,6 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
           :y-offset="positionInPercentageString.y"
         />
         <HoloCoupon />
-        <ControlsIsland
-          ref="controlsIslandRef"
-          class="relative z-120"
-        />
       </div>
     </div>
     <!-- Loading overlay sits on top, does not hide the stage -->
@@ -543,6 +548,18 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
         </div>
       </div>
     </div>
+  </div>
+  <div
+    data-control-layer="floating-controls-layer"
+    :class="[
+      'pointer-events-none fixed inset-0 z-[170]',
+      '[-webkit-app-region:no-drag]',
+    ]"
+  >
+    <ControlsIsland
+      ref="controlsIslandRef"
+      class="pointer-events-auto"
+    />
   </div>
   <StageMoveOverlay
     :enabled="moveModeEnabled && !isLoading"

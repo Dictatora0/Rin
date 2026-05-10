@@ -56,9 +56,12 @@ describe('stage move overlay', () => {
     const hitArea = container.querySelector('[data-testid="stage-move-hit-area"]') as HTMLDivElement | null
 
     expect(overlay).not.toBeNull()
+    expect(overlay?.getAttribute('data-control-layer')).toBe('move-overlay')
     expect(hitArea).not.toBeNull()
     expect(overlay?.className).toContain('pointer-events-none')
+    expect(overlay?.className).toContain('z-30')
     expect(hitArea?.className).toContain('pointer-events-auto')
+    expect(hitArea?.className).toContain('stage-move-hit-area')
     expect(hitArea?.className).not.toContain('drag-region')
     expect(container.textContent).not.toContain('Move mode: drag the stage to reposition Rin')
     expect(container.textContent).not.toContain('移动模式：拖动舞台可重新放置 Rin')

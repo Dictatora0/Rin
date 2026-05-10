@@ -30,6 +30,7 @@ function handleDragMouseDown() {
     <div
       v-if="enabled"
       data-testid="stage-move-overlay"
+      data-control-layer="move-overlay"
       :class="[
         'stage-move-overlay',
         'absolute left-0 top-0 z-30 h-full w-full pointer-events-none',

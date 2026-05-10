@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, onBeforeUnmount, ref } from 'vue'
 
 import ControlsIsland from './index.vue'
 
 const mocks = vi.hoisted(() => {
-  const moveModeEnabled = { value: false }
   return {
     isOutside: { value: false } as { value: boolean },
-    moveModeEnabled,
+    moveModeEnabled: { value: false } as { value: boolean },
+    controlsPanelExpanded: { value: false } as { value: boolean },
     visionPanelUnmounted: vi.fn(),
     openSettings: vi.fn(),
     openChat: vi.fn(),
@@ -17,7 +20,13 @@ const mocks = vi.hoisted(() => {
     setAlwaysOnTop: vi.fn(),
     startDraggingWindow: vi.fn(),
     toggleMoveMode: vi.fn(() => {
-      moveModeEnabled.value = !moveModeEnabled.value
+      mocks.moveModeEnabled.value = !mocks.moveModeEnabled.value
+    }),
+    toggleControlsPanel: vi.fn(() => {
+      mocks.controlsPanelExpanded.value = !mocks.controlsPanelExpanded.value
+    }),
+    setControlsPanelExpanded: vi.fn((expanded: boolean) => {
+      mocks.controlsPanelExpanded.value = expanded
     }),
   }
 })
@@ -56,7 +65,10 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
 vi.mock('../../../stores/controls-island', () => ({
   useControlsIslandStore: () => ({
     moveModeEnabled: mocks.moveModeEnabled,
+    controlsPanelExpanded: mocks.controlsPanelExpanded,
     toggleMoveMode: mocks.toggleMoveMode,
+    toggleControlsPanel: mocks.toggleControlsPanel,
+    setControlsPanelExpanded: mocks.setControlsPanelExpanded,
   }),
 }))
 
@@ -236,10 +248,19 @@ function findButtonByTooltipText(container: HTMLElement, text: string) {
   return button
 }
 
+function findToggleButton(container: HTMLElement) {
+  const button = container.querySelector('[data-testid="controls-toggle-button"]') as HTMLButtonElement | null
+  if (!button)
+    throw new Error('controls toggle button missing')
+  return button
+}
+
 describe('controls island layout regression locks', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.isOutside = ref(false)
+    mocks.moveModeEnabled = ref(false)
+    mocks.controlsPanelExpanded = ref(false)
     mocks.visionPanelUnmounted.mockReset()
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
@@ -247,7 +268,8 @@ describe('controls island layout regression locks', () => {
     mocks.setAlwaysOnTop.mockReset()
     mocks.startDraggingWindow.mockReset()
     mocks.toggleMoveMode.mockReset()
-    mocks.moveModeEnabled.value = false
+    mocks.toggleControlsPanel.mockReset()
+    mocks.setControlsPanelExpanded.mockReset()
   })
 
   afterEach(() => {
@@ -256,22 +278,70 @@ describe('controls island layout regression locks', () => {
     vi.restoreAllMocks()
   })
 
+  it('keeps controls island in floating controls layer outside faded stage container', () => {
+    const pageSource = readFileSync(resolve(process.cwd(), 'src/renderer/pages/index.vue'), 'utf8')
+    const controlsSource = readFileSync(resolve(process.cwd(), 'src/renderer/components/stage-islands/controls-island/index.vue'), 'utf8')
+    expect(pageSource).toContain('data-control-layer="floating-controls-layer"')
+    expect(pageSource).toContain('pointer-events-none fixed inset-0 z-[170]')
+    expect(pageSource).toContain('[-webkit-app-region:no-drag]')
+    expect(pageSource).toMatch(/data-control-layer="floating-controls-layer"[\s\S]*?<ControlsIsland[\s\S]*?ref="controlsIslandRef"/)
+    expect(pageSource).not.toContain('<ControlAnchor')
+    expect(pageSource).not.toContain('controls-emergency-anchor')
+    expect(pageSource).not.toContain('controlAnchorRef')
+    expect(controlsSource).toContain('data-testid="controls-panel-viewport"')
+    expect(controlsSource).toContain('data-controls-panel-scroll')
+    expect(controlsSource).toContain('max-h-full overflow-y-auto overscroll-contain')
+
+    const fadedStart = pageSource.indexOf('shouldFadeOnCursorWithin ? \'op-0\' : \'op-100\'')
+    const loadingSection = pageSource.indexOf('<!-- Loading overlay sits on top, does not hide the stage -->')
+    expect(fadedStart).toBeGreaterThan(-1)
+    expect(loadingSection).toBeGreaterThan(fadedStart)
+    const fadedContainerSegment = pageSource.slice(fadedStart, loadingSection)
+    expect(fadedContainerSegment).not.toContain('<ControlsIsland')
+  })
+
   it('keeps top grid structure and button count stable after opening vision panel', async () => {
     const { container, unmount } = mountControlsIsland()
 
-    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
+    const expandButton = findToggleButton(container)
+    expect(expandButton.className).toContain('controls-toggle-button')
+    expect(expandButton.className).toContain('pointer-events-auto')
+    expect(expandButton.className).toContain('[-webkit-app-region:no-drag]')
+    expect(expandButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.expand')
+    expect(expandButton.getAttribute('data-testid')).toBe('controls-toggle-button')
     expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
+    expect(expandButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.collapse')
+    expect(mocks.toggleControlsPanel).toHaveBeenCalledTimes(1)
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
 
     const topGrid = container.querySelector('[data-testid="controls-top-grid"]') as HTMLDivElement | null
     if (!topGrid)
       throw new Error('top grid container missing after expand')
+
+    const root = container.querySelector('[data-testid="controls-island-root"]') as HTMLDivElement | null
+    if (!root)
+      throw new Error('controls island root missing after expand')
+    expect(root.getAttribute('data-control-layer')).toBe('controls-island')
+    expect(root.className).toContain('pointer-events-auto')
+    expect(root.className).toContain('[-webkit-app-region:no-drag]')
 
     const topGridButtonsBefore = topGrid.querySelectorAll('button').length
     expect(topGrid.className).toContain('w-max')
     expect(topGrid.className).toContain('self-start')
     expect(topGrid.hasAttribute('grid-cols-3')).toBe(true)
     expect(topGridButtonsBefore).toBe(9)
+
+    const windowGrid = container.querySelector('[data-testid="controls-window-grid"]') as HTMLDivElement | null
+    if (!windowGrid)
+      throw new Error('window grid container missing after expand')
+    expect(windowGrid.hasAttribute('grid-cols-4')).toBe(true)
+    const windowGridButtons = Array.from(windowGrid.querySelectorAll('button'))
+    expect(windowGridButtons.length).toBe(4)
+    for (const button of windowGridButtons) {
+      const ariaLabel = button.getAttribute('aria-label')
+      expect(ariaLabel).toBeTruthy()
+    }
 
     const visionButton = container.querySelector('[data-testid="controls-vision-toggle"]') as HTMLButtonElement | null
     if (!visionButton)
@@ -298,7 +368,7 @@ describe('controls island layout regression locks', () => {
   it('keeps close button reachable after vision panel opens', async () => {
     const { container, unmount } = mountControlsIsland()
 
-    const expandButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.expand')
+    const expandButton = findToggleButton(container)
     expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
