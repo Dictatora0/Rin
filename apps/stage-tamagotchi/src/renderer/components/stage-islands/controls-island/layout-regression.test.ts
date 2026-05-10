@@ -154,6 +154,15 @@ vi.mock('../vision-island/index.vue', () => ({
   }),
 }))
 
+vi.mock('../study-island/index.vue', () => ({
+  default: defineComponent({
+    name: 'StudyIslandStub',
+    setup() {
+      return () => h('div', { 'data-testid': 'study-island-stub' }, 'study')
+    },
+  }),
+}))
+
 vi.mock('./control-button-tooltip.vue', () => ({
   default: defineComponent({
     name: 'ControlButtonTooltipStub',
@@ -330,7 +339,7 @@ describe('controls island layout regression locks', () => {
     expect(topGrid.className).toContain('w-max')
     expect(topGrid.className).toContain('self-start')
     expect(topGrid.hasAttribute('grid-cols-3')).toBe(true)
-    expect(topGridButtonsBefore).toBe(9)
+    expect(topGridButtonsBefore).toBe(10)
 
     const windowGrid = container.querySelector('[data-testid="controls-window-grid"]') as HTMLDivElement | null
     if (!windowGrid)

@@ -162,6 +162,15 @@ vi.mock('../vision-island/index.vue', () => ({
   }),
 }))
 
+vi.mock('../study-island/index.vue', () => ({
+  default: defineComponent({
+    name: 'StudyIslandStub',
+    setup() {
+      return () => h('div', { 'data-testid': 'study-island-stub' }, 'study')
+    },
+  }),
+}))
+
 vi.mock('./control-button-tooltip.vue', () => ({
   default: defineComponent({
     name: 'ControlButtonTooltipStub',
@@ -408,7 +417,8 @@ describe('controls island move mode and size controls', () => {
   it('keeps tooltip layering rules above grid buttons', () => {
     const tooltipSource = readFileSync(resolve(process.cwd(), 'src/renderer/components/stage-islands/controls-island/control-button-tooltip.vue'), 'utf8')
     expect(tooltipSource).toContain('data-controls-button-wrapper')
-    expect(tooltipSource).toContain('hover:z-20 focus-within:z-20')
+    expect(tooltipSource).toContain('focus-within:z-20')
+    expect(tooltipSource).toContain('hover:z-20')
     expect(tooltipSource).toContain('data-controls-tooltip')
     expect(tooltipSource).toContain('z-[240] pointer-events-none')
     expect(tooltipSource).toContain('whitespace-nowrap')
