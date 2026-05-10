@@ -130,29 +130,53 @@ describe('useStudyCompanionStore', () => {
     expect(taskTotal.value).toBe(1)
     expect(taskCompleted.value).toBe(0)
     expect(taskPending.value).toBe(1)
-    expect(store.persisted.studyEvents.at(-1)?.type).toBe('task_added')
+    expect(store.persisted.studyEvents.at(-1)).toMatchObject({
+      type: 'task_added',
+      detail: {
+        title: '复习离散数学',
+      },
+    })
 
     const taskId = store.persisted.tasks[0]!.id
+    expect(store.persisted.studyEvents.at(-1)?.detail?.id).toBe(taskId)
     store.toggleTaskDone(taskId)
     expect(store.persisted.tasks[0]?.done).toBe(true)
     expect(store.persisted.tasks[0]?.completedAt).toBeTypeOf('number')
     expect(taskCompleted.value).toBe(1)
     expect(taskPending.value).toBe(0)
-    expect(store.persisted.studyEvents.at(-1)?.type).toBe('task_completed')
+    expect(store.persisted.studyEvents.at(-1)).toMatchObject({
+      type: 'task_completed',
+      detail: {
+        id: taskId,
+        title: '复习离散数学',
+      },
+    })
 
     store.toggleTaskDone(taskId)
     expect(store.persisted.tasks[0]?.done).toBe(false)
     expect(store.persisted.tasks[0]?.completedAt).toBeUndefined()
     expect(taskCompleted.value).toBe(0)
     expect(taskPending.value).toBe(1)
-    expect(store.persisted.studyEvents.at(-1)?.type).toBe('task_reopened')
+    expect(store.persisted.studyEvents.at(-1)).toMatchObject({
+      type: 'task_reopened',
+      detail: {
+        id: taskId,
+        title: '复习离散数学',
+      },
+    })
 
     store.deleteTask(taskId)
     expect(store.persisted.tasks).toEqual([])
     expect(taskTotal.value).toBe(0)
     expect(taskCompleted.value).toBe(0)
     expect(taskPending.value).toBe(0)
-    expect(store.persisted.studyEvents.at(-1)?.type).toBe('task_deleted')
+    expect(store.persisted.studyEvents.at(-1)).toMatchObject({
+      type: 'task_deleted',
+      detail: {
+        id: taskId,
+        title: '复习离散数学',
+      },
+    })
   })
 
   it('clears only completed tasks in the task list', () => {
@@ -201,6 +225,30 @@ describe('useStudyCompanionStore', () => {
     expect(store.persisted.demoModeEnabled).toBe(false)
   })
 
+  it('clamps running focus remaining budget when enabling demo mode during an active segment', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.focusDurationMs = 120_000
+    store.persisted.breakDurationMs = 30_000
+
+    store.startFocus()
+    expect(store.persisted.mode).toBe('focus')
+    expect(store.persisted.remainingMs).toBe(120_000)
+
+    store.enableDemoMode()
+    expect(store.persisted.demoModeEnabled).toBe(true)
+    expect(store.persisted.focusDurationMs).toBe(DEMO_FOCUS_DURATION_MS)
+    expect(store.persisted.breakDurationMs).toBe(DEMO_BREAK_DURATION_MS)
+    expect(store.persisted.remainingMs).toBe(DEMO_FOCUS_DURATION_MS)
+    expect(store.persisted.segmentEndsAt).toBe(Date.now() + DEMO_FOCUS_DURATION_MS)
+
+    store.disableDemoMode()
+    expect(store.persisted.demoModeEnabled).toBe(false)
+    expect(store.persisted.focusDurationMs).toBe(120_000)
+    expect(store.persisted.breakDurationMs).toBe(30_000)
+    expect(store.persisted.remainingMs).toBe(DEMO_FOCUS_DURATION_MS)
+    expect(store.persisted.segmentEndsAt).toBe(Date.now() + DEMO_FOCUS_DURATION_MS)
+  })
+
   it('uses default durations if demo mode has no previous values', () => {
     const store = useStudyCompanionStore()
     store.persisted.demoModeEnabled = true
@@ -224,6 +272,8 @@ describe('useStudyCompanionStore', () => {
    */
   it('exports a JSON-safe study snapshot and appends export event', () => {
     const store = useStudyCompanionStore()
+    const circularDetail = {} as Record<string, unknown> & { self?: unknown }
+    circularDetail.self = circularDetail
     store.persisted.statsDate = '2026-05-06'
     store.persisted.todayFocusSessions = 2
     store.persisted.todayFocusMinutes = 50
@@ -241,6 +291,7 @@ describe('useStudyCompanionStore', () => {
     store.persisted.mutedUntil = Date.now() + 5_000
     store.persisted.studyEvents = [
       { id: 'evt-1', at: 100, type: 'focus_started', detail: { from: 'idle' } },
+      { id: 'evt-2', at: 200, type: 'detail_invalid', detail: circularDetail },
     ]
 
     const snapshot = store.exportStudySnapshot()
@@ -264,9 +315,17 @@ describe('useStudyCompanionStore', () => {
     expect(snapshot.timer.remainingMs).toBe(12_345)
     expect(snapshot.timer.segmentEndsAt).toBeNull()
     expect(snapshot.tasks).toEqual(store.persisted.tasks)
+    expect(snapshot.tasks).not.toBe(store.persisted.tasks)
+    expect(snapshot.events).not.toBe(store.persisted.studyEvents)
+    expect(snapshot.events.find(event => event.id === 'evt-2')?.detail).toEqual({
+      notice: 'detail_not_serializable',
+    })
+    snapshot.tasks[0]!.title = 'mutated-title'
+    expect(store.persisted.tasks[0]?.title).toBe('Read chapter')
     expect(snapshot.events.at(-1)?.type).toBe('study_log_exported')
     expect(store.persisted.studyEvents.at(-1)?.type).toBe('study_log_exported')
-    expect(() => JSON.stringify(snapshot)).not.toThrow()
+    const encodedSnapshot = JSON.stringify(snapshot)
+    expect(JSON.parse(encodedSnapshot).schemaVersion).toBe(1)
   })
 
   /**
@@ -286,7 +345,12 @@ describe('useStudyCompanionStore', () => {
     store.clearStudyEvents()
 
     expect(store.persisted.studyEvents).toHaveLength(1)
-    expect(store.persisted.studyEvents[0]?.type).toBe('study_events_cleared')
+    expect(store.persisted.studyEvents[0]).toMatchObject({
+      type: 'study_events_cleared',
+      detail: {
+        statsDate: '2026-05-06',
+      },
+    })
   })
 
   /**
@@ -319,7 +383,12 @@ describe('useStudyCompanionStore', () => {
     expect(store.persisted.todayFocusMinutes).toBe(0)
     expect(store.persisted.todayReminderCount).toBe(0)
     expect(store.persisted.studyEvents).toHaveLength(1)
-    expect(store.persisted.studyEvents[0]?.type).toBe('study_stats_cleared')
+    expect(store.persisted.studyEvents[0]).toMatchObject({
+      type: 'study_stats_cleared',
+      detail: {
+        statsDate: store.persisted.statsDate,
+      },
+    })
     expect(store.persisted.cycleCount).toBe(10)
     expect(store.persisted.mode).toBe('focus')
     expect(store.persisted.remainingMs).toBe(60_000)

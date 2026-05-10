@@ -143,4 +143,48 @@ describe('useStudyStageFeedback', () => {
 
     stop()
   })
+
+  it('uses Awkward feedback for task_overload event when matching motion exists', async () => {
+    const live2dStore = useLive2d()
+    live2dStore.availableMotions = [
+      { motionName: 'Idle', motionIndex: 0, fileName: 'idle.motion3.json' },
+      { motionName: 'Awkward', motionIndex: 0, fileName: 'awkward.motion3.json' },
+    ]
+
+    const stop = useStudyStageFeedback()
+    const studyStore = useStudyCompanionStore()
+
+    studyStore.appendEvent('task_overload', { pending: 6 })
+    await nextTick()
+    expect(live2dStore.currentMotion.group).toBe('Awkward')
+
+    stop()
+  })
+
+  it('stops reacting to mode/event changes after stop() is called', async () => {
+    const live2dStore = useLive2d()
+    live2dStore.availableMotions = [
+      { motionName: 'Idle', motionIndex: 0, fileName: 'idle.motion3.json' },
+      { motionName: 'Think', motionIndex: 0, fileName: 'think.motion3.json' },
+      { motionName: 'Question', motionIndex: 0, fileName: 'question.motion3.json' },
+      { motionName: 'Happy', motionIndex: 0, fileName: 'happy.motion3.json' },
+    ]
+
+    const stop = useStudyStageFeedback()
+    const studyStore = useStudyCompanionStore()
+
+    studyStore.startFocus()
+    await nextTick()
+    expect(live2dStore.currentMotion.group).toBe('Think')
+
+    stop()
+
+    studyStore.pause()
+    await nextTick()
+    expect(live2dStore.currentMotion.group).toBe('Think')
+
+    studyStore.appendEvent('focus_completed', {})
+    await nextTick()
+    expect(live2dStore.currentMotion.group).toBe('Think')
+  })
 })

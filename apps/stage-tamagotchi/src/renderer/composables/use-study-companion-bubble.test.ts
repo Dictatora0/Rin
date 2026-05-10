@@ -1,5 +1,7 @@
-import { createDefaultStudyCompanionPersisted } from '@proj-airi/stage-ui/stores/modules/study-companion'
-import { describe, expect, it } from 'vitest'
+import { createDefaultStudyCompanionPersisted, useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
+import { createPinia, setActivePinia } from 'pinia'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, nextTick } from 'vue'
 
 import { STUDY_BUBBLE_COPY_BY_EVENT } from './study-companion-bubble-copy-resolver'
 import {
@@ -8,40 +10,90 @@ import {
   createTaskOverloadBubblePayload,
   resolveStudyBubbleText,
   shouldShowStudyBubble,
+  useStudyCompanionBubble,
 } from './use-study-companion-bubble'
 
 function createSnapshot() {
   return createDefaultStudyCompanionPersisted()
 }
 
+/**
+ * @example
+ * ```ts
+ * beforeEach(() => {
+ *   installLocalStorageMock()
+ * })
+ * ```
+ */
+function installLocalStorageMock() {
+  const storage = new Map<string, string>()
+  const ls = {
+    getItem: (key: string) => (storage.has(key) ? storage.get(key)! : null),
+    setItem: (key: string, value: string) => {
+      storage.set(key, value)
+    },
+    removeItem: (key: string) => {
+      storage.delete(key)
+    },
+    clear: () => {
+      storage.clear()
+    },
+    key: (index: number) => Array.from(storage.keys())[index] ?? null,
+    get length() {
+      return storage.size
+    },
+  }
+  vi.stubGlobal('localStorage', ls)
+}
+
 describe('resolveStudyBubbleText', () => {
-  it('returns contextual copy for focus_started in first round, later rounds, and demo mode', () => {
+  it('returns contextual focus_started copy with consistent payload metadata', () => {
     const history = createStudyBubbleCopyHistory()
 
     const firstRound = createSnapshot()
     firstRound.todayFocusSessions = 0
     const firstRoundCopy = resolveStudyBubbleText({ type: 'focus_started' }, firstRound, history)
-    expect(firstRoundCopy?.text).toBe('第一轮开始，先进入状态。')
+    expect(firstRoundCopy).toEqual({
+      text: '第一轮开始，先进入状态。',
+      kind: 'focus',
+      throttleKey: 'focus_started',
+      critical: false,
+    })
 
     const laterRound = createSnapshot()
     laterRound.todayFocusSessions = 2
     const laterRoundCopy = resolveStudyBubbleText({ type: 'focus_started' }, laterRound, history)
-    expect(laterRoundCopy?.text).toBe('第 3 轮开始，节奏已经不错了。')
+    expect(laterRoundCopy).toMatchObject({
+      kind: 'focus',
+      throttleKey: 'focus_started',
+      critical: false,
+    })
+    expect(laterRoundCopy?.text).toBe('第 3 轮开始，节奏很不错。')
 
     const demoRound = createSnapshot()
     demoRound.todayFocusSessions = 1
     demoRound.demoModeEnabled = true
     const demoRoundCopy = resolveStudyBubbleText({ type: 'focus_started' }, demoRound, history)
+    expect(demoRoundCopy).toMatchObject({
+      kind: 'focus',
+      throttleKey: 'focus_started',
+      critical: false,
+    })
     expect(STUDY_BUBBLE_COPY_BY_EVENT.focus_started_demo.includes(demoRoundCopy?.text ?? '')).toBe(true)
   })
 
-  it('returns task_completed copy based on pending task count', () => {
+  it('returns task_completed copy with accurate pending summary and critical metadata', () => {
     const history = createStudyBubbleCopyHistory()
 
     const allDone = createSnapshot()
     allDone.tasks = [{ id: '1', title: 'A', done: true, createdAt: Date.now(), completedAt: Date.now() }]
     const allDoneCopy = resolveStudyBubbleText({ type: 'task_completed' }, allDone, history)
-    expect(allDoneCopy?.text).toBe('今日任务清空了，可以轻松一点。')
+    expect(allDoneCopy).toEqual({
+      text: '今日任务清空了，可以轻松一点。',
+      kind: 'task',
+      throttleKey: 'task_completed',
+      critical: true,
+    })
 
     const pendingTasks = createSnapshot()
     pendingTasks.tasks = [
@@ -50,7 +102,12 @@ describe('resolveStudyBubbleText', () => {
       { id: '3', title: 'C', done: false, createdAt: Date.now() },
     ]
     const pendingCopy = resolveStudyBubbleText({ type: 'task_completed' }, pendingTasks, history)
-    expect(pendingCopy?.text).toBe('还剩 2 项，先挑最重要的一项。')
+    expect(pendingCopy).toEqual({
+      text: '还剩 2 项，先挑最重要的一项。',
+      kind: 'task',
+      throttleKey: 'task_completed',
+      critical: true,
+    })
   })
 
   it('avoids repeating the same copy in the latest two messages for one event type', () => {
@@ -74,7 +131,11 @@ describe('resolveStudyBubbleText', () => {
 
     for (let index = 0; index < expectedUniqueCount; index += 1) {
       const payload = resolveStudyBubbleText({ type: 'session_resumed' }, snapshot, history)
-      expect(payload?.text).toBeDefined()
+      expect(payload).toMatchObject({
+        kind: 'focus',
+        throttleKey: 'session_resumed',
+        critical: false,
+      })
       seen.add(payload!.text)
       expect(seen.size).toBe(index + 1)
     }
@@ -82,7 +143,7 @@ describe('resolveStudyBubbleText', () => {
 })
 
 describe('shouldShowStudyBubble', () => {
-  it('applies the default 30s throttle window', () => {
+  it('applies the default 30s throttle window and records throttle timestamp', () => {
     const history = createStudyBubblePolicyHistory()
     const payload = {
       text: '暂停一下也没关系，回来继续就好。',
@@ -92,6 +153,7 @@ describe('shouldShowStudyBubble', () => {
     }
 
     expect(shouldShowStudyBubble(payload, { mode: 'idle', isMuted: false, now: 1000 }, history)).toBe(true)
+    expect(history.lastShownAtByKey.get('session_paused')).toBe(1000)
     expect(shouldShowStudyBubble(payload, { mode: 'idle', isMuted: false, now: 20_000 }, history)).toBe(false)
     expect(shouldShowStudyBubble(payload, { mode: 'idle', isMuted: false, now: 31_500 }, history)).toBe(true)
   })
@@ -101,6 +163,7 @@ describe('shouldShowStudyBubble', () => {
     const policyHistory = createStudyBubblePolicyHistory()
     const payload = createTaskOverloadBubblePayload(copyHistory)
 
+    expect(payload.throttleMs).toBe(5 * 60 * 1000)
     expect(shouldShowStudyBubble(payload, { mode: 'idle', isMuted: false, now: 1000 }, policyHistory)).toBe(true)
     expect(shouldShowStudyBubble(payload, { mode: 'idle', isMuted: false, now: 240_000 }, policyHistory)).toBe(false)
     expect(shouldShowStudyBubble(payload, { mode: 'idle', isMuted: false, now: 301_000 }, policyHistory)).toBe(true)
@@ -163,66 +226,93 @@ describe('shouldShowStudyBubble', () => {
     expect(shouldShowStudyBubble(secondPayload, { mode: 'idle', isMuted: false, now: 10_000 }, history)).toBe(false)
     expect(shouldShowStudyBubble(secondPayload, { mode: 'idle', isMuted: false, now: 32_000 }, history)).toBe(true)
   })
+})
 
-  it('replays key study scenes with copy variety, throttle, and mute suppression', () => {
-    const snapshot = createSnapshot()
-    snapshot.tasks = [
-      { id: '1', title: 'A', done: true, createdAt: Date.now(), completedAt: Date.now() },
-      { id: '2', title: 'B', done: false, createdAt: Date.now() },
-    ]
+describe('useStudyCompanionBubble integration', () => {
+  beforeEach(() => {
+    installLocalStorageMock()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-10T10:00:00.000Z'))
+    setActivePinia(createPinia())
+  })
 
-    const copyHistory = createStudyBubbleCopyHistory()
-    const policyHistory = createStudyBubblePolicyHistory()
-    const shownTexts: string[] = []
-    let now = 1000
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
 
-    const focusStartedPayload = resolveStudyBubbleText({ type: 'focus_started' }, snapshot, copyHistory)
-    expect(focusStartedPayload).not.toBeNull()
-    snapshot.mode = 'focus'
-    expect(shouldShowStudyBubble(focusStartedPayload!, { mode: snapshot.mode, isMuted: false, now }, policyHistory)).toBe(true)
-    shownTexts.push(focusStartedPayload!.text)
+  it('ignores historical tail event on mount, then shows bubble for fresh events and auto-hides', async () => {
+    const studyStore = useStudyCompanionStore()
+    studyStore.appendEvent('focus_started', { from: 'idle' })
 
-    now += 31_000
-    snapshot.mode = 'idle'
-    snapshot.todayFocusSessions = 1
-    snapshot.todayFocusMinutes = 25
-    const focusCompletedPayload = resolveStudyBubbleText({ type: 'focus_completed' }, snapshot, copyHistory)
-    expect(focusCompletedPayload).not.toBeNull()
-    expect(shouldShowStudyBubble(focusCompletedPayload!, { mode: snapshot.mode, isMuted: false, now }, policyHistory)).toBe(true)
-    shownTexts.push(focusCompletedPayload!.text)
+    const scope = effectScope()
+    const bubble = scope.run(() => useStudyCompanionBubble())!
 
-    now += 31_000
-    snapshot.mode = 'break'
-    const breakStartedPayload = resolveStudyBubbleText({ type: 'break_started' }, snapshot, copyHistory)
-    expect(breakStartedPayload).not.toBeNull()
-    expect(shouldShowStudyBubble(breakStartedPayload!, { mode: snapshot.mode, isMuted: false, now }, policyHistory)).toBe(true)
-    shownTexts.push(breakStartedPayload!.text)
+    await nextTick()
+    expect(bubble.currentBubble.value).toBeNull()
 
-    now += 31_000
-    snapshot.mode = 'idle'
-    const taskCompletedPayload = resolveStudyBubbleText({ type: 'task_completed' }, snapshot, copyHistory)
-    expect(taskCompletedPayload).not.toBeNull()
-    expect(shouldShowStudyBubble(taskCompletedPayload!, { mode: snapshot.mode, isMuted: false, now }, policyHistory)).toBe(true)
-    shownTexts.push(taskCompletedPayload!.text)
+    studyStore.appendEvent('focus_completed', {})
+    await nextTick()
+    expect(bubble.currentBubble.value).toBeNull()
 
-    for (let index = 1; index < shownTexts.length; index += 1)
-      expect(shownTexts[index]).not.toBe(shownTexts[index - 1])
+    studyStore.appendEvent('focus_completed', {})
+    await nextTick()
+    expect(bubble.currentBubble.value).toMatchObject({
+      kind: 'focus',
+      durationMs: 4500,
+    })
 
-    now += 1_000
-    snapshot.mode = 'idle'
-    snapshot.mutedUntil = now + 60_000
-    const pausedPayload = resolveStudyBubbleText({ type: 'session_paused' }, snapshot, copyHistory)
-    expect(pausedPayload).not.toBeNull()
-    expect(shouldShowStudyBubble(pausedPayload!, { mode: snapshot.mode, isMuted: true, now }, policyHistory)).toBe(false)
+    vi.advanceTimersByTime(4500)
+    expect(bubble.currentBubble.value).toBeNull()
 
-    now += 31_000
-    const mutedPayload = resolveStudyBubbleText({ type: 'muted' }, snapshot, copyHistory)
-    expect(mutedPayload).not.toBeNull()
-    expect(shouldShowStudyBubble(mutedPayload!, { mode: snapshot.mode, isMuted: true, now }, policyHistory)).toBe(true)
+    scope.stop()
+  })
 
-    now += 2_000
-    const mutedPayloadAgain = resolveStudyBubbleText({ type: 'muted' }, snapshot, copyHistory)
-    expect(mutedPayloadAgain).not.toBeNull()
-    expect(shouldShowStudyBubble(mutedPayloadAgain!, { mode: snapshot.mode, isMuted: true, now }, policyHistory)).toBe(false)
+  it('suppresses non-critical events when muted but still shows critical events', async () => {
+    const studyStore = useStudyCompanionStore()
+    const scope = effectScope()
+    const bubble = scope.run(() => useStudyCompanionBubble())!
+
+    studyStore.appendEvent('focus_started', { from: 'idle' })
+    await nextTick()
+
+    studyStore.persisted.mutedUntil = Date.now() + 60_000
+    studyStore.appendEvent('session_paused', { carry: 'focus' })
+    await nextTick()
+    expect(bubble.currentBubble.value).toBeNull()
+
+    studyStore.appendEvent('task_completed', { id: 'task-1', title: 'A' })
+    await nextTick()
+    expect(bubble.currentBubble.value).toMatchObject({
+      kind: 'task',
+      durationMs: 4500,
+    })
+
+    scope.stop()
+  })
+
+  it('throttles task_overload bubbles for five minutes in reactive watcher path', async () => {
+    const studyStore = useStudyCompanionStore()
+    const scope = effectScope()
+    const bubble = scope.run(() => useStudyCompanionBubble())!
+
+    for (let index = 0; index < 5; index += 1)
+      studyStore.addTask(`任务-${index + 1}`)
+
+    await nextTick()
+    expect(STUDY_BUBBLE_COPY_BY_EVENT.task_overload.includes(bubble.currentBubble.value?.text ?? '')).toBe(true)
+
+    bubble.hideBubble()
+    vi.setSystemTime(new Date('2026-05-10T10:01:00.000Z'))
+    studyStore.addTask('任务-6')
+    await nextTick()
+    expect(bubble.currentBubble.value).toBeNull()
+
+    vi.setSystemTime(new Date('2026-05-10T10:06:10.000Z'))
+    studyStore.addTask('任务-7')
+    await nextTick()
+    expect(STUDY_BUBBLE_COPY_BY_EVENT.task_overload.includes(bubble.currentBubble.value?.text ?? '')).toBe(true)
+
+    scope.stop()
   })
 })
