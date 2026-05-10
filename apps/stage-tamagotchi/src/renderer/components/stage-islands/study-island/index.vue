@@ -26,12 +26,12 @@ const formattedRemaining = computed(() => {
 
 const modeDisplayText = computed(() => {
   if (persisted.value.mode === 'focus')
-    return 'Focus'
+    return '专注中'
   if (persisted.value.mode === 'break')
-    return 'Break'
+    return '休息中'
   if (persisted.value.mode === 'paused')
-    return 'Paused'
-  return 'Idle'
+    return '已暂停'
+  return '空闲'
 })
 
 const todayFocusSessions = computed(() => persisted.value.todayFocusSessions)
@@ -64,13 +64,21 @@ function handleMuteToggle() {
 
 const mainButtonLabel = computed(() => {
   if (isIdle.value)
-    return 'Start Focus'
+    return '开始专注'
   if (isPaused.value)
-    return 'Resume'
+    return '继续'
   if (isRunning.value)
-    return 'Pause'
+    return '暂停'
   return ''
 })
+
+function localizedReminderMessage(message: string) {
+  if (message === 'Focus complete! Time for a break.')
+    return '专注完成，休息一下吧。'
+  if (message === 'Break is over. Ready to focus?')
+    return '休息结束，准备开始专注。'
+  return message
+}
 
 const mainButtonIcon = computed(() => {
   if (isIdle.value)
@@ -86,12 +94,11 @@ const mainButtonIcon = computed(() => {
 <template>
   <div
     :class="[
-      'fixed left-3 bottom-12 z-20',
-      'flex flex-col items-start gap-2',
-      'rounded-2xl border-2 px-4 py-3',
-      'bg-white/90 dark:bg-neutral-900/90',
-      'shadow-lg backdrop-blur-md',
-      'dark:border-neutral-700',
+      'w-full max-w-[19rem]',
+      'max-h-[52vh] overflow-y-auto',
+      'flex flex-col gap-2',
+      'rounded-xl border border-neutral-200/60 px-3 py-3',
+      'bg-white/90 shadow-md backdrop-blur-md dark:border-neutral-700/70 dark:bg-neutral-900/90',
     ]"
   >
     <!-- Reminder Toast -->
@@ -121,7 +128,7 @@ const mainButtonIcon = computed(() => {
               : 'i-solar:alarm-bold',
           ]"
         />
-        <span :class="['flex-1']">{{ currentReminder.message }}</span>
+        <span :class="['flex-1']">{{ localizedReminderMessage(currentReminder.message) }}</span>
         <button
           type="button"
           :class="['shrink-0 size-4 i-solar:close-circle-bold', 'opacity-60 hover:opacity-100 transition-opacity']"
@@ -146,7 +153,7 @@ const mainButtonIcon = computed(() => {
 
       <div
         :class="[
-          'font-mono text-2xl font-bold tabular-nums',
+          'font-mono text-xl font-semibold tabular-nums',
           isFocusing ? 'text-rose-600 dark:text-rose-400'
           : isBreaking ? 'text-emerald-600 dark:text-emerald-400'
             : 'text-neutral-800 dark:text-neutral-200',
@@ -157,7 +164,7 @@ const mainButtonIcon = computed(() => {
     </div>
 
     <!-- Control Buttons -->
-    <div :class="['flex items-center gap-2']">
+    <div :class="['flex flex-wrap items-center gap-1.5']">
       <!-- Start/Pause/Resume Button -->
       <button
         type="button"
@@ -189,7 +196,7 @@ const mainButtonIcon = computed(() => {
         @click="startBreak"
       >
         <div class="i-solar:cup-bold size-4" />
-        Start Break
+        开始休息
       </button>
 
       <!-- Reset Button -->
@@ -204,7 +211,7 @@ const mainButtonIcon = computed(() => {
         @click="resetSession"
       >
         <div class="i-solar:restart-bold size-4" />
-        Reset
+        重置
       </button>
 
       <!-- Mute Toggle Button -->
@@ -217,7 +224,7 @@ const mainButtonIcon = computed(() => {
             ? 'bg-orange-100 text-orange-600 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50'
             : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700',
         ]"
-        :title="isMuted ? 'Unmute reminders' : 'Mute reminders for 30 min'"
+        :title="isMuted ? '取消静音提醒' : '静音提醒 30 分钟'"
         @click="handleMuteToggle"
       >
         <div
@@ -230,18 +237,18 @@ const mainButtonIcon = computed(() => {
     </div>
 
     <!-- Stats Panel -->
-    <div :class="['flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400']">
-      <div :class="['flex items-center gap-1']">
+    <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+      <div :class="['flex flex-wrap items-center gap-1']">
         <div class="i-solar:list-check-bold size-3.5" />
-        <span>Today: {{ todayFocusSessions }} rounds</span>
+        <span>今日：{{ todayFocusSessions }} 轮 · {{ todayFocusMinutes }} 分钟</span>
       </div>
-      <div :class="['flex items-center gap-1']">
-        <div class="i-solar:clock-circle-bold size-3.5" />
-        <span>{{ todayFocusMinutes }} mins</span>
-      </div>
-      <div v-if="todayReminderCount > 0" :class="['flex items-center gap-1']">
+      <div v-if="todayReminderCount > 0" :class="['mt-1 flex items-center gap-1']">
         <div class="i-solar:bell-bold size-3.5" />
-        <span>{{ todayReminderCount }} reminders</span>
+        <span>{{ todayReminderCount }} 条提醒</span>
+      </div>
+      <div v-if="isMuted" :class="['mt-1 flex items-center gap-1']">
+        <div class="i-solar:bell-off-bold size-3.5" />
+        <span>已静音</span>
       </div>
     </div>
   </div>

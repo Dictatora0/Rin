@@ -36,7 +36,6 @@ import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 import StatusIsland from '../components/stage-islands/status-island/index.vue'
-import StudyIsland from '../components/stage-islands/study-island/index.vue'
 
 import { electronOpenOnboarding } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
@@ -504,7 +503,6 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
         <ControlsIsland
           ref="controlsIslandRef"
         />
-        <StudyIsland />
       </div>
     </div>
     <!-- Loading overlay sits on top, does not hide the stage -->

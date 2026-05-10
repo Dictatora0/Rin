@@ -8,6 +8,7 @@ import { storeToRefs } from 'pinia'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import StudyIsland from '../study-island/index.vue'
 import ControlButtonTooltip from './control-button-tooltip.vue'
 import ControlButton from './control-button.vue'
 import ControlsIslandAuthButton from './controls-island-auth-button.vue'
@@ -40,6 +41,7 @@ const closeWindow = useElectronEventaInvoke(electronAppQuit)
 const setAlwaysOnTop = useElectronEventaInvoke(electronWindowSetAlwaysOnTop)
 
 const expanded = ref(false)
+const studyPanelExpanded = ref(false)
 const islandRef = ref<HTMLElement>()
 
 // Tracks open overlays/dialogs that should prevent auto-collapse (e.g. 'hearing', 'profile-picker')
@@ -68,6 +70,7 @@ watch(isOutsideAfter2seconds, (outside) => {
 watch(expanded, (isExpanded) => {
   if (!isExpanded) {
     blockingOverlays.clear()
+    studyPanelExpanded.value = false
   }
 })
 
@@ -207,6 +210,18 @@ function refreshWindow() {
             <ControlsIslandFadeOnHover :icon-class="adjustStyleClasses.icon" :button-style="adjustStyleClasses.button" />
 
             <ControlButtonTooltip disable-hoverable-content>
+              <ControlButton :button-style="adjustStyleClasses.button" @click="studyPanelExpanded = !studyPanelExpanded">
+                <div
+                  :class="[adjustStyleClasses.icon, studyPanelExpanded ? 'text-primary-600 dark:text-primary-300' : 'text-neutral-800 dark:text-neutral-300']"
+                  i-solar:book-bold-duotone
+                />
+              </ControlButton>
+              <template #tooltip>
+                {{ studyPanelExpanded ? '收起学习面板' : '展开学习面板' }}
+              </template>
+            </ControlButtonTooltip>
+
+            <ControlButtonTooltip disable-hoverable-content>
               <ControlButton :button-style="adjustStyleClasses.button" hover:bg-red-500 hover:text-white @click="closeWindow()">
                 <div i-solar:close-circle-outline :class="adjustStyleClasses.icon" />
               </ControlButton>
@@ -215,6 +230,25 @@ function refreshWindow() {
               </template>
             </ControlButtonTooltip>
           </div>
+
+          <Transition
+            enter-active-class="transition-all duration-200 ease-out"
+            enter-from-class="opacity-0 -translate-y-1"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition-all duration-150 ease-in"
+            leave-from-class="opacity-100 translate-y-0"
+            leave-to-class="opacity-0 -translate-y-1"
+          >
+            <div
+              v-if="studyPanelExpanded"
+              :class="[
+                'mt-2 w-[19rem] max-w-[75vw]',
+                'max-h-[55vh] overflow-y-auto',
+              ]"
+            >
+              <StudyIsland />
+            </div>
+          </Transition>
         </div>
       </Transition>
 
