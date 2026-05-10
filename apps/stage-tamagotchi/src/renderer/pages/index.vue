@@ -36,9 +36,11 @@ import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 import StatusIsland from '../components/stage-islands/status-island/index.vue'
+import StudyBubble from '../components/stage-islands/study-bubble/index.vue'
 
 import { electronOpenOnboarding } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
+import { useStudyCompanionBubble } from '../composables/use-study-companion-bubble'
 import { useStudyStageFeedback } from '../composables/use-study-stage-feedback'
 import { useChatSyncStore } from '../stores/chat-sync'
 import { useControlsIslandStore } from '../stores/controls-island'
@@ -54,6 +56,7 @@ const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 const stageMounted = computed(() => componentStateStage.value === 'mounted')
 const isLoading = computed(() => !stageMounted.value)
 useStudyStageFeedback()
+const { currentBubble } = useStudyCompanionBubble()
 
 const isIgnoringMouseEvents = ref(false)
 const shouldFadeOnCursorWithin = ref(false)
@@ -124,6 +127,7 @@ const { pause, resume } = watch(isTransparent, (transparent) => {
 }, { immediate: true })
 
 const hearingDialogOpen = computed(() => controlsIslandRef.value?.hearingDialogOpen ?? false)
+const studyPanelPinned = computed(() => controlsIslandRef.value?.studyPanelPinned ?? false)
 
 const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() => {
   const hasModel = !!stageModelSelectedUrl.value
@@ -174,7 +178,7 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
   })
 })
 
-watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, hearingDialogOpen, fadeOnHoverEnabled, stagePaused], () => {
+watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, hearingDialogOpen, studyPanelPinned, fadeOnHoverEnabled, stagePaused], () => {
   if (stagePaused.value) {
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
@@ -185,6 +189,15 @@ watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor
 
   if (hearingDialogOpen.value) {
     // Hearing dialog/drawer is open; keep window interactive
+    isIgnoringMouseEvents.value = false
+    shouldFadeOnCursorWithin.value = false
+    setIgnoreMouseEvents([false, { forward: true }])
+    pause()
+    return
+  }
+
+  if (studyPanelPinned.value) {
+    // Study panel is pinned for editing; keep window interactive and avoid click-through.
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
@@ -500,6 +513,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
           :y-offset="positionInPercentageString.y"
         />
         <HoloCoupon />
+        <StudyBubble :message="currentBubble" />
         <ControlsIsland
           ref="controlsIslandRef"
         />

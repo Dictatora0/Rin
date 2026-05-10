@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 
+const emit = defineEmits<{
+  interactionLockChange: [locked: boolean]
+}>()
 const studyStore = useStudyCompanionStore()
 const { persisted, taskTotal, taskCompleted, taskPending } = storeToRefs(studyStore)
 const { addTask, toggleTaskDone, deleteTask } = studyStore
-
 const draftTitle = ref('')
+const taskInputRef = ref<HTMLInputElement>()
+const isTaskInputFocused = ref(false)
+const isComposing = ref(false)
 
 const tasks = computed(() => persisted.value.tasks)
 const showTaskOverloadHint = computed(() => taskPending.value >= 5)
@@ -20,12 +25,49 @@ function submitTask() {
   addTask(normalizedTitle)
   draftTitle.value = ''
 }
+
+function handleTaskInputFocus() {
+  isTaskInputFocused.value = true
+  emit('interactionLockChange', true)
+  nextTick(() => {
+    taskInputRef.value?.scrollIntoView({
+      block: 'center',
+      behavior: 'smooth',
+    })
+  })
+}
+
+function handleTaskInputBlur() {
+  isTaskInputFocused.value = false
+  emit('interactionLockChange', isComposing.value)
+}
+
+function handleCompositionStart() {
+  isComposing.value = true
+  emit('interactionLockChange', true)
+}
+
+function handleCompositionEnd() {
+  isComposing.value = false
+  emit('interactionLockChange', isTaskInputFocused.value)
+}
+
+function handleTaskInputKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter')
+    return
+
+  if (isComposing.value || event.isComposing)
+    return
+
+  event.preventDefault()
+  submitTask()
+}
 </script>
 
 <template>
   <section
     :class="[
-      'mt-1 border-t border-neutral-200/70 pt-2',
+      'mt-1 border-t border-neutral-200/70 pt-2 pb-4',
       'dark:border-neutral-700/70',
     ]"
   >
@@ -46,33 +88,41 @@ function submitTask() {
       任务较多，建议先选 1 项开始。
     </p>
 
-    <form :class="['mt-2 flex items-center gap-1.5']" @submit.prevent="submitTask">
+    <div :class="['mt-2 flex items-center gap-1.5']">
       <input
+        ref="taskInputRef"
         v-model="draftTitle"
         type="text"
         maxlength="120"
         placeholder="添加今日任务"
         :class="[
           'min-w-0 flex-1 rounded-lg border border-neutral-200/80 px-2.5 py-1.5 text-xs',
+          'scroll-mt-4 scroll-mb-28',
           'bg-white/90 text-neutral-800 placeholder:text-neutral-400',
           'outline-none transition-colors focus:border-primary-500',
           'dark:border-neutral-700/70 dark:bg-neutral-800/80 dark:text-neutral-100 dark:placeholder:text-neutral-500',
         ]"
+        @focus="handleTaskInputFocus"
+        @blur="handleTaskInputBlur"
+        @keydown="handleTaskInputKeydown"
+        @compositionstart="handleCompositionStart"
+        @compositionend="handleCompositionEnd"
       >
       <button
-        type="submit"
+        type="button"
         :class="[
           'shrink-0 rounded-lg bg-primary-600 px-2.5 py-1.5 text-xs font-medium text-white',
           'transition-colors hover:bg-primary-500',
         ]"
+        @click="submitTask"
       >
         添加
       </button>
-    </form>
+    </div>
 
     <ul
       v-if="tasks.length > 0"
-      :class="['mt-2 max-h-40 space-y-1 overflow-y-auto pr-1']"
+      :class="['mt-2 space-y-1 pb-4']"
     >
       <li
         v-for="task in tasks"
