@@ -38,6 +38,7 @@
     "./stores/character/orchestrator/spark-notify-agent": "./src/stores/character/orchestrator/spark-notify-agent.ts",
     "./stores/settings/analytics": "./src/stores/settings/analytics.ts",
     "./stores/settings": "./src/stores/settings/index.ts",
+    "./stores/modules/study-companion": "./src/stores/modules/study-companion.ts",
     "./stores/modules/vision": "./src/stores/modules/vision/index.ts",
     "./stores/mcp-tool-bridge": "./src/stores/mcp-tool-bridge.ts",
     "./stores/*": "./src/stores/*.ts",

@@ -26,6 +26,7 @@ import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composab
 import { useVAD } from '@proj-airi/stage-ui/stores/ai/models/vad'
 import { useLive2d } from '@proj-airi/stage-ui/stores/live2d'
 import { useHearingSpeechInputPipeline } from '@proj-airi/stage-ui/stores/modules/hearing'
+import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { refDebounced, useBroadcastChannel } from '@vueuse/core'
@@ -35,9 +36,12 @@ import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 import StatusIsland from '../components/stage-islands/status-island/index.vue'
+import StudyBubble from '../components/stage-islands/study-bubble/index.vue'
 
 import { electronOpenOnboarding } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
+import { useStudyCompanionBubble } from '../composables/use-study-companion-bubble'
+import { useStudyStageFeedback } from '../composables/use-study-stage-feedback'
 import { useChatSyncStore } from '../stores/chat-sync'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
@@ -51,6 +55,8 @@ const stageCanvas = toRef(() => widgetStageRef.value?.canvasElement())
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 const stageMounted = computed(() => componentStateStage.value === 'mounted')
 const isLoading = computed(() => !stageMounted.value)
+useStudyStageFeedback()
+const { currentBubble } = useStudyCompanionBubble()
 
 const isIgnoringMouseEvents = ref(false)
 const shouldFadeOnCursorWithin = ref(false)
@@ -121,6 +127,8 @@ const { pause, resume } = watch(isTransparent, (transparent) => {
 }, { immediate: true })
 
 const hearingDialogOpen = computed(() => controlsIslandRef.value?.hearingDialogOpen ?? false)
+const studyPanelPinned = computed(() => controlsIslandRef.value?.studyPanelPinned ?? false)
+const studyPanelInputActive = computed(() => controlsIslandRef.value?.studyPanelInputActive ?? false)
 
 const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() => {
   const hasModel = !!stageModelSelectedUrl.value
@@ -171,7 +179,7 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
   })
 })
 
-watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, hearingDialogOpen, fadeOnHoverEnabled, stagePaused], () => {
+watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, hearingDialogOpen, studyPanelPinned, fadeOnHoverEnabled, stagePaused], () => {
   if (stagePaused.value) {
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
@@ -182,6 +190,15 @@ watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor
 
   if (hearingDialogOpen.value) {
     // Hearing dialog/drawer is open; keep window interactive
+    isIgnoringMouseEvents.value = false
+    shouldFadeOnCursorWithin.value = false
+    setIgnoreMouseEvents([false, { forward: true }])
+    pause()
+    return
+  }
+
+  if (studyPanelPinned.value) {
+    // Study panel is pinned for editing; keep window interactive and avoid click-through.
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
@@ -412,15 +429,24 @@ onMounted(() => {
   if (onboardingStore.needsOnboarding) {
     openOnboarding()
   }
-})
 
-onUnmounted(() => {
-  postModelSettingsRuntimeChannelEvent({
-    type: 'owner-gone',
-    ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+  // Sync study companion timer when page becomes visible
+  const handleVisibilityChange = () => {
+    if (!document.hidden) {
+      useStudyCompanionStore().syncFromWallClock()
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
+  onUnmounted(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    postModelSettingsRuntimeChannelEvent({
+      type: 'owner-gone',
+      ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+    })
+    stopAudioInteraction()
+    chatSyncStore.dispose()
   })
-  stopAudioInteraction()
-  chatSyncStore.dispose()
 })
 
 watch(stream, async (currentStream) => {
@@ -488,6 +514,10 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
           :y-offset="positionInPercentageString.y"
         />
         <HoloCoupon />
+        <StudyBubble
+          :message="currentBubble"
+          :lift-for-input="studyPanelInputActive"
+        />
         <ControlsIsland
           ref="controlsIslandRef"
         />
