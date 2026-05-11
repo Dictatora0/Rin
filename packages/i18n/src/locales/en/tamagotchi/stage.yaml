@@ -22,7 +22,17 @@ docs:
     enable: Enable Move mode
     disable: Disable Move mode
     status-on: Move mode on
-    status-hint: Drag Rin's area to move. Press again to exit.
+    status-hint: Drag Rin area.
+  'study-panel':
+    expand: Open Study panel
+    collapse: Collapse Study panel
+  'vision-panel':
+    expand: Open vision interaction
+    collapse: Hide vision interaction
+  'groups':
+    core: Core
+    tools: Tools
+    window: Window
   'zoom-in': Zoom in
   'zoom-out': Zoom out
   'reset-size': Reset size

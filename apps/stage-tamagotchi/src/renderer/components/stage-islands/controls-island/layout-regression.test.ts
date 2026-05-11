@@ -189,8 +189,8 @@ vi.mock('./controls-island-auth-button.vue', () => ({
 vi.mock('./controls-island-fade-on-hover.vue', () => ({
   default: defineComponent({
     name: 'ControlsIslandFadeOnHoverStub',
-    setup() {
-      return () => h('button', { type: 'button' }, 'fade')
+    setup(_, { attrs }) {
+      return () => h('button', { type: 'button', ...attrs }, 'fade')
     },
   }),
 }))
@@ -309,7 +309,7 @@ describe('controls island layout regression locks', () => {
     expect(fadedContainerSegment).not.toContain('<ControlsIsland')
   })
 
-  it('keeps top grid structure and button count stable after opening vision panel', async () => {
+  it('keeps functional groups stable after opening vision panel', async () => {
     const { container, unmount } = mountControlsIsland()
 
     const expandButton = findToggleButton(container)
@@ -324,9 +324,13 @@ describe('controls island layout regression locks', () => {
     expect(mocks.toggleControlsPanel).toHaveBeenCalledTimes(1)
     expect(mocks.controlsPanelExpanded.value).toBe(true)
 
-    const topGrid = container.querySelector('[data-testid="controls-top-grid"]') as HTMLDivElement | null
-    if (!topGrid)
-      throw new Error('top grid container missing after expand')
+    const coreGrid = container.querySelector('[data-testid="controls-core-grid"]') as HTMLDivElement | null
+    if (!coreGrid)
+      throw new Error('core grid container missing after expand')
+
+    const toolsGrid = container.querySelector('[data-testid="controls-tools-grid"]') as HTMLDivElement | null
+    if (!toolsGrid)
+      throw new Error('tools grid container missing after expand')
 
     const root = container.querySelector('[data-testid="controls-island-root"]') as HTMLDivElement | null
     if (!root)
@@ -335,22 +339,38 @@ describe('controls island layout regression locks', () => {
     expect(root.className).toContain('pointer-events-auto')
     expect(root.className).toContain('[-webkit-app-region:no-drag]')
 
-    const topGridButtonsBefore = topGrid.querySelectorAll('button').length
-    expect(topGrid.className).toContain('w-max')
-    expect(topGrid.className).toContain('self-start')
-    expect(topGrid.hasAttribute('grid-cols-3')).toBe(true)
-    expect(topGridButtonsBefore).toBe(10)
+    const coreButtonsBefore = coreGrid.querySelectorAll('button').length
+    const toolsButtonsBefore = toolsGrid.querySelectorAll('button').length
+    const windowSection = container.querySelector('[data-testid="controls-group-window"]') as HTMLElement | null
+    expect(coreGrid.className).toContain('grid-cols-3')
+    expect(coreGrid.className).toContain('controls-button-grid')
+    expect(coreButtonsBefore).toBe(6)
+    expect(toolsGrid.className).toContain('grid-cols-3')
+    expect(toolsGrid.className).toContain('controls-button-grid')
+    expect(toolsButtonsBefore).toBe(4)
+    expect(windowSection).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-group-title-core"]')?.textContent).toContain('tamagotchi.stage.controls-island.groups.core')
+    expect(container.querySelector('[data-testid="controls-group-title-tools"]')?.textContent).toContain('tamagotchi.stage.controls-island.groups.tools')
+    expect(container.querySelector('[data-testid="controls-group-title-window"]')?.textContent).toContain('tamagotchi.stage.controls-island.groups.window')
 
     const windowGrid = container.querySelector('[data-testid="controls-window-grid"]') as HTMLDivElement | null
     if (!windowGrid)
       throw new Error('window grid container missing after expand')
-    expect(windowGrid.hasAttribute('grid-cols-4')).toBe(true)
+    expect(windowGrid.className).toContain('grid-cols-3')
+    expect(windowGrid.className).toContain('controls-button-grid')
     const windowGridButtons = Array.from(windowGrid.querySelectorAll('button'))
-    expect(windowGridButtons.length).toBe(4)
+    expect(windowGridButtons.length).toBe(6)
     for (const button of windowGridButtons) {
       const ariaLabel = button.getAttribute('aria-label')
       expect(ariaLabel).toBeTruthy()
     }
+    expect(container.querySelector('[data-testid="controls-window-secondary-grid"]')).toBeNull()
+    expect(windowGrid.querySelector('[data-testid="controls-move-mode-toggle"]')).not.toBeNull()
+    expect(windowGrid.querySelector('[data-testid="controls-zoom-in"]')).not.toBeNull()
+    expect(windowGrid.querySelector('[data-testid="controls-zoom-out"]')).not.toBeNull()
+    expect(windowGrid.querySelector('[data-testid="controls-reset-size"]')).not.toBeNull()
+    expect(windowGrid.querySelector('[data-testid="controls-drag-window"]')).not.toBeNull()
+    expect(windowGrid.querySelector('[data-testid="controls-close-button"]')).not.toBeNull()
 
     const visionButton = container.querySelector('[data-testid="controls-vision-toggle"]') as HTMLButtonElement | null
     if (!visionButton)
@@ -360,16 +380,17 @@ describe('controls island layout regression locks', () => {
     await nextTick()
 
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="controls-top-grid"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-vision-panel"]')).not.toBeNull()
+    const studyPanel = container.querySelector('[data-testid="controls-study-panel"]') as HTMLElement | null
+    expect(studyPanel).not.toBeNull()
+    expect(studyPanel?.style.display).toBe('none')
 
-    const topGridAfter = container.querySelector('[data-testid="controls-top-grid"]') as HTMLDivElement | null
-    if (!topGridAfter)
-      throw new Error('top grid container missing after opening vision panel')
-    const topGridButtonsAfter = topGridAfter.querySelectorAll('button').length
-    expect(topGridButtonsAfter).toBe(topGridButtonsBefore)
-    expect(topGridAfter.className).toContain('w-max')
-    expect(topGridAfter.className).toContain('self-start')
-    expect(topGridAfter.hasAttribute('grid-cols-3')).toBe(true)
+    const coreGridAfter = container.querySelector('[data-testid="controls-core-grid"]') as HTMLDivElement | null
+    const toolsGridAfter = container.querySelector('[data-testid="controls-tools-grid"]') as HTMLDivElement | null
+    if (!coreGridAfter || !toolsGridAfter)
+      throw new Error('group grid container missing after opening vision panel')
+    expect(coreGridAfter.querySelectorAll('button').length).toBe(coreButtonsBefore)
+    expect(toolsGridAfter.querySelectorAll('button').length).toBe(toolsButtonsBefore)
 
     unmount()
   })
@@ -396,7 +417,7 @@ describe('controls island layout regression locks', () => {
     expect(mocks.closeWindow).toHaveBeenCalledTimes(1)
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
 
-    const cameraButton = findButtonByTooltipText(container, '收起视觉交互')
+    const cameraButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.vision-panel.collapse')
     expect(cameraButton).toBe(visionButton)
     unmount()
   })

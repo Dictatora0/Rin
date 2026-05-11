@@ -22,7 +22,17 @@ docs:
     enable: 开启移动模式
     disable: 关闭移动模式
     status-on: 移动模式已开启
-    status-hint: 拖动 Rin 附近区域可移动，再按一次退出。
+    status-hint: 拖动 Rin 区域可移动。
+  'study-panel':
+    expand: 展开学习面板
+    collapse: 收起学习面板
+  'vision-panel':
+    expand: 打开视觉交互
+    collapse: 收起视觉交互
+  'groups':
+    core: 核心操作
+    tools: 扩展工具
+    window: 窗口控制
   'zoom-in': 放大
   'zoom-out': 缩小
   'reset-size': 重置尺寸

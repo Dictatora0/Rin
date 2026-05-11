@@ -192,8 +192,15 @@ vi.mock('./controls-island-auth-button.vue', () => ({
 vi.mock('./controls-island-fade-on-hover.vue', () => ({
   default: defineComponent({
     name: 'ControlsIslandFadeOnHoverStub',
-    setup() {
-      return () => h('button', { type: 'button' }, 'fade')
+    setup(_, { attrs }) {
+      return () => h('button', {
+        'type': 'button',
+        ...attrs,
+        'data-testid': 'controls-fade-on-hover-toggle',
+        'aria-label': 'tamagotchi.stage.controls-island.fade-on-hover.enable',
+        'title': 'tamagotchi.stage.controls-island.fade-on-hover.enable',
+        'class': '[-webkit-app-region:no-drag] pointer-events-auto',
+      }, 'fade')
     },
   }),
 }))
@@ -310,11 +317,20 @@ describe('controls island move mode and size controls', () => {
     expect(controlsPanelScrollContainer?.className).toContain('max-h-full')
     expect(controlsPanelScrollContainer?.className).toContain('overflow-y-auto')
     expect(controlsPanelScrollContainer?.className).toContain('overscroll-contain')
+    expect(container.querySelector('[data-testid="controls-auth-section"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-group-core"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-group-tools"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-group-window"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-core-grid"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-tools-grid"]')).not.toBeNull()
+    expect((container.querySelector('[data-testid="controls-core-grid"]') as HTMLDivElement | null)?.className).toContain('controls-button-grid')
+    expect((container.querySelector('[data-testid="controls-tools-grid"]') as HTMLDivElement | null)?.className).toContain('controls-button-grid')
+    expect((container.querySelector('[data-testid="controls-window-grid"]') as HTMLDivElement | null)?.className).toContain('controls-button-grid')
 
     const toggleButton = container.querySelector('[data-testid="controls-move-mode-toggle"]') as HTMLButtonElement | null
     expect(toggleButton).not.toBeNull()
-    expect(toggleButton?.getAttribute('aria-label')).toBe('Enable move mode')
-    expect(toggleButton?.getAttribute('title')).toBe('Enable move mode')
+    expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.move-mode.enable')
+    expect(toggleButton?.getAttribute('title')).toBe('tamagotchi.stage.controls-island.move-mode.enable')
     expect(toggleButton?.getAttribute('aria-pressed')).toBe('false')
     expect(toggleButton?.className).toContain('text-neutral-800')
     expect(mocks.moveModeEnabled.value).toBe(false)
@@ -326,8 +342,8 @@ describe('controls island move mode and size controls', () => {
 
     expect(mocks.toggleMoveMode).toHaveBeenCalledTimes(1)
     expect(mocks.moveModeEnabled.value).toBe(true)
-    expect(toggleButton?.getAttribute('aria-label')).toBe('Disable move mode')
-    expect(toggleButton?.getAttribute('title')).toBe('Disable move mode')
+    expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.move-mode.disable')
+    expect(toggleButton?.getAttribute('title')).toBe('tamagotchi.stage.controls-island.move-mode.disable')
     expect(toggleButton?.getAttribute('aria-pressed')).toBe('true')
     expect(toggleButton?.className).toContain('ring-2')
     const status = container.querySelector('[data-testid="controls-move-mode-status"]')
@@ -351,7 +367,7 @@ describe('controls island move mode and size controls', () => {
 
     expect(mocks.toggleMoveMode).toHaveBeenCalledTimes(2)
     expect(mocks.moveModeEnabled.value).toBe(false)
-    expect(toggleButton?.getAttribute('aria-label')).toBe('Enable move mode')
+    expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.move-mode.enable')
     expect(toggleButton?.getAttribute('aria-pressed')).toBe('false')
     expect(container.querySelector('[data-testid="controls-move-mode-status"]')).toBeNull()
 
@@ -366,22 +382,71 @@ describe('controls island move mode and size controls', () => {
     const zoomInButton = container.querySelector('[data-testid="controls-zoom-in"]') as HTMLButtonElement | null
     const zoomOutButton = container.querySelector('[data-testid="controls-zoom-out"]') as HTMLButtonElement | null
     const resetButton = container.querySelector('[data-testid="controls-reset-size"]') as HTMLButtonElement | null
+    const dragWindowButton = container.querySelector('[data-testid="controls-drag-window"]') as HTMLButtonElement | null
+    const closeButton = container.querySelector('[data-testid="controls-close-button"]') as HTMLButtonElement | null
     const windowGrid = container.querySelector('[data-testid="controls-window-grid"]') as HTMLDivElement | null
 
     expect(windowGrid).not.toBeNull()
-    expect(windowGrid?.hasAttribute('grid-cols-4')).toBe(true)
+    expect(windowGrid?.className).toContain('grid-cols-3')
+    expect(windowGrid?.className).toContain('controls-button-grid')
+    expect(container.querySelector('[data-testid="controls-window-secondary-grid"]')).toBeNull()
     expect(zoomInButton).not.toBeNull()
     expect(zoomOutButton).not.toBeNull()
     expect(resetButton).not.toBeNull()
+    expect(dragWindowButton).not.toBeNull()
+    expect(closeButton).not.toBeNull()
     expect(zoomInButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.zoom-in')
     expect(zoomOutButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.zoom-out')
     expect(resetButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.reset-size')
+    expect(dragWindowButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.drag-to-move-window')
+    expect(closeButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.close')
 
     const clickableButtons = Array.from(windowGrid?.querySelectorAll('button') ?? [])
-    expect(clickableButtons.length).toBe(4)
+    expect(clickableButtons.length).toBe(6)
     for (const button of clickableButtons) {
       const ariaLabel = button.getAttribute('aria-label')
       expect(ariaLabel).toBeTruthy()
+    }
+
+    const moveIcon = container.querySelector('[data-testid="controls-move-mode-icon"]') as HTMLDivElement | null
+    const dragWindowIcon = container.querySelector('[data-testid="controls-drag-window-icon"]') as HTMLDivElement | null
+    const resetIcon = container.querySelector('[data-testid="controls-reset-size-icon"]') as HTMLDivElement | null
+    if (!moveIcon || !dragWindowIcon || !resetIcon)
+      throw new Error('expected move, drag, and reset icons to exist')
+    expect(moveIcon.hasAttribute('i-ph:arrows-out-cardinal')).toBe(true)
+    expect(dragWindowIcon.hasAttribute('i-ph:hand-grabbing')).toBe(true)
+    expect(resetIcon.hasAttribute('i-ph:arrows-clockwise')).toBe(true)
+    expect(dragWindowIcon.hasAttribute('i-ph:arrows-out-cardinal')).toBe(false)
+    expect(resetIcon.hasAttribute('i-ph:arrows-out-cardinal')).toBe(false)
+
+    const majorButtons = [
+      '[data-testid="controls-open-settings"]',
+      '[data-testid="controls-profile-picker"]',
+      '[data-testid="controls-open-chat"]',
+      '[data-testid="controls-refresh-window"]',
+      '[data-testid="controls-theme-toggle"]',
+      '[data-testid="controls-always-on-top-toggle"]',
+      '[data-testid="controls-hearing-toggle"]',
+      '[data-testid="controls-study-toggle"]',
+      '[data-testid="controls-vision-toggle"]',
+      '[data-testid="controls-move-mode-toggle"]',
+      '[data-testid="controls-zoom-in"]',
+      '[data-testid="controls-zoom-out"]',
+      '[data-testid="controls-reset-size"]',
+      '[data-testid="controls-drag-window"]',
+      '[data-testid="controls-close-button"]',
+    ]
+
+    for (const selector of majorButtons) {
+      const button = container.querySelector(selector) as HTMLButtonElement | null
+      if (!button)
+        throw new Error(`${selector} missing`)
+      const ariaLabel = button.getAttribute('aria-label')
+      const title = button.getAttribute('title')
+      expect(Boolean(ariaLabel) || Boolean(title)).toBe(true)
+      expect(button.className).toContain('controls-button')
+      expect(button.className).toContain('[-webkit-app-region:no-drag]')
+      expect(button.className).toContain('pointer-events-auto')
     }
 
     zoomInButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -416,11 +481,19 @@ describe('controls island move mode and size controls', () => {
 
   it('keeps tooltip layering rules above grid buttons', () => {
     const tooltipSource = readFileSync(resolve(process.cwd(), 'src/renderer/components/stage-islands/controls-island/control-button-tooltip.vue'), 'utf8')
+    const controlButtonSource = readFileSync(resolve(process.cwd(), 'src/renderer/components/stage-islands/controls-island/control-button.vue'), 'utf8')
+    const authButtonSource = readFileSync(resolve(process.cwd(), 'src/renderer/components/stage-islands/controls-island/controls-island-auth-button.vue'), 'utf8')
     expect(tooltipSource).toContain('data-controls-button-wrapper')
     expect(tooltipSource).toContain('focus-within:z-20')
     expect(tooltipSource).toContain('hover:z-20')
     expect(tooltipSource).toContain('data-controls-tooltip')
     expect(tooltipSource).toContain('z-[240] pointer-events-none')
     expect(tooltipSource).toContain('whitespace-nowrap')
+    expect(tooltipSource).toContain('triggerClass')
+    expect(controlButtonSource).toContain('h-10 w-10')
+    expect(controlButtonSource).not.toContain('w-fit flex items-center self-end justify-center')
+    expect(authButtonSource).toContain('<ControlButtonTooltip side="left" trigger-class="w-full">')
+    expect(authButtonSource).toContain('t(\'tamagotchi.stage.controls-island.account\')')
+    expect(authButtonSource).toContain('t(\'tamagotchi.stage.controls-island.login\')')
   })
 })

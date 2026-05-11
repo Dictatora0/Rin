@@ -151,6 +151,15 @@ vi.mock('../vision-island/index.vue', () => ({
   }),
 }))
 
+vi.mock('../study-island/index.vue', () => ({
+  default: defineComponent({
+    name: 'StudyIslandStub',
+    setup() {
+      return () => h('div', { 'data-testid': 'study-island-stub' }, 'study')
+    },
+  }),
+}))
+
 vi.mock('./control-button-tooltip.vue', () => ({
   default: defineComponent({
     name: 'ControlButtonTooltipStub',
@@ -177,8 +186,8 @@ vi.mock('./controls-island-auth-button.vue', () => ({
 vi.mock('./controls-island-fade-on-hover.vue', () => ({
   default: defineComponent({
     name: 'ControlsIslandFadeOnHoverStub',
-    setup() {
-      return () => h('button', { type: 'button' }, 'fade')
+    setup(_, { attrs }) {
+      return () => h('button', { type: 'button', ...attrs }, 'fade')
     },
   }),
 }))
@@ -276,7 +285,7 @@ describe('controls island vision panel interaction flow', () => {
     vi.restoreAllMocks()
   })
 
-  it('keeps vision panel mounted after mouse leaves for 2s and does not trigger stop', async () => {
+  it('keeps controls panel expanded after mouse leaves and timer advances', async () => {
     const { container, unmount } = mountControlsIsland()
 
     const expandButton = findToggleButton(container)
@@ -284,21 +293,58 @@ describe('controls island vision panel interaction flow', () => {
     expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
     expect(expandButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.collapse')
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
 
-    const cameraButton = findButtonByTooltipText(container, '打开视觉交互')
+    const cameraButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.vision-panel.expand')
     cameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-window-grid"]')).not.toBeNull()
 
     mocks.isOutside.value = true
     await nextTick()
     await vi.advanceTimersByTimeAsync(2_100)
     await nextTick()
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
+    await vi.advanceTimersByTimeAsync(5_000)
+    await nextTick()
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
+    await vi.advanceTimersByTimeAsync(10_000)
+    await nextTick()
 
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
+    expect(mocks.setControlsPanelExpanded).toHaveBeenCalledTimes(0)
     expect(mocks.visionUnmountStop).toHaveBeenCalledTimes(0)
     expect(mocks.closeWindow).toHaveBeenCalledTimes(0)
+
+    unmount()
+  })
+
+  it('does not auto collapse when move mode is active and pointer is outside', async () => {
+    const { container, unmount } = mountControlsIsland()
+
+    const expandButton = findToggleButton(container)
+    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
+
+    const moveModeButton = container.querySelector('[data-testid="controls-move-mode-toggle"]') as HTMLButtonElement | null
+    if (!moveModeButton)
+      throw new Error('move mode button missing')
+    moveModeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.moveModeEnabled.value).toBe(true)
+
+    mocks.isOutside.value = true
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await nextTick()
+
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
+    expect(mocks.setControlsPanelExpanded).toHaveBeenCalledTimes(0)
+    expect(mocks.visionUnmountStop).toHaveBeenCalledTimes(0)
 
     unmount()
   })
@@ -310,7 +356,7 @@ describe('controls island vision panel interaction flow', () => {
     expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
-    const cameraButton = findButtonByTooltipText(container, '打开视觉交互')
+    const cameraButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.vision-panel.expand')
     cameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()

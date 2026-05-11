@@ -52,6 +52,42 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
 - No structural main-process refactor.
 - No new dependencies.
 
+## Controls Island UI layout refinement
+
+- Controls Island was refined from a mixed button panel into four clear sections:
+  - Account
+  - Core operations
+  - Extension tools
+  - Window controls
+- Move / Zoom In / Zoom Out / Reset Size are now grouped under Window controls.
+- The expand/collapse anchor remains always visible and keeps a stable interaction target.
+- Tooltips, aria labels, and titles are kept across major controls to improve discoverability.
+- This is a layout and visual hierarchy adjustment only:
+  - Existing feature handlers are unchanged.
+  - Vision, move-mode, and study-companion behaviors are preserved.
+
+## Controls Island UI layout refinement (Round 2)
+
+- Core / Tools / Window sections now share one consistent button grid system:
+  - Same 3-column grid structure
+  - Same spacing rhythm
+  - Same button baseline sizing
+- Window controls are fully integrated into the Window section grid:
+  - Move Mode
+  - Zoom In
+  - Zoom Out
+  - Reset Size
+  - Drag Window
+  - Close
+- Repeated icon semantics were resolved:
+  - Move Mode keeps directional-move icon
+  - Drag Window uses a distinct hand-drag icon
+  - Reset Size keeps reset/restore icon
+- Mouse-leave auto collapse was removed for Controls Island:
+  - Controls panel stays expanded after pointer leaves
+  - Collapse is now user-driven only (toggle/anchor interaction)
+  - Vision subpanel behavior no longer drives whole-panel auto collapse
+
 ## Demo steps
 
 1. Run `pnpm dev:tamagotchi`.

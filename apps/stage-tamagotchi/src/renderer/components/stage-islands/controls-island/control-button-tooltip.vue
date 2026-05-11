@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { TooltipContent, TooltipProvider, TooltipRoot, TooltipTrigger } from 'reka-ui'
 
-const { side = 'left' } = defineProps<{
+const { side = 'left', triggerClass = '' } = defineProps<{
   side?: 'top' | 'right' | 'bottom' | 'left'
+  triggerClass?: string
 }>()
 </script>
 
@@ -16,7 +17,10 @@ const { side = 'left' } = defineProps<{
         <span
           data-testid="controls-button-wrapper"
           data-controls-button-wrapper
-          class="relative z-0 inline-flex items-center justify-center focus-within:z-20 hover:z-20"
+          :class="[
+            'relative z-0 inline-flex items-center justify-center focus-within:z-20 hover:z-20',
+            triggerClass,
+          ]"
         >
           <slot />
         </span>

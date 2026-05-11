@@ -21,6 +21,9 @@ const props = withDefaults(defineProps<Props>(), {
 const uiStore = useControlsIslandStore()
 const enabled = computed(() => uiStore.fadeOnHoverEnabled)
 const { t } = useI18n()
+const fadeToggleLabel = computed(() => enabled.value
+  ? t('tamagotchi.stage.controls-island.fade-on-hover.disable')
+  : t('tamagotchi.stage.controls-island.fade-on-hover.enable'))
 
 const requestNotice = useElectronEventaInvoke(noticeWindowEventa.openWindow)
 const NOTICE_WINDOW_ID = 'fade-on-hover'
@@ -54,7 +57,10 @@ async function handleToggle() {
 <template>
   <ControlButtonTooltip>
     <ControlButton
+      data-testid="controls-fade-on-hover-toggle"
       :button-style="props.buttonStyle"
+      :aria-label="fadeToggleLabel"
+      :title="fadeToggleLabel"
       :class="{ 'border-primary-300/70 shadow-[0_10px_24px_rgba(0,0,0,0.22)]': enabled }"
       @click="handleToggle"
     >
@@ -65,7 +71,7 @@ async function handleToggle() {
     </ControlButton>
 
     <template #tooltip>
-      {{ enabled ? t('tamagotchi.stage.controls-island.fade-on-hover.disable') : t('tamagotchi.stage.controls-island.fade-on-hover.enable') }}
+      {{ fadeToggleLabel }}
     </template>
   </ControlButtonTooltip>
 </template>

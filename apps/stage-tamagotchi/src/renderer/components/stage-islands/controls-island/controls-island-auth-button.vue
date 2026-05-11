@@ -5,6 +5,8 @@ import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ControlButtonTooltip from './control-button-tooltip.vue'
+
 import {
   electronAuthCallback,
   electronAuthCallbackError,
@@ -91,93 +93,111 @@ watch(isAuthenticated, (val) => {
 
   <!-- Authenticated state -->
   <div v-else-if="isAuthenticated" flex="~ col gap-1.5" mb-1.5>
-    <button
-      type="button"
-      :class="[
-        'flex min-w-0 items-center gap-2.5',
-        'rounded-xl px-2.5 py-2',
-        'bg-transparent hover:bg-black/5 dark:hover:bg-white/5',
-        'transition-colors duration-200',
-        'cursor-pointer border-none outline-none',
-        'w-full text-left',
-        props.buttonStyle,
-      ]"
-      @click="handleClick"
-    >
-      <div
+    <ControlButtonTooltip side="left" trigger-class="w-full">
+      <button
+        type="button"
+        data-testid="controls-auth-button"
+        :aria-label="t('tamagotchi.stage.controls-island.account')"
+        :title="t('tamagotchi.stage.controls-island.account')"
         :class="[
-          'size-8 shrink-0 overflow-hidden rounded-full',
-          'bg-primary-100 dark:bg-primary-900/40',
-          'flex items-center justify-center',
+          'flex min-w-0 items-center gap-2.5',
+          'rounded-xl px-2.5 py-2',
+          'bg-transparent hover:bg-black/5 dark:hover:bg-white/5',
+          'transition-colors duration-200',
+          'cursor-pointer border-none outline-none',
+          'w-full text-left',
+          '[-webkit-app-region:no-drag] pointer-events-auto',
+          props.buttonStyle,
         ]"
+        @click="handleClick"
       >
-        <img
-          v-if="userAvatar"
-          :src="userAvatar"
-          :alt="userName ?? ''"
-          class="size-full object-cover"
-        >
-        <div v-else i-solar:user-check-rounded-bold class="size-4 text-primary-500 dark:text-primary-400" />
-      </div>
-      <div class="min-w-0 flex flex-1 flex-col items-start gap-0.5">
-        <span
-          :class="[
-            'w-full truncate',
-            'text-sm font-semibold',
-            'text-neutral-800 dark:text-neutral-200',
-          ]"
-        >
-          {{ userName }}
-        </span>
-
-        <!-- Flux balance: horizontal pill -->
         <div
           :class="[
-            'flex items-center gap-1',
-            'rounded-md px-1.5 py-0.5',
-            'bg-primary-500/12 dark:bg-primary-400/12',
-            'text-[10px] font-semibold',
-            'text-primary-600 dark:text-primary-400',
+            'size-8 shrink-0 overflow-hidden rounded-full',
+            'bg-primary-100 dark:bg-primary-900/40',
+            'flex items-center justify-center',
           ]"
         >
+          <img
+            v-if="userAvatar"
+            :src="userAvatar"
+            :alt="userName ?? ''"
+            class="size-full object-cover"
+          >
+          <div v-else i-solar:user-check-rounded-bold class="size-4 text-primary-500 dark:text-primary-400" />
+        </div>
+        <div class="min-w-0 flex flex-1 flex-col items-start gap-0.5">
+          <span
+            :class="[
+              'w-full truncate',
+              'text-sm font-semibold',
+              'text-neutral-800 dark:text-neutral-200',
+            ]"
+          >
+            {{ userName }}
+          </span>
+
+          <!-- Flux balance: horizontal pill -->
           <div
             :class="[
-              'i-solar:battery-charge-bold-duotone',
-              'size-3 shrink-0',
+              'flex items-center gap-1',
+              'rounded-md px-1.5 py-0.5',
+              'bg-primary-500/12 dark:bg-primary-400/12',
+              'text-[10px] font-semibold',
+              'text-primary-600 dark:text-primary-400',
             ]"
-          />
-          <span class="whitespace-nowrap leading-tight">{{ credits }} Flux</span>
+          >
+            <div
+              :class="[
+                'i-solar:battery-charge-bold-duotone',
+                'size-3 shrink-0',
+              ]"
+            />
+            <span class="whitespace-nowrap leading-tight">{{ credits }} Flux</span>
+          </div>
         </div>
-      </div>
-    </button>
+      </button>
+      <template #tooltip>
+        {{ t('tamagotchi.stage.controls-island.account') }}
+      </template>
+    </ControlButtonTooltip>
   </div>
 
   <!-- Not authenticated state -->
   <div v-else mb-1.5>
-    <button
-      type="button"
-      :class="[
-        'flex items-center gap-2.5',
-        'w-full rounded-xl px-3 py-2.5',
-        'bg-primary-500/10 hover:bg-primary-500/20',
-        'dark:bg-primary-400/10 dark:hover:bg-primary-400/20',
-        'transition-colors duration-200',
-        'cursor-pointer border-none outline-none',
-        'text-left',
-        props.buttonStyle,
-      ]"
-      @click="handleClick"
-    >
-      <div
-        i-solar:login-3-bold-duotone
+    <ControlButtonTooltip side="left" trigger-class="w-full">
+      <button
+        type="button"
+        data-testid="controls-auth-button"
+        :aria-label="t('tamagotchi.stage.controls-island.login')"
+        :title="t('tamagotchi.stage.controls-island.login')"
         :class="[
-          props.iconClass ?? 'size-4.5',
-          'shrink-0 text-primary-500 dark:text-primary-400',
+          'flex items-center gap-2.5',
+          'w-full rounded-xl px-3 py-2.5',
+          'bg-primary-500/10 hover:bg-primary-500/20',
+          'dark:bg-primary-400/10 dark:hover:bg-primary-400/20',
+          'transition-colors duration-200',
+          'cursor-pointer border-none outline-none',
+          'text-left',
+          '[-webkit-app-region:no-drag] pointer-events-auto',
+          props.buttonStyle,
         ]"
-      />
-      <span text="sm primary-600 dark:primary-400" font-medium>
+        @click="handleClick"
+      >
+        <div
+          i-solar:login-3-bold-duotone
+          :class="[
+            props.iconClass ?? 'size-4.5',
+            'shrink-0 text-primary-500 dark:text-primary-400',
+          ]"
+        />
+        <span text="sm primary-600 dark:primary-400" font-medium>
+          {{ t('tamagotchi.stage.controls-island.login') }}
+        </span>
+      </button>
+      <template #tooltip>
         {{ t('tamagotchi.stage.controls-island.login') }}
-      </span>
-    </button>
+      </template>
+    </ControlButtonTooltip>
   </div>
 </template>
