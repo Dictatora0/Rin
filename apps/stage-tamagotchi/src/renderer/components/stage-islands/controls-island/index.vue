@@ -39,7 +39,7 @@ const controlsIslandStore = useControlsIslandStore()
 const context = useElectronEventaContext()
 const { enabled } = storeToRefs(settingsAudioDeviceStore)
 const { alwaysOnTop, controlsIslandIconSize } = storeToRefs(settingsStore)
-const { moveModeEnabled, controlsPanelExpanded } = storeToRefs(controlsIslandStore)
+const { moveModeEnabled, controlsPanelExpanded, controlsUIMode } = storeToRefs(controlsIslandStore)
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const openChat = useElectronEventaInvoke(electronOpenChat)
 const isLinux = useElectronEventaInvoke(electron.app.isLinux)
@@ -52,6 +52,7 @@ const getPrimaryDisplay = useElectronEventaInvoke(electron.screen.getPrimaryDisp
 const visionPanelVisible = ref(false)
 const studyPanelExpanded = ref(false)
 const studyPanelInteractionLocked = ref(false)
+const shortcutsCardExpanded = ref(false)
 const controlsPanelScrollElement = ref<HTMLElement | null>(null)
 const visionPanelElement = ref<HTMLElement | null>(null)
 
@@ -61,6 +62,16 @@ const blockingOverlays = reactive(new Set<string>())
 const panelToggleLabel = computed(() => controlsPanelExpanded.value
   ? t('tamagotchi.stage.controls-island.collapse')
   : t('tamagotchi.stage.controls-island.expand'))
+const controlsUIModeLabel = computed(() => controlsUIMode.value === 'novice'
+  ? t('tamagotchi.stage.controls-island.ui-mode.novice')
+  : t('tamagotchi.stage.controls-island.ui-mode.expert'))
+const controlsUIModeToggleLabel = computed(() => controlsUIMode.value === 'novice'
+  ? t('tamagotchi.stage.controls-island.ui-mode.switch-to-expert')
+  : t('tamagotchi.stage.controls-island.ui-mode.switch-to-novice'))
+const shortcutsToggleLabel = computed(() => shortcutsCardExpanded.value
+  ? t('tamagotchi.stage.controls-island.shortcuts.toggle-close')
+  : t('tamagotchi.stage.controls-island.shortcuts.toggle-open'))
+const isNoviceMode = computed(() => controlsUIMode.value === 'novice')
 const moveModeControlLabel = computed(() => moveModeEnabled.value
   ? t('tamagotchi.stage.controls-island.move-mode.disable')
   : t('tamagotchi.stage.controls-island.move-mode.enable'))
@@ -99,6 +110,7 @@ watch(controlsPanelExpanded, (isExpanded) => {
       blockingOverlays.add('vision-panel')
     studyPanelExpanded.value = false
     studyPanelInteractionLocked.value = false
+    shortcutsCardExpanded.value = false
   }
 })
 
@@ -195,6 +207,14 @@ function toggleMoveMode() {
   controlsIslandStore.toggleMoveMode()
 }
 
+function toggleControlsUIMode() {
+  controlsIslandStore.toggleControlsUIMode()
+}
+
+function toggleShortcutsCard() {
+  shortcutsCardExpanded.value = !shortcutsCardExpanded.value
+}
+
 async function resizeWindowByAction(action: StageWindowSizeAction) {
   try {
     const [currentBounds, primaryDisplay] = await Promise.all([
@@ -281,6 +301,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-open-settings"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.settings')"
                     :aria-label="t('tamagotchi.stage.controls-island.open-settings')"
                     :title="t('tamagotchi.stage.controls-island.open-settings')"
                     @click="openSettings({ route: '/settings' })"
@@ -299,6 +321,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                         data-testid="controls-profile-picker"
                         class="controls-button"
                         :button-style="adjustStyleClasses.button"
+                        :show-label="isNoviceMode"
+                        :label="t('tamagotchi.stage.controls-island.labels.profile')"
                         :aria-label="t('tamagotchi.stage.controls-island.switch-profile')"
                         :title="t('tamagotchi.stage.controls-island.switch-profile')"
                         @click="toggle"
@@ -317,6 +341,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-open-chat"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.chat')"
                     :aria-label="t('tamagotchi.stage.controls-island.open-chat')"
                     :title="t('tamagotchi.stage.controls-island.open-chat')"
                     @click="openChat"
@@ -333,6 +359,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-refresh-window"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.refresh')"
                     :aria-label="t('tamagotchi.stage.controls-island.refresh')"
                     :title="t('tamagotchi.stage.controls-island.refresh')"
                     @click="refreshWindow"
@@ -349,6 +377,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-theme-toggle"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.appearance')"
                     :aria-label="isDark ? t('tamagotchi.stage.controls-island.switch-to-light-mode') : t('tamagotchi.stage.controls-island.switch-to-dark-mode')"
                     :title="isDark ? t('tamagotchi.stage.controls-island.switch-to-light-mode') : t('tamagotchi.stage.controls-island.switch-to-dark-mode')"
                     @click="toggleDark()"
@@ -368,6 +398,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-always-on-top-toggle"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.pin')"
                     :aria-label="alwaysOnTop ? t('tamagotchi.stage.controls-island.unpin-from-top') : t('tamagotchi.stage.controls-island.pin-on-top')"
                     :title="alwaysOnTop ? t('tamagotchi.stage.controls-island.unpin-from-top') : t('tamagotchi.stage.controls-island.pin-on-top')"
                     @click="toggleAlwaysOnTop()"
@@ -403,6 +435,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                   data-testid="controls-fade-toggle"
                   :icon-class="adjustStyleClasses.icon"
                   :button-style="adjustStyleClasses.button"
+                  :show-label="isNoviceMode"
+                  :label="t('tamagotchi.stage.controls-island.labels.fade')"
                 />
 
                 <ControlButtonTooltip disable-hoverable-content trigger-class="controls-button-cell">
@@ -412,6 +446,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                         data-testid="controls-hearing-toggle"
                         class="controls-button"
                         :button-style="adjustStyleClasses.button"
+                        :show-label="isNoviceMode"
+                        :label="t('tamagotchi.stage.controls-island.labels.hearing')"
                         :aria-label="t('tamagotchi.stage.controls-island.open-hearing-controls')"
                         :title="t('tamagotchi.stage.controls-island.open-hearing-controls')"
                       >
@@ -432,6 +468,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-study-toggle"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.study')"
                     :aria-label="studyPanelToggleLabel"
                     :title="studyPanelToggleLabel"
                     @click="toggleStudyPanel"
@@ -451,6 +489,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-vision-toggle"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.vision')"
                     :aria-label="visionPanelToggleLabel"
                     :title="visionPanelToggleLabel"
                     :class="[
@@ -464,7 +504,86 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     {{ visionPanelToggleLabel }}
                   </template>
                 </ControlButtonTooltip>
+
+                <ControlButtonTooltip disable-hoverable-content trigger-class="controls-button-cell">
+                  <ControlButton
+                    data-testid="controls-ui-mode-toggle"
+                    class="controls-button"
+                    :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.mode')"
+                    :aria-label="controlsUIModeToggleLabel"
+                    :title="controlsUIModeToggleLabel"
+                    @click="toggleControlsUIMode"
+                  >
+                    <div
+                      :class="[adjustStyleClasses.icon, controlsUIMode === 'novice' ? 'text-amber-500 dark:text-amber-300' : 'text-indigo-500 dark:text-indigo-300']"
+                      i-ph:user-switch
+                    />
+                  </ControlButton>
+                  <template #tooltip>
+                    {{ controlsUIModeLabel }}
+                  </template>
+                </ControlButtonTooltip>
+
+                <ControlButtonTooltip disable-hoverable-content trigger-class="controls-button-cell">
+                  <ControlButton
+                    data-testid="controls-shortcuts-toggle"
+                    class="controls-button"
+                    :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.keys')"
+                    :aria-label="shortcutsToggleLabel"
+                    :title="shortcutsToggleLabel"
+                    :class="[
+                      shortcutsCardExpanded ? 'bg-emerald-100/80 text-emerald-700 dark:bg-emerald-900/35 dark:text-emerald-200' : '',
+                    ]"
+                    @click="toggleShortcutsCard"
+                  >
+                    <div i-ph:keyboard :class="adjustStyleClasses.icon" />
+                  </ControlButton>
+                  <template #tooltip>
+                    {{ shortcutsToggleLabel }}
+                  </template>
+                </ControlButtonTooltip>
               </div>
+
+              <Transition
+                enter-active-class="transition-all duration-200 ease-out"
+                enter-from-class="opacity-0 -translate-y-1"
+                enter-to-class="opacity-100 translate-y-0"
+                leave-active-class="transition-all duration-150 ease-in"
+                leave-from-class="opacity-100 translate-y-0"
+                leave-to-class="opacity-0 -translate-y-1"
+              >
+                <div
+                  v-if="shortcutsCardExpanded"
+                  data-testid="controls-shortcuts-card"
+                  :class="[
+                    'w-full rounded-lg border border-neutral-200/80 px-2.5 py-2 text-[11px]',
+                    'bg-neutral-50/80 text-neutral-700 dark:border-neutral-700/80 dark:bg-neutral-900/60 dark:text-neutral-200',
+                  ]"
+                >
+                  <div class="font-semibold">
+                    {{ t('tamagotchi.stage.controls-island.shortcuts.title') }}
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.zoom-in') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">Cmd/Ctrl + +</code>
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.zoom-out') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">Cmd/Ctrl + -</code>
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.reset-size') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">Cmd/Ctrl + 0</code>
+                  </div>
+                  <div class="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                    {{ t('tamagotchi.stage.controls-island.shortcuts.hint') }}
+                  </div>
+                </div>
+              </Transition>
             </section>
 
             <section
@@ -490,6 +609,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-move-mode-toggle"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.move')"
                     :aria-label="moveModeControlLabel"
                     :title="moveModeControlLabel"
                     :aria-pressed="moveModeEnabled"
@@ -525,6 +646,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-zoom-in"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.zoom-in')"
                     :aria-label="t('tamagotchi.stage.controls-island.zoom-in')"
                     :title="t('tamagotchi.stage.controls-island.zoom-in')"
                     @click="resizeWindowByAction('zoom-in')"
@@ -541,6 +664,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-zoom-out"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.zoom-out')"
                     :aria-label="t('tamagotchi.stage.controls-island.zoom-out')"
                     :title="t('tamagotchi.stage.controls-island.zoom-out')"
                     @click="resizeWindowByAction('zoom-out')"
@@ -557,6 +682,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-reset-size"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.reset')"
                     :aria-label="t('tamagotchi.stage.controls-island.reset-size')"
                     :title="t('tamagotchi.stage.controls-island.reset-size')"
                     @click="resizeWindowByAction('reset-size')"
@@ -573,6 +700,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-drag-window"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.drag')"
                     :aria-label="t('tamagotchi.stage.controls-island.drag-to-move-window')"
                     :title="t('tamagotchi.stage.controls-island.drag-to-move-window')"
                     cursor-move
@@ -591,6 +720,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     data-testid="controls-close-button"
                     class="controls-button"
                     :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.close')"
                     :aria-label="t('tamagotchi.stage.controls-island.close')"
                     :title="t('tamagotchi.stage.controls-island.close')"
                     :class="['text-neutral-800 dark:text-neutral-200 hover:bg-red-500/85 hover:text-white']"
@@ -650,7 +781,7 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
               data-testid="controls-vision-panel"
               class="min-h-0 flex flex-col"
             >
-              <VisionIsland embedded />
+              <VisionIsland embedded :ui-mode="controlsUIMode" />
             </section>
           </div>
         </div>

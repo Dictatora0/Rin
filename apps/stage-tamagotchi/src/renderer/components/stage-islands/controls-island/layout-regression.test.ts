@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   return {
     isOutside: { value: false } as { value: boolean },
     moveModeEnabled: { value: false } as { value: boolean },
+    controlsUIMode: { value: 'novice' } as { value: 'novice' | 'expert' },
     controlsPanelExpanded: { value: false } as { value: boolean },
     visionPanelUnmounted: vi.fn(),
     openSettings: vi.fn(),
@@ -24,6 +25,9 @@ const mocks = vi.hoisted(() => {
     }),
     toggleControlsPanel: vi.fn(() => {
       mocks.controlsPanelExpanded.value = !mocks.controlsPanelExpanded.value
+    }),
+    toggleControlsUIMode: vi.fn(() => {
+      mocks.controlsUIMode.value = mocks.controlsUIMode.value === 'novice' ? 'expert' : 'novice'
     }),
     setControlsPanelExpanded: vi.fn((expanded: boolean) => {
       mocks.controlsPanelExpanded.value = expanded
@@ -65,8 +69,10 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
 vi.mock('../../../stores/controls-island', () => ({
   useControlsIslandStore: () => ({
     moveModeEnabled: mocks.moveModeEnabled,
+    controlsUIMode: mocks.controlsUIMode,
     controlsPanelExpanded: mocks.controlsPanelExpanded,
     toggleMoveMode: mocks.toggleMoveMode,
+    toggleControlsUIMode: mocks.toggleControlsUIMode,
     toggleControlsPanel: mocks.toggleControlsPanel,
     setControlsPanelExpanded: mocks.setControlsPanelExpanded,
   }),
@@ -269,6 +275,7 @@ describe('controls island layout regression locks', () => {
     vi.useFakeTimers()
     mocks.isOutside = ref(false)
     mocks.moveModeEnabled = ref(false)
+    mocks.controlsUIMode = ref<'novice' | 'expert'>('novice')
     mocks.controlsPanelExpanded = ref(false)
     mocks.visionPanelUnmounted.mockReset()
     mocks.openSettings.mockReset()
@@ -277,6 +284,7 @@ describe('controls island layout regression locks', () => {
     mocks.setAlwaysOnTop.mockReset()
     mocks.startDraggingWindow.mockReset()
     mocks.toggleMoveMode.mockReset()
+    mocks.toggleControlsUIMode.mockReset()
     mocks.toggleControlsPanel.mockReset()
     mocks.setControlsPanelExpanded.mockReset()
   })
@@ -347,7 +355,7 @@ describe('controls island layout regression locks', () => {
     expect(coreButtonsBefore).toBe(6)
     expect(toolsGrid.className).toContain('grid-cols-3')
     expect(toolsGrid.className).toContain('controls-button-grid')
-    expect(toolsButtonsBefore).toBe(4)
+    expect(toolsButtonsBefore).toBe(6)
     expect(windowSection).not.toBeNull()
     expect(container.querySelector('[data-testid="controls-group-title-core"]')?.textContent).toContain('tamagotchi.stage.controls-island.groups.core')
     expect(container.querySelector('[data-testid="controls-group-title-tools"]')?.textContent).toContain('tamagotchi.stage.controls-island.groups.tools')
@@ -371,6 +379,8 @@ describe('controls island layout regression locks', () => {
     expect(windowGrid.querySelector('[data-testid="controls-reset-size"]')).not.toBeNull()
     expect(windowGrid.querySelector('[data-testid="controls-drag-window"]')).not.toBeNull()
     expect(windowGrid.querySelector('[data-testid="controls-close-button"]')).not.toBeNull()
+    expect(toolsGrid.querySelector('[data-testid="controls-ui-mode-toggle"]')).not.toBeNull()
+    expect(toolsGrid.querySelector('[data-testid="controls-shortcuts-toggle"]')).not.toBeNull()
 
     const visionButton = container.querySelector('[data-testid="controls-vision-toggle"]') as HTMLButtonElement | null
     if (!visionButton)

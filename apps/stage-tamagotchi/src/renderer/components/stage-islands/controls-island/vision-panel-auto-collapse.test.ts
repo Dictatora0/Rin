@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
   return {
     isOutside: { value: false } as { value: boolean },
     moveModeEnabled: { value: false } as { value: boolean },
+    controlsUIMode: { value: 'novice' } as { value: 'novice' | 'expert' },
     controlsPanelExpanded: { value: false } as { value: boolean },
     visionUnmountStop: vi.fn(),
     openSettings: vi.fn(),
@@ -21,6 +22,9 @@ const mocks = vi.hoisted(() => {
     }),
     toggleControlsPanel: vi.fn(() => {
       mocks.controlsPanelExpanded.value = !mocks.controlsPanelExpanded.value
+    }),
+    toggleControlsUIMode: vi.fn(() => {
+      mocks.controlsUIMode.value = mocks.controlsUIMode.value === 'novice' ? 'expert' : 'novice'
     }),
     setControlsPanelExpanded: vi.fn((expanded: boolean) => {
       mocks.controlsPanelExpanded.value = expanded
@@ -62,8 +66,10 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
 vi.mock('../../../stores/controls-island', () => ({
   useControlsIslandStore: () => ({
     moveModeEnabled: mocks.moveModeEnabled,
+    controlsUIMode: mocks.controlsUIMode,
     controlsPanelExpanded: mocks.controlsPanelExpanded,
     toggleMoveMode: mocks.toggleMoveMode,
+    toggleControlsUIMode: mocks.toggleControlsUIMode,
     toggleControlsPanel: mocks.toggleControlsPanel,
     setControlsPanelExpanded: mocks.setControlsPanelExpanded,
   }),
@@ -267,6 +273,7 @@ describe('controls island vision panel interaction flow', () => {
     vi.useFakeTimers()
     mocks.isOutside = ref(false)
     mocks.moveModeEnabled = ref(false)
+    mocks.controlsUIMode = ref<'novice' | 'expert'>('novice')
     mocks.controlsPanelExpanded = ref(false)
     mocks.visionUnmountStop.mockReset()
     mocks.openSettings.mockReset()
@@ -275,6 +282,7 @@ describe('controls island vision panel interaction flow', () => {
     mocks.setAlwaysOnTop.mockReset()
     mocks.startDraggingWindow.mockReset()
     mocks.toggleMoveMode.mockReset()
+    mocks.toggleControlsUIMode.mockReset()
     mocks.toggleControlsPanel.mockReset()
     mocks.setControlsPanelExpanded.mockReset()
   })

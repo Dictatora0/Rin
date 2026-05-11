@@ -11,6 +11,7 @@ import ControlsIsland from './index.vue'
 const mocks = vi.hoisted(() => {
   return {
     moveModeEnabled: { value: false } as { value: boolean },
+    controlsUIMode: { value: 'novice' } as { value: 'novice' | 'expert' },
     controlsPanelExpanded: { value: false } as { value: boolean },
     isOutside: { value: false } as { value: boolean },
     openSettings: vi.fn(),
@@ -27,6 +28,9 @@ const mocks = vi.hoisted(() => {
     }),
     toggleControlsPanel: vi.fn(() => {
       mocks.controlsPanelExpanded.value = !mocks.controlsPanelExpanded.value
+    }),
+    toggleControlsUIMode: vi.fn(() => {
+      mocks.controlsUIMode.value = mocks.controlsUIMode.value === 'novice' ? 'expert' : 'novice'
     }),
     setControlsPanelExpanded: vi.fn((expanded: boolean) => {
       mocks.controlsPanelExpanded.value = expanded
@@ -68,8 +72,10 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
 vi.mock('../../../stores/controls-island', () => ({
   useControlsIslandStore: () => ({
     moveModeEnabled: mocks.moveModeEnabled,
+    controlsUIMode: mocks.controlsUIMode,
     controlsPanelExpanded: mocks.controlsPanelExpanded,
     toggleMoveMode: mocks.toggleMoveMode,
+    toggleControlsUIMode: mocks.toggleControlsUIMode,
     toggleControlsPanel: mocks.toggleControlsPanel,
     setControlsPanelExpanded: mocks.setControlsPanelExpanded,
   }),
@@ -266,6 +272,7 @@ describe('controls island move mode and size controls', () => {
     vi.useFakeTimers()
     mocks.isOutside = ref(false)
     mocks.moveModeEnabled = ref(false)
+    mocks.controlsUIMode = ref<'novice' | 'expert'>('novice')
     mocks.controlsPanelExpanded = ref(false)
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
@@ -276,6 +283,7 @@ describe('controls island move mode and size controls', () => {
     mocks.setBounds.mockClear()
     mocks.getPrimaryDisplay.mockClear()
     mocks.toggleMoveMode.mockClear()
+    mocks.toggleControlsUIMode.mockClear()
     mocks.toggleControlsPanel.mockClear()
     mocks.setControlsPanelExpanded.mockClear()
     mocks.unknownEvents.length = 0
@@ -429,6 +437,8 @@ describe('controls island move mode and size controls', () => {
       '[data-testid="controls-hearing-toggle"]',
       '[data-testid="controls-study-toggle"]',
       '[data-testid="controls-vision-toggle"]',
+      '[data-testid="controls-ui-mode-toggle"]',
+      '[data-testid="controls-shortcuts-toggle"]',
       '[data-testid="controls-move-mode-toggle"]',
       '[data-testid="controls-zoom-in"]',
       '[data-testid="controls-zoom-out"]',
@@ -475,6 +485,63 @@ describe('controls island move mode and size controls', () => {
     expect(zoomOutPayload.height).toBeLessThan(600)
     expect(resetPayload.width).toBe(450)
     expect(resetPayload.height).toBe(600)
+
+    unmount()
+  })
+
+  it('shows short labels in novice mode and switches to compact expert mode', async () => {
+    const { container, unmount } = mountControlsIsland()
+    clickExpand(container)
+    await nextTick()
+
+    const settingsButton = container.querySelector('[data-testid="controls-open-settings"]') as HTMLButtonElement | null
+    const modeButton = container.querySelector('[data-testid="controls-ui-mode-toggle"]') as HTMLButtonElement | null
+    expect(settingsButton).not.toBeNull()
+    expect(modeButton).not.toBeNull()
+    expect(settingsButton?.textContent ?? '').toContain('tamagotchi.stage.controls-island.labels.settings')
+    expect(modeButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.ui-mode.switch-to-expert')
+
+    modeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect(mocks.toggleControlsUIMode).toHaveBeenCalledTimes(1)
+    expect(mocks.controlsUIMode.value).toBe('expert')
+    expect(modeButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.ui-mode.switch-to-novice')
+    expect(settingsButton?.textContent ?? '').not.toContain('tamagotchi.stage.controls-island.labels.settings')
+
+    unmount()
+  })
+
+  it('toggles in-panel shortcuts cheat sheet without affecting window controls', async () => {
+    const { container, unmount } = mountControlsIsland()
+    clickExpand(container)
+    await nextTick()
+
+    const shortcutsToggle = container.querySelector('[data-testid="controls-shortcuts-toggle"]') as HTMLButtonElement | null
+    const zoomInButton = container.querySelector('[data-testid="controls-zoom-in"]') as HTMLButtonElement | null
+    expect(shortcutsToggle).not.toBeNull()
+    expect(zoomInButton).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-shortcuts-card"]')).toBeNull()
+
+    shortcutsToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    const shortcutsCard = container.querySelector('[data-testid="controls-shortcuts-card"]')
+    expect(shortcutsCard).not.toBeNull()
+    expect(shortcutsCard?.textContent ?? '').toContain('Cmd/Ctrl + +')
+    expect(shortcutsCard?.textContent ?? '').toContain('Cmd/Ctrl + -')
+    expect(shortcutsCard?.textContent ?? '').toContain('Cmd/Ctrl + 0')
+
+    zoomInButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => {
+      expect(mocks.setBounds).toHaveBeenCalledTimes(1)
+    })
+
+    const collapseShortcutsToggle = container.querySelector('[data-testid="controls-shortcuts-toggle"]') as HTMLButtonElement | null
+    collapseShortcutsToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(250)
+    await nextTick()
+    expect(container.querySelector('[data-testid="controls-shortcuts-card"]')).toBeNull()
 
     unmount()
   })

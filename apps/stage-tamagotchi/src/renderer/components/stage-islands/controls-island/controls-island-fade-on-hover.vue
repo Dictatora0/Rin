@@ -13,6 +13,8 @@ import { useControlsIslandStore } from '../../../stores/controls-island'
 interface Props {
   iconClass?: string
   buttonStyle?: string
+  label?: string
+  showLabel?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -59,6 +61,8 @@ async function handleToggle() {
     <ControlButton
       data-testid="controls-fade-on-hover-toggle"
       :button-style="props.buttonStyle"
+      :label="props.label"
+      :show-label="props.showLabel"
       :aria-label="fadeToggleLabel"
       :title="fadeToggleLabel"
       :class="{ 'border-primary-300/70 shadow-[0_10px_24px_rgba(0,0,0,0.22)]': enabled }"

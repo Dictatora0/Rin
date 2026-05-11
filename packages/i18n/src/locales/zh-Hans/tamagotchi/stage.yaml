@@ -29,6 +29,38 @@ docs:
   'vision-panel':
     expand: 打开视觉交互
     collapse: 收起视觉交互
+  'ui-mode':
+    novice: 新手模式
+    expert: 专家模式
+    switch-to-novice: 切换到新手模式
+    switch-to-expert: 切换到专家模式
+  'shortcuts':
+    toggle-open: 显示快捷键
+    toggle-close: 收起快捷键
+    title: 快捷键
+    zoom-in: 放大
+    zoom-out: 缩小
+    reset-size: 重置尺寸
+    hint: 也可通过窗口控制按钮操作。
+  'labels':
+    settings: 设置
+    profile: 角色
+    chat: 聊天
+    refresh: 刷新
+    appearance: 外观
+    pin: 置顶
+    fade: 淡出
+    hearing: 听力
+    study: 学习
+    vision: 视觉
+    mode: 模式
+    keys: 快捷键
+    move: 移动
+    zoom-in: 放大
+    zoom-out: 缩小
+    reset: 重置
+    drag: 拖动
+    close: 关闭
   'groups':
     core: 核心操作
     tools: 扩展工具

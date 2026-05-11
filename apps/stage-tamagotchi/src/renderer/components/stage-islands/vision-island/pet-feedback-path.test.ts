@@ -252,7 +252,7 @@ vi.mock('../../../composables/use-vision-interaction', () => ({
 function mountVisionIsland() {
   const host = defineComponent({
     setup() {
-      return () => h(VisionIsland, { embedded: true })
+      return () => h(VisionIsland, { embedded: true, uiMode: 'expert' })
     },
   })
 
@@ -394,7 +394,7 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Think')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('normal', 1.4)
-    expect(container.textContent).toContain('petSubjectResponseState: following_left')
+    expect(container.textContent).toContain('Rin response state：Following left')
     await openAdvancedDiagnostics(container)
     expect(container.textContent).toContain('lastFeedbackType: subject_moved_left')
     expect(container.textContent).toContain('resolvedFeedbackEventType: subject_position_left')
@@ -403,7 +403,9 @@ describe('vision Island real-path pet feedback integration', () => {
     const leftTemplateIdMatch = container.textContent?.match(/feedbackTemplateId: (\S+)/)
     expect(leftTemplateIdMatch).not.toBeNull()
     expect(leftTemplateIdMatch?.[1]).toMatch(/^left-bal-/)
-    const leftMessageMatch = container.textContent?.match(/lastFeedbackMessage:\s*(.*?)\s*lastSubjectResponseEvent:/)
+    const leftMessageMatch = container.textContent?.match(
+      /(?:lastFeedbackMessage|Last feedback message|最近反馈文案)[:：]\s*(.*?)\s*(?:lastSubjectResponseEvent|Last subject event|最近位置事件)[:：]/,
+    )
     expect(leftMessageMatch).not.toBeNull()
     const allowedLeftMessages = new Set(
       listVisionFeedbackTemplatesForEvent('subject_position_left')
@@ -421,7 +423,7 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Think')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('smile', 1.4)
-    expect(container.textContent).toContain('petSubjectResponseState: centered')
+    expect(container.textContent).toContain('Rin response state：Centered')
 
     unmount()
   })
@@ -495,7 +497,7 @@ describe('vision Island real-path pet feedback integration', () => {
     expect(container.textContent).toContain('lastFeedbackType: subject_gated')
     expect(container.textContent).toContain('resolvedFeedbackEventType: subject_gated')
     expect(container.textContent).toContain('feedbackChannels: ui, toast')
-    expect(container.textContent).toContain('activeBubbleEventType: none')
+    expect(container.textContent).toContain('activeBubbleEventType: 无')
     expect(container.querySelector('[data-testid="vision-feedback-bubble"]')).toBeNull()
 
     unmount()
@@ -545,8 +547,8 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
-    expect(container.textContent).toContain('subjectResponseGate: gated')
-    expect(container.textContent).toContain('petSubjectResponseState: gated')
+    expect(container.textContent).toContain('Subject response gate：Gated')
+    expect(container.textContent).toContain('Rin response state：Gated')
     expect(container.textContent).toContain('lastFeedbackType: subject_gated')
     expect(container.textContent).toContain('resolvedFeedbackEventType: subject_gated')
     expect(container.textContent).toContain('feedbackChannels: ui, toast')
@@ -554,7 +556,9 @@ describe('vision Island real-path pet feedback integration', () => {
     const gatedTemplateIdMatch = container.textContent?.match(/feedbackTemplateId: (\S+)/)
     expect(gatedTemplateIdMatch).not.toBeNull()
     expect(gatedTemplateIdMatch?.[1]).toMatch(/^gated-bal-/)
-    const gatedMessageMatch = container.textContent?.match(/lastFeedbackMessage:\s*(.*?)\s*lastSubjectResponseEvent:/)
+    const gatedMessageMatch = container.textContent?.match(
+      /(?:lastFeedbackMessage|Last feedback message|最近反馈文案)[:：]\s*(.*?)\s*(?:lastSubjectResponseEvent|Last subject event|最近位置事件)[:：]/,
+    )
     expect(gatedMessageMatch).not.toBeNull()
     const allowedGatedMessages = new Set(
       listVisionFeedbackTemplatesForEvent('subject_gated')
@@ -620,8 +624,8 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
-    expect(container.textContent).toContain('lastFeedbackType: none')
-    expect(container.textContent).toContain('resolvedFeedbackEventType: none')
+    expect(container.textContent).toContain('lastFeedbackType: 无')
+    expect(container.textContent).toContain('resolvedFeedbackEventType: 无')
     expect(container.textContent).toContain('Face profile enrolled locally.')
 
     unmount()

@@ -88,6 +88,31 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - Collapse is now user-driven only (toggle/anchor interaction)
   - Vision subpanel behavior no longer drives whole-panel auto collapse
 
+## Controls + Vision usability refinement (Principles 2/3/4)
+
+- Flexibility and efficiency:
+  - Added persistent Controls UI mode switch (`novice` / `expert`) in Controls Island.
+  - Added in-panel shortcut cheat sheet for stable window shortcuts:
+    - `Cmd/Ctrl + +`
+    - `Cmd/Ctrl + -`
+    - `Cmd/Ctrl + 0`
+  - Kept the existing zoom/reset button entry points aligned with those shortcuts.
+
+- Aesthetic and minimalist:
+  - Novice mode now shows short fixed labels under major controls for clarity.
+  - Expert mode keeps compact icon-first density for experienced users.
+  - Vision Island now supports layered density:
+    - `novice`: task-focused, lower-noise content
+    - `expert`: full advanced diagnostics and tuning controls
+
+- Error recognition and recovery:
+  - Added a user-facing recovery panel in Vision Island with actionable buttons.
+  - Recovery guidance prioritizes:
+    1. Camera permission/availability issues
+    2. Vision runtime failure/retry/reset path
+    3. Face gate blocking conditions
+  - Updated runtime-related toast copy to natural user-facing messages.
+
 ## Demo steps
 
 1. Run `pnpm dev:tamagotchi`.

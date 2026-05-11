@@ -1,5 +1,9 @@
 <script setup lang="ts">
-const props = defineProps<{ buttonStyle?: string }>()
+const props = defineProps<{
+  buttonStyle?: string
+  label?: string
+  showLabel?: boolean
+}>()
 </script>
 
 <template>
@@ -10,6 +14,7 @@ const props = defineProps<{ buttonStyle?: string }>()
       'bg-neutral-50/80 dark:bg-neutral-800/70',
       'h-10 w-10 shrink-0 flex items-center justify-center p-2 leading-none',
       '[&>*]:inline-flex [&>*]:items-center [&>*]:justify-center',
+      props.showLabel ? 'h-12 w-12 flex-col gap-0.5 px-1 py-1.5' : '',
       'rounded-xl backdrop-blur-md',
       '[-webkit-app-region:no-drag] pointer-events-auto',
       'transition-all hover:transition-none transition-duration-300 transition-ease-out',
@@ -17,5 +22,14 @@ const props = defineProps<{ buttonStyle?: string }>()
     ]"
   >
     <slot />
+    <span
+      v-if="props.showLabel && props.label"
+      :class="[
+        'max-w-full truncate text-center',
+        'text-[9px] leading-none text-neutral-600 dark:text-neutral-300',
+      ]"
+    >
+      {{ props.label }}
+    </span>
   </button>
 </template>

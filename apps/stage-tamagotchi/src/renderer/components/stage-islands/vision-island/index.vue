@@ -23,8 +23,10 @@ import {
 
 const props = withDefaults(defineProps<{
   embedded?: boolean
+  uiMode?: 'novice' | 'expert'
 }>(), {
   embedded: false,
+  uiMode: 'novice',
 })
 
 const collapsed = ref(!props.embedded)
@@ -178,7 +180,8 @@ let scheduledIdleCallbackId: number | null = null
 let subjectDwellTimerId: number | null = null
 const quietRemainingSeconds = computed(() => Math.ceil(quietRemainingMs.value / 1000))
 const petQuietRemainingSeconds = computed(() => Math.ceil(petQuietRemainingMs.value / 1000))
-const statusLocale = computed(() => normalizeVisionStatusLocale('zh-CN'))
+const isExpertMode = computed(() => props.uiMode === 'expert')
+const statusLocale = computed(() => normalizeVisionStatusLocale(feedbackLocale.value))
 const feedbackIntensityOptions = [
   { value: 'minimal', label: formatFeedbackIntensity('minimal', 'zh-CN') },
   { value: 'balanced', label: formatFeedbackIntensity('balanced', 'zh-CN') },
@@ -502,6 +505,92 @@ const rootClasses = computed(() => {
   return ['fixed left-3 top-14 z-20']
 })
 
+function localizeVisionText(zhCN: string, en: string) {
+  return statusLocale.value === 'en' ? en : zhCN
+}
+
+const visionRecoveryIssue = computed(() => {
+  const hasCameraIssue = cameraPermissionState.value === 'denied'
+    || cameraPermissionState.value === 'unsupported'
+    || cameraState.value === 'error'
+
+  if (hasCameraIssue) {
+    return {
+      id: 'camera',
+      title: localizeVisionText('摄像头暂不可用', 'Camera is unavailable'),
+      description: localizeVisionText(
+        '请先检查系统摄像头权限，然后重试开启摄像头。',
+        'Check camera permission first, then retry camera startup.',
+      ),
+      actions: [
+        {
+          id: 'retry-camera',
+          label: localizeVisionText('重试摄像头', 'Retry camera'),
+          handler: handleRetryCamera,
+        },
+        {
+          id: 'open-settings',
+          label: localizeVisionText('打开设置', 'Open settings'),
+          handler: openSettingsPage,
+        },
+      ],
+    }
+  }
+
+  const hasRuntimeIssue = runtimeStatus.value === 'failed'
+    || runtimeLastError.value.trim().length > 0
+
+  if (hasRuntimeIssue) {
+    return {
+      id: 'runtime',
+      title: localizeVisionText('视觉运行时需要恢复', 'Vision runtime needs recovery'),
+      description: localizeVisionText(
+        '运行时初始化失败或状态异常。你可以先重试，再执行重置。',
+        'Runtime startup failed or became unstable. Retry first, then reset if needed.',
+      ),
+      actions: [
+        {
+          id: 'retry-runtime',
+          label: localizeVisionText('重试 Runtime', 'Retry runtime'),
+          handler: handleRetryRuntime,
+        },
+        {
+          id: 'reset-runtime',
+          label: localizeVisionText('重置 Runtime', 'Reset runtime'),
+          handler: handleResetRuntime,
+        },
+      ],
+    }
+  }
+
+  const gateBlocked = gateEnabled.value && (
+    localFaceGate.gateState.value === 'locked'
+    || localFaceGate.profileStatus.value === 'unmatched'
+    || localFaceGate.profileStatus.value === 'no_face'
+    || localFaceGate.profileStatus.value === 'multiple_faces'
+  )
+
+  if (gateBlocked) {
+    return {
+      id: 'gate',
+      title: localizeVisionText('反馈被门控拦截', 'Feedback is blocked by face gate'),
+      description: localizeVisionText(
+        '当前主体未通过门控条件。请保持单人入镜并完成匹配，或前往录入页确认档案。',
+        'Current subject does not pass gate conditions. Keep one face in frame and match profile, or verify enrollment.',
+      ),
+      actions: [
+        {
+          id: 'open-enrollment',
+          label: localizeVisionText('打开录入页', 'Open enrollment'),
+          handler: openEnrollmentPage,
+        },
+      ],
+    }
+  }
+
+  return null
+})
+
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
 
 watch(maxInferenceStallMs, (value) => {
@@ -594,6 +683,20 @@ function openEnrollmentPage() {
   void router.push('/vision-enrollment')
 }
 
+function openSettingsPage() {
+  void router.push('/settings')
+}
+
+async function handleRetryCamera() {
+  try {
+    await start()
+    toast.success(localizeVisionText('已重新尝试开启摄像头。', 'Retried camera startup.'))
+  }
+  catch {
+    toast.error(localizeVisionText('摄像头重试失败。', 'Camera retry failed.'))
+  }
+}
+
 async function unlockProfile() {
   if (!unlockPassphrase.value.trim())
     return
@@ -623,7 +726,10 @@ async function toggleRememberOnDevice(event: Event) {
 async function handlePrewarmVision() {
   if (prewarming.value)
     return
-  toast.message('Vision runtime warmup queued for idle background.')
+  toast.message(localizeVisionText(
+    '视觉运行时预热已加入后台队列。',
+    'Vision runtime warmup queued for idle background.',
+  ))
   scheduleRuntimeWarmup({
     delayMs: 0,
     trackLoadingState: true,
@@ -637,10 +743,10 @@ async function handleRetryRuntime() {
   prewarming.value = true
   try {
     await retryVisionRuntime()
-    toast.success('Vision runtime retry completed.')
+    toast.success(localizeVisionText('视觉运行时重试完成。', 'Vision runtime retry completed.'))
   }
   catch {
-    toast.error('Vision runtime retry failed.')
+    toast.error(localizeVisionText('视觉运行时重试失败。', 'Vision runtime retry failed.'))
   }
   finally {
     prewarming.value = false
@@ -653,7 +759,7 @@ async function handleResetRuntime() {
   prewarming.value = true
   try {
     await resetVisionRuntime()
-    toast.message('Vision runtime reset complete.')
+    toast.message(localizeVisionText('视觉运行时重置完成。', 'Vision runtime reset complete.'))
   }
   finally {
     prewarming.value = false
@@ -792,11 +898,11 @@ function scheduleRuntimeWarmup(options: {
         includeOpenCv: false,
       })
       if (options.reportToast)
-        toast.success('Vision runtime warmed up.')
+        toast.success(localizeVisionText('视觉运行时预热完成。', 'Vision runtime warmed up.'))
     }
     catch {
       if (options.reportToast)
-        toast.error('Vision runtime warmup failed.')
+        toast.error(localizeVisionText('视觉运行时预热失败。', 'Vision runtime warmup failed.'))
     }
     finally {
       if (options.trackLoadingState)
@@ -1039,6 +1145,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             打开人脸录入页
           </Button>
           <Button
+            v-if="isExpertMode"
             data-testid="advanced-diagnostics-toggle"
             size="sm"
             variant="ghost"
@@ -1066,6 +1173,34 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
                 ? formatVisionStatusValue('allowed', statusLocale)
                 : formatVisionStatusValue('gated', statusLocale)
             }}
+          </div>
+        </div>
+
+        <div
+          v-if="visionRecoveryIssue"
+          data-testid="vision-recovery-panel"
+          :class="[
+            'rounded-xl border border-amber-300/75 bg-amber-50/85 p-2 text-xs text-amber-900',
+            'dark:border-amber-500/40 dark:bg-amber-950/35 dark:text-amber-200',
+          ]"
+        >
+          <div class="font-semibold">
+            {{ visionRecoveryIssue.title }}
+          </div>
+          <div class="mt-1">
+            {{ visionRecoveryIssue.description }}
+          </div>
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            <Button
+              v-for="action in visionRecoveryIssue.actions"
+              :key="action.id"
+              :data-testid="`vision-recovery-action-${action.id}`"
+              size="sm"
+              variant="ghost"
+              @click="action.handler"
+            >
+              {{ action.label }}
+            </Button>
           </div>
         </div>
 
@@ -1214,7 +1349,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
         </div>
 
         <div
-          v-if="advancedDiagnosticsExpanded"
+          v-if="isExpertMode && advancedDiagnosticsExpanded"
           data-testid="advanced-diagnostics-panel"
           :class="['rounded-xl border border-neutral-200/80 bg-neutral-50/85 p-2 text-xs dark:border-neutral-700/70 dark:bg-neutral-900/55']"
         >

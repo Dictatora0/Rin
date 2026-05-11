@@ -29,6 +29,38 @@ docs:
   'vision-panel':
     expand: Open vision interaction
     collapse: Hide vision interaction
+  'ui-mode':
+    novice: Novice mode
+    expert: Expert mode
+    switch-to-novice: Switch to novice mode
+    switch-to-expert: Switch to expert mode
+  'shortcuts':
+    toggle-open: Show shortcuts
+    toggle-close: Hide shortcuts
+    title: Keyboard shortcuts
+    zoom-in: Zoom in
+    zoom-out: Zoom out
+    reset-size: Reset size
+    hint: Also available via window controls.
+  'labels':
+    settings: Settings
+    profile: Avatar
+    chat: Chat
+    refresh: Refresh
+    appearance: Theme
+    pin: Pin
+    fade: Fade
+    hearing: Hearing
+    study: Study
+    vision: Vision
+    mode: Mode
+    keys: Keys
+    move: Move
+    zoom-in: Zoom+
+    zoom-out: Zoom-
+    reset: Reset
+    drag: Drag
+    close: Close
   'groups':
     core: Core
     tools: Tools

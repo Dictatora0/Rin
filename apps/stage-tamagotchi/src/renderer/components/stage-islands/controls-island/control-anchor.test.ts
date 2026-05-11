@@ -9,12 +9,16 @@ const mocks = vi.hoisted(() => {
   return {
     isOutside: { value: false } as { value: boolean },
     moveModeEnabled: { value: false } as { value: boolean },
+    controlsUIMode: { value: 'novice' } as { value: 'novice' | 'expert' },
     controlsPanelExpanded: { value: false } as { value: boolean },
     toggleControlsPanel: vi.fn(() => {
       mocks.controlsPanelExpanded.value = !mocks.controlsPanelExpanded.value
     }),
     setControlsPanelExpanded: vi.fn((expanded: boolean) => {
       mocks.controlsPanelExpanded.value = expanded
+    }),
+    toggleControlsUIMode: vi.fn(() => {
+      mocks.controlsUIMode.value = mocks.controlsUIMode.value === 'novice' ? 'expert' : 'novice'
     }),
     toggleMoveMode: vi.fn(() => {
       mocks.moveModeEnabled.value = !mocks.moveModeEnabled.value
@@ -57,7 +61,9 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
 vi.mock('../../../stores/controls-island', () => ({
   useControlsIslandStore: () => ({
     moveModeEnabled: mocks.moveModeEnabled,
+    controlsUIMode: mocks.controlsUIMode,
     controlsPanelExpanded: mocks.controlsPanelExpanded,
+    toggleControlsUIMode: mocks.toggleControlsUIMode,
     toggleMoveMode: mocks.toggleMoveMode,
     toggleControlsPanel: mocks.toggleControlsPanel,
     setControlsPanelExpanded: mocks.setControlsPanelExpanded,
@@ -210,9 +216,11 @@ describe('controls island anchor behavior', () => {
   beforeEach(() => {
     mocks.isOutside = ref(false)
     mocks.moveModeEnabled = ref(false)
+    mocks.controlsUIMode = ref<'novice' | 'expert'>('novice')
     mocks.controlsPanelExpanded = ref(false)
     mocks.toggleControlsPanel.mockClear()
     mocks.setControlsPanelExpanded.mockClear()
+    mocks.toggleControlsUIMode.mockClear()
     mocks.toggleMoveMode.mockClear()
     mocks.startDraggingWindow.mockClear()
   })

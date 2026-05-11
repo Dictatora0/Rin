@@ -164,7 +164,7 @@ function createPetFeedbackState() {
     triggerContextualVisionFeedback: mocks.triggerContextualVisionFeedback,
     feedbackIntensity: ref<'minimal' | 'balanced' | 'expressive'>('balanced'),
     setFeedbackIntensity: mocks.setFeedbackIntensity,
-    feedbackLocale: ref<'en' | 'zh-CN'>('en'),
+    feedbackLocale: ref<'en' | 'zh-CN'>('zh-CN'),
     setFeedbackLocale: mocks.setFeedbackLocale,
     feedbackVariant: ref<'default' | 'a' | 'b'>('default'),
     setFeedbackVariant: mocks.setFeedbackVariant,
@@ -247,10 +247,10 @@ vi.mock('../../../composables/use-vision-pet-feedback', () => ({
   useVisionPetFeedback: () => mocks.petFeedbackState,
 }))
 
-function mountVisionIsland() {
+function mountVisionIsland(uiMode: 'novice' | 'expert' = 'expert') {
   const host = defineComponent({
     setup() {
-      return () => h(VisionIsland, { embedded: true })
+      return () => h(VisionIsland, { embedded: true, uiMode })
     },
   })
 
@@ -327,8 +327,8 @@ describe('visionIsland presentation layer (mocked composables)', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows simplified default state and keeps diagnostics hidden until expanded', async () => {
-    const { container, unmount } = mountVisionIsland()
+  it('keeps novice mode focused and hides advanced diagnostics entry', async () => {
+    const { container, unmount } = mountVisionIsland('novice')
     await nextTick()
 
     const text = container.textContent ?? ''
@@ -355,7 +355,8 @@ describe('visionIsland presentation layer (mocked composables)', () => {
     expect(text).toContain('不会上传任何面部动作数据。')
     expect(text).toContain('最近反馈文案：无')
     expect(text).toContain('这是基于主体位置的类视线反馈，不是严格视线测量。')
-    expect(text).toContain('展开 Advanced / Diagnostics')
+    expect(text.includes('展开 Advanced / Diagnostics')).toBe(false)
+    expect(container.querySelector('[data-testid="advanced-diagnostics-toggle"]')).toBeNull()
     expect(text.includes('cameraState')).toBe(false)
     expect(text.includes('facePresence')).toBe(false)
     expect(text.includes('faceDirection')).toBe(false)
@@ -377,6 +378,7 @@ describe('visionIsland presentation layer (mocked composables)', () => {
     expect(text.includes('expressionSignalCandidate:')).toBe(false)
     expect(text.includes('eye tracking')).toBe(false)
     expect(text.includes('Emotion Recognition')).toBe(false)
+    expect(container.querySelector('[data-testid="vision-recovery-panel"]')).toBeNull()
     expect(mocks.warmupVisionRuntime).toHaveBeenCalledTimes(0)
     await vi.advanceTimersByTimeAsync(1_200)
     await Promise.resolve()
@@ -386,6 +388,77 @@ describe('visionIsland presentation layer (mocked composables)', () => {
       background: true,
       includeOpenCv: false,
     })
+
+    unmount()
+  })
+
+  it('shows advanced diagnostics entry in expert mode', async () => {
+    const { container, unmount } = mountVisionIsland('expert')
+    await nextTick()
+
+    const advancedToggle = container.querySelector('[data-testid="advanced-diagnostics-toggle"]') as HTMLButtonElement | null
+    expect(advancedToggle).not.toBeNull()
+    expect(advancedToggle?.textContent).toContain('展开 Advanced / Diagnostics')
+
+    unmount()
+  })
+
+  it('renders recovery guidance with actionable handlers for camera, runtime, and gate issues', async () => {
+    const { container, unmount } = mountVisionIsland('novice')
+    await nextTick()
+
+    mocks.interactionState.cameraPermissionState.value = 'denied'
+    mocks.interactionState.cameraState.value = 'error'
+    await nextTick()
+
+    expect((container.textContent ?? '').includes('摄像头暂不可用')).toBe(true)
+    const retryCameraButton = container.querySelector('[data-testid="vision-recovery-action-retry-camera"]') as HTMLButtonElement | null
+    const openSettingsButton = container.querySelector('[data-testid="vision-recovery-action-open-settings"]') as HTMLButtonElement | null
+    expect(retryCameraButton).not.toBeNull()
+    expect(openSettingsButton).not.toBeNull()
+    retryCameraButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.start).toHaveBeenCalledTimes(1)
+    openSettingsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.routerPush).toHaveBeenCalledWith('/settings')
+
+    mocks.interactionState.cameraPermissionState.value = 'granted'
+    mocks.interactionState.cameraState.value = 'active'
+    mocks.interactionState.runtimeStatus.value = 'failed'
+    mocks.interactionState.runtimeLastError.value = 'runtime exploded'
+    await nextTick()
+
+    expect((container.textContent ?? '').includes('视觉运行时需要恢复')).toBe(true)
+    const retryRuntimeButton = container.querySelector('[data-testid="vision-recovery-action-retry-runtime"]') as HTMLButtonElement | null
+    const resetRuntimeButton = container.querySelector('[data-testid="vision-recovery-action-reset-runtime"]') as HTMLButtonElement | null
+    expect(retryRuntimeButton).not.toBeNull()
+    expect(resetRuntimeButton).not.toBeNull()
+    retryRuntimeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => {
+      expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
+    })
+    await nextTick()
+    await Promise.resolve()
+    resetRuntimeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    await vi.waitFor(() => {
+      expect(mocks.resetVisionRuntime).toHaveBeenCalledTimes(1)
+    })
+    expect(mocks.resetVisionRuntime).toHaveBeenCalledTimes(1)
+
+    mocks.interactionState.runtimeStatus.value = 'ready'
+    mocks.interactionState.runtimeLastError.value = ''
+    mocks.interactionState.gateEnabled.value = true
+    mocks.interactionState.localFaceGate.profileStatus.value = 'no_face'
+    await nextTick()
+
+    expect((container.textContent ?? '').includes('反馈被门控拦截')).toBe(true)
+    const openEnrollmentButton = container.querySelector('[data-testid="vision-recovery-action-open-enrollment"]') as HTMLButtonElement | null
+    expect(openEnrollmentButton).not.toBeNull()
+    openEnrollmentButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.routerPush).toHaveBeenCalledWith('/vision-enrollment')
 
     unmount()
   })
@@ -411,7 +484,7 @@ describe('visionIsland presentation layer (mocked composables)', () => {
       background: true,
       includeOpenCv: false,
     })
-    expect(mocks.toastMessage).toHaveBeenCalledWith('Vision runtime warmup queued for idle background.')
+    expect(mocks.toastMessage).toHaveBeenCalledWith('视觉运行时预热已加入后台队列。')
     expect(mocks.toastSuccess).toHaveBeenCalledTimes(1)
     expect(mocks.toastError).toHaveBeenCalledTimes(0)
 
@@ -638,11 +711,11 @@ describe('visionIsland presentation layer (mocked composables)', () => {
     await clickButton(container, 'Retry Runtime')
     expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
     expect(mocks.toastError).toHaveBeenCalledTimes(1)
-    expect(mocks.toastError).toHaveBeenCalledWith('Vision runtime retry failed.')
+    expect(mocks.toastError).toHaveBeenCalledWith('视觉运行时重试失败。')
 
     await clickButton(container, 'Reset Runtime')
     expect(mocks.resetVisionRuntime).toHaveBeenCalledTimes(1)
-    expect(mocks.toastMessage).toHaveBeenCalledWith('Vision runtime reset complete.')
+    expect(mocks.toastMessage).toHaveBeenCalledWith('视觉运行时重置完成。')
 
     const text = container.textContent ?? ''
     expect(text).toContain('Advanced / Diagnostics')
