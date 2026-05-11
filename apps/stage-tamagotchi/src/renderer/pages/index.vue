@@ -117,7 +117,10 @@ const isTransparent = computed(() => {
   if (stageModelRenderer.value === 'live2d')
     return isTransparentByPixels.value
 
-  return true
+  // NOTICE:
+  // Godot / unsupported renderers currently do not provide per-pixel transparency sampling.
+  // Returning `false` here keeps fade-on-hover visually functional instead of being permanently disabled.
+  return false
 })
 
 const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 10 })
@@ -204,19 +207,34 @@ watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor
 
   if (moveModeEnabled.value) {
     // Move mode needs reliable pointer events on stage to avoid click-through conflicts.
+    // Keep stage interactive, but still allow fade preview to work.
+    const fadeEnabled = fadeOnHoverEnabled.value
+    const insideControls = !isOutsideFor250Ms.value || !isOutsideStatusIslandFor250Ms.value
     isIgnoringMouseEvents.value = false
-    shouldFadeOnCursorWithin.value = false
+    shouldFadeOnCursorWithin.value = fadeEnabled
+      && !insideControls
+      && !isTransparent.value
     setIgnoreMouseEvents([false, { forward: true }])
-    pause()
+    if (shouldFadeOnCursorWithin.value)
+      resume()
+    else
+      pause()
     return
   }
 
   if (controlsPanelExpanded.value) {
-    // Keep control drawer interactive and visible regardless of hover-fade state.
+    // Keep the control drawer interactive, while still allowing stage fade preview.
+    const fadeEnabled = fadeOnHoverEnabled.value
+    const insideControls = !isOutsideFor250Ms.value || !isOutsideStatusIslandFor250Ms.value
     isIgnoringMouseEvents.value = false
-    shouldFadeOnCursorWithin.value = false
+    shouldFadeOnCursorWithin.value = fadeEnabled
+      && !insideControls
+      && !isTransparent.value
     setIgnoreMouseEvents([false, { forward: true }])
-    pause()
+    if (shouldFadeOnCursorWithin.value)
+      resume()
+    else
+      pause()
     return
   }
 
@@ -252,7 +270,7 @@ watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor
     const fadeEnabled = fadeOnHoverEnabled.value
     // Otherwise allow click-through while we fade UI based on transparency (when enabled)
     isIgnoringMouseEvents.value = fadeEnabled
-    shouldFadeOnCursorWithin.value = fadeEnabled && !isOutsideWindow.value && !isTransparent.value
+    shouldFadeOnCursorWithin.value = fadeEnabled && !isTransparent.value
     setIgnoreMouseEvents([fadeEnabled, { forward: true }])
     if (fadeEnabled)
       resume()
