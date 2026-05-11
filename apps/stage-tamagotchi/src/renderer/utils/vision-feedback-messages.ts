@@ -482,7 +482,12 @@ const MESSAGE_TEMPLATES: Record<VisionFeedbackEventType, VisionFeedbackTemplate[
   expression_looking_away: [
     {
       id: 'expr-away-min-1',
-      text: 'Away-from-center signal noted.',
+      text: 'Slightly off center.',
+      localeText: {
+        'zh-CN': {
+          text: '你暂时偏离了画面中心。',
+        },
+      },
       intensities: ['minimal'],
       level: 'subtle',
       channels: ['ui'],
@@ -491,16 +496,52 @@ const MESSAGE_TEMPLATES: Record<VisionFeedbackEventType, VisionFeedbackTemplate[
     },
     {
       id: 'expr-away-bal-1',
-      text: 'You moved away from center.',
-      namedText: '{name}, you moved away from center.',
+      text: 'I noticed you moved away from center.',
+      namedText: '{name}, I noticed you moved away from center.',
+      localeText: {
+        'zh-CN': {
+          text: '我看到你偏离了画面中心。',
+          namedText: '{name}，我看到你偏离了画面中心。',
+        },
+      },
       intensities: ['balanced', 'expressive'],
       level: 'subtle',
       channels: ['ui', 'toast', 'bubble'],
       tags: ['expression', 'looking_away'],
       cooldownMs: 15_000,
     },
-    { id: 'expr-away-bal-2', text: 'Face position is away from center.', namedText: '{name}, face position is away from center.', intensities: ['balanced', 'expressive'], level: 'subtle', channels: ['ui', 'toast'], tags: ['expression', 'looking_away'], cooldownMs: 15_000 },
-    { id: 'expr-away-exp-1', text: 'Away-from-center signal stayed active.', namedText: '{name}, away-from-center signal stayed active.', intensities: ['expressive'], level: 'normal', channels: ['ui', 'toast', 'bubble', 'motion'], tags: ['expression', 'looking_away'], cooldownMs: 15_000 },
+    {
+      id: 'expr-away-bal-2',
+      text: 'You are a little off center.',
+      namedText: '{name}, you are a little off center.',
+      localeText: {
+        'zh-CN': {
+          text: '你暂时不在画面中央，我会安静一点。',
+          namedText: '{name}，你暂时不在画面中央，我会安静一点。',
+        },
+      },
+      intensities: ['balanced', 'expressive'],
+      level: 'subtle',
+      channels: ['ui', 'toast'],
+      tags: ['expression', 'looking_away'],
+      cooldownMs: 15_000,
+    },
+    {
+      id: 'expr-away-exp-1',
+      text: 'The visual signal is not stable yet.',
+      namedText: '{name}, the visual signal is not stable yet.',
+      localeText: {
+        'zh-CN': {
+          text: '画面里的主体位置不太稳定。',
+          namedText: '{name}，画面里的主体位置不太稳定。',
+        },
+      },
+      intensities: ['expressive'],
+      level: 'normal',
+      channels: ['ui', 'toast', 'bubble', 'motion'],
+      tags: ['expression', 'looking_away'],
+      cooldownMs: 15_000,
+    },
   ],
   expression_unclear: [
     {

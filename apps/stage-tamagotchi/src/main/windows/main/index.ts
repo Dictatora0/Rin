@@ -33,6 +33,7 @@ import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 import { baseUrl, getElectronMainDirname, load } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
+import { applyWindowZoomShortcutAction, resolveWindowZoomShortcutAction } from '../../libs/electron/window-shortcuts'
 import { transparentWindowConfig } from '../shared'
 import { setupMainWindowElectronInvokes } from './rpc/index.electron'
 
@@ -176,6 +177,25 @@ export async function setupMainWindow(params: {
     return { action: 'deny' }
   })
 
+  // NOTICE:
+  // We keep Electron Toolkit shortcut guard enabled globally, but macOS keyboard
+  // layouts can emit different minus/plus variants (e.g. numpad subtract or
+  // localized minus symbols), causing Cmd/Ctrl + - to be ignored intermittently.
+  // This main-window-only fallback normalizes those variants so zoom-out always works.
+  const handleMainWindowZoomShortcut = (
+    event: { preventDefault: () => void },
+    input: { type?: string, key?: string, code?: string, control?: boolean, meta?: boolean },
+  ) => {
+    const action = resolveWindowZoomShortcutAction(input)
+    if (!action)
+      return
+
+    event.preventDefault()
+    const nextZoomLevel = applyWindowZoomShortcutAction(window.webContents.getZoomLevel(), action)
+    window.webContents.setZoomLevel(nextZoomLevel)
+  }
+  window.webContents.on('before-input-event', handleMainWindowZoomShortcut)
+
   await load(window, baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')))
 
   await setupMainWindowElectronInvokes({
@@ -223,6 +243,10 @@ export async function setupMainWindow(params: {
       cleanUpWindowDraggingInvokeHandler()
     })
   }
+
+  window.on('closed', () => {
+    window.webContents.removeListener('before-input-event', handleMainWindowZoomShortcut)
+  })
 
   initScreenCaptureForWindow(window)
 

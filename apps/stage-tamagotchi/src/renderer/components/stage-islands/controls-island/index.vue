@@ -6,7 +6,7 @@ import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/el
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { useTheme } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import StudyIsland from '../study-island/index.vue'
@@ -52,6 +52,8 @@ const getPrimaryDisplay = useElectronEventaInvoke(electron.screen.getPrimaryDisp
 const visionPanelVisible = ref(false)
 const studyPanelExpanded = ref(false)
 const studyPanelInteractionLocked = ref(false)
+const controlsPanelScrollElement = ref<HTMLElement | null>(null)
+const visionPanelElement = ref<HTMLElement | null>(null)
 
 // Tracks open overlays/dialogs that should prevent auto-collapse (e.g. 'hearing', 'profile-picker')
 const blockingOverlays = reactive(new Set<string>())
@@ -85,6 +87,11 @@ defineExpose({
 })
 
 watch(controlsPanelExpanded, (isExpanded) => {
+  if (isExpanded && visionPanelVisible.value) {
+    void scrollVisionPanelIntoView()
+    return
+  }
+
   if (!isExpanded) {
     const keepVisionPanelOverlay = visionPanelVisible.value
     blockingOverlays.clear()
@@ -97,6 +104,8 @@ watch(controlsPanelExpanded, (isExpanded) => {
 
 watch(visionPanelVisible, (visible) => {
   setOverlay('vision-panel', visible)
+  if (visible)
+    void scrollVisionPanelIntoView()
 })
 
 // Apply alwaysOnTop on mount and when it changes
@@ -163,6 +172,25 @@ function toggleVisionPanel() {
   visionPanelVisible.value = !visionPanelVisible.value
 }
 
+async function scrollVisionPanelIntoView() {
+  await nextTick()
+  const panelSection = visionPanelElement.value
+  const scrollContainer = controlsPanelScrollElement.value
+  if (!panelSection || !scrollContainer)
+    return
+
+  if (typeof panelSection.scrollIntoView === 'function') {
+    panelSection.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    })
+    return
+  }
+
+  scrollContainer.scrollTop = scrollContainer.scrollHeight
+}
+
 function toggleMoveMode() {
   controlsIslandStore.toggleMoveMode()
 }
@@ -213,6 +241,7 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
           class="mb-2 max-w-[76vw] min-h-0 w-[18.5rem] flex flex-1 items-end self-end"
         >
           <div
+            ref="controlsPanelScrollElement"
             data-testid="controls-panel"
             data-controls-panel-scroll
             :class="[
@@ -615,7 +644,12 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
               </section>
             </Transition>
 
-            <section v-if="visionPanelVisible" data-testid="controls-vision-panel" class="min-h-0 flex flex-col">
+            <section
+              v-if="visionPanelVisible"
+              ref="visionPanelElement"
+              data-testid="controls-vision-panel"
+              class="min-h-0 flex flex-col"
+            >
               <VisionIsland embedded />
             </section>
           </div>

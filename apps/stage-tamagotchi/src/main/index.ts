@@ -24,6 +24,7 @@ import { createArtistryConfig } from './configs/artistry'
 import { createGlobalAppConfig } from './configs/global'
 import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed } from './libs/bootkit/lifecycle'
 import { setElectronMainDirname } from './libs/electron/location'
+import { resolveWindowShortcutOptions } from './libs/electron/window-shortcuts'
 import { createI18n } from './libs/i18n'
 import { createWindowAuthManagerService } from './services/airi/auth'
 import { setupServerChannel } from './services/airi/channel-server'
@@ -240,7 +241,9 @@ app.whenReady().then(async () => {
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
   // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+  app.on('browser-window-created', (_, window) => {
+    optimizer.watchWindowShortcuts(window, resolveWindowShortcutOptions(window.getTitle()))
+  })
 }).catch((err) => {
   log.withError(err).error('Error during app initialization')
 })

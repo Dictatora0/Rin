@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -19,7 +20,8 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const uiStore = useControlsIslandStore()
-const enabled = computed(() => uiStore.fadeOnHoverEnabled)
+const { fadeOnHoverEnabled, dontShowItAgainNoticeFadeOnHover } = storeToRefs(uiStore)
+const enabled = computed(() => fadeOnHoverEnabled.value)
 const { t } = useI18n()
 const fadeToggleLabel = computed(() => enabled.value
   ? t('tamagotchi.stage.controls-island.fade-on-hover.disable')
@@ -34,23 +36,21 @@ async function handleToggle() {
     return
   }
 
-  if (uiStore.dontShowItAgainNoticeFadeOnHover) {
-    uiStore.enableFadeOnHover()
+  uiStore.enableFadeOnHover()
+
+  if (dontShowItAgainNoticeFadeOnHover.value) {
     return
   }
 
-  try {
-    const acknowledged = await requestNotice({
-      id: NOTICE_WINDOW_ID,
-      route: '/notice/fade-on-hover',
-      type: 'fade-on-hover',
-    })
-    if (acknowledged)
-      uiStore.enableFadeOnHover()
-  }
-  catch (error) {
+  const noticePromise = requestNotice({
+    id: NOTICE_WINDOW_ID,
+    route: '/notice/fade-on-hover',
+    type: 'fade-on-hover',
+  })
+
+  void noticePromise.catch((error) => {
     console.error('Failed to open fade-on-hover notice:', error)
-  }
+  })
 }
 </script>
 

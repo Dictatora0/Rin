@@ -81,6 +81,22 @@
 - `lastSubjectResponseEvent`
 - `subjectResponseCooldownUntil`
 
+### 灵敏度调优（第二轮）
+- 主体位置 dead zone 调整为更灵敏：
+- `directionDeadZoneX: 0.09`
+- `directionDeadZoneY: 0.10`
+- 主体位置稳定帧与表情信号稳定帧解耦：
+- 主体位置响应稳定帧默认 `2` 帧。
+- 面部动作信号稳定帧继续保持 `5` 帧（保守触发）。
+- UI 状态更新与强反馈冷却分离：
+- `faceDirection / subjectPosition` 会尽快更新。
+- bubble / toast / motion 仍受 cooldown 与 gate 约束。
+- `looking_away_signal` 不再抢占方向事件：
+- away duration 在 `left/right/up/down` 方向切换时会重置。
+- 方向刚变化后的短窗口内不会立即触发 `looking_away_signal` 强反馈。
+- `no_face` 时会清空旧稳定方向：
+- `subjectPosition` 与 `lastStableSubjectPosition` 回到 `unknown`，避免继续显示旧 `left/right/down`。
+
 ### 为什么不是严格视线测量
 - 模块仅根据主体在人脸框中的相对位置做 gaze-like feedback。
 - 不做瞳孔级别或视线向量级别估计。
@@ -303,9 +319,19 @@
 - 侧脸或大角度会影响稳定匹配。
 - 多人脸场景默认锁定，不做身份放行。
 - MediaPipe/OpenCV wasm 首次加载可能受本地环境影响。
+- Face Gate 在 `unmatched / no_face / multiple_faces / locked` 时会拦截正向反馈。
+- expression signal 是保守触发策略，不追求高频提示。
 - 目前自动化测试仍使用 deterministic mock，不包含“真实摄像头权限弹窗 + 真实驱动 + 真实模型资产”的完整 E2E。
 - 该门控不是安全级认证，仅用于实验交互约束。
 - `EMFILE` 通常是 dev watcher 环境问题，不是视觉逻辑故障。
+
+## Vision Island 指标本地化（第二轮）
+- 用户可见状态字段改为自然简体中文（运行状态 / 主体位置反馈 / 面部动作信号）。
+- 主体位置反馈区不再展示技术 key（如 `subjectResponseState`），改为语义化标签。
+- `matchedUser` 展示改为状态感知：
+- `matched + present` 显示“当前用户”。
+- `no_face / unmatched / locked` 显示“已录入用户”，避免误导为当前实时匹配。
+- `looking_away` 文案改为自然表达，避免 “away-from-center signal stayed active” 这类技术化提示。
 
 ## 稳定性补强说明（本轮）
 - 新增 `use-vision-runtime` 作为统一 runtime manager，集中管理 MediaPipe/OpenCV 初始化、状态机与错误恢复。

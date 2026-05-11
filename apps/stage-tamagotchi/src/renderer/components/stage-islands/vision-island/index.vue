@@ -8,6 +8,18 @@ import { toast } from 'vue-sonner'
 
 import { useVisionInteraction } from '../../../composables/use-vision-interaction'
 import { useVisionPetFeedback } from '../../../composables/use-vision-pet-feedback'
+import {
+  formatExpressionSignal,
+  formatFaceDirection,
+  formatFacePresence,
+  formatFeedbackIntensity,
+  formatGateStatus,
+  formatMatchStatus,
+  formatSubjectResponseState,
+  formatVisionFieldLabel,
+  formatVisionStatusValue,
+  normalizeVisionStatusLocale,
+} from '../../../utils/vision-status-labels'
 
 const props = withDefaults(defineProps<{
   embedded?: boolean
@@ -166,10 +178,11 @@ let scheduledIdleCallbackId: number | null = null
 let subjectDwellTimerId: number | null = null
 const quietRemainingSeconds = computed(() => Math.ceil(quietRemainingMs.value / 1000))
 const petQuietRemainingSeconds = computed(() => Math.ceil(petQuietRemainingMs.value / 1000))
+const statusLocale = computed(() => normalizeVisionStatusLocale('zh-CN'))
 const feedbackIntensityOptions = [
-  { value: 'minimal', label: 'Minimal' },
-  { value: 'balanced', label: 'Balanced' },
-  { value: 'expressive', label: 'Expressive' },
+  { value: 'minimal', label: formatFeedbackIntensity('minimal', 'zh-CN') },
+  { value: 'balanced', label: formatFeedbackIntensity('balanced', 'zh-CN') },
+  { value: 'expressive', label: formatFeedbackIntensity('expressive', 'zh-CN') },
 ] as const
 const feedbackLocaleOptions = [
   { value: 'en', label: 'English' },
@@ -182,9 +195,10 @@ const feedbackVariantOptions = [
 ] as const
 const expressionSignalConfidenceText = computed(() => expressionSignalConfidence.value.toFixed(2))
 const currentExpressionSignalText = computed(() => {
-  if (stableExpressionSignal.value !== 'none')
-    return stableExpressionSignal.value
-  return expressionSignal.value
+  const signal = stableExpressionSignal.value !== 'none'
+    ? stableExpressionSignal.value
+    : expressionSignal.value
+  return formatExpressionSignal(signal, statusLocale.value)
 })
 const expressionSignalCooldownRemainingMs = computed(() => {
   return Math.max(0, expressionSignalCooldownUntil.value - Date.now())
@@ -194,11 +208,13 @@ const expressionSignalCooldownRemainingSeconds = computed(() => {
 })
 const expressionSignalChangedText = computed(() => {
   if (!expressionSignalChangedAt.value)
-    return 'none'
+    return '无'
   return new Date(expressionSignalChangedAt.value).toLocaleTimeString()
 })
 
 const faceCenterText = computed(() => {
+  if (facePresence.value === 'absent')
+    return '未检测到'
   if (!faceCenter.value)
     return '未知'
   return `x=${faceCenter.value.x.toFixed(2)}, y=${faceCenter.value.y.toFixed(2)}`
@@ -211,63 +227,24 @@ const lastInferenceText = computed(() => {
 })
 
 const cameraStateText = computed(() => {
-  const map: Record<string, string> = {
-    off: '关闭',
-    loading: '加载中',
-    active: '运行中',
-    error: '错误',
-  }
-  return map[cameraState.value] ?? cameraState.value
+  return formatVisionStatusValue(cameraState.value, statusLocale.value)
 })
 const cameraPermissionStateText = computed(() => {
-  const map: Record<string, string> = {
-    unknown: 'unknown',
-    prompt: 'prompt',
-    granted: 'granted',
-    denied: 'denied',
-    unsupported: 'unsupported',
-  }
-  return map[cameraPermissionState.value] ?? cameraPermissionState.value
+  return formatVisionStatusValue(cameraPermissionState.value, statusLocale.value)
 })
 const mediaPipeStatusText = computed(() => {
-  const map: Record<string, string> = {
-    idle: 'idle',
-    loading: 'loading',
-    ready: 'ready',
-    failed: 'failed',
-  }
-  return map[mediaPipeStatus.value] ?? mediaPipeStatus.value
+  return formatVisionStatusValue(mediaPipeStatus.value, statusLocale.value)
 })
 const openCvStatusText = computed(() => {
-  const map: Record<string, string> = {
-    idle: 'idle',
-    loading: 'loading',
-    ready: 'ready',
-    failed: 'failed',
-    fallback: 'fallback',
-  }
-  return map[openCvFaceQuality.status.value] ?? openCvFaceQuality.status.value
+  return formatVisionStatusValue(openCvFaceQuality.status.value, statusLocale.value)
 })
 
 const facePresenceText = computed(() => {
-  const map: Record<string, string> = {
-    present: '在位',
-    absent: '离开',
-    unknown: '未知',
-  }
-  return map[facePresence.value] ?? facePresence.value
+  return formatFacePresence(facePresence.value, statusLocale.value)
 })
 
 const faceDirectionText = computed(() => {
-  const map: Record<string, string> = {
-    left: '左',
-    right: '右',
-    up: '上',
-    down: '下',
-    center: '中',
-    unknown: '未知',
-  }
-  return map[faceDirection.value] ?? faceDirection.value
+  return formatFaceDirection(faceDirection.value, statusLocale.value)
 })
 
 const gestureText = computed(() => {
@@ -317,27 +294,18 @@ const profileStatusText = computed(() => {
 })
 
 const gateStateText = computed(() => {
-  const map: Record<string, string> = {
-    disabled: '未启用',
-    enabled: '已启用',
-    gated: '门控中',
-    locked: '锁定',
-  }
-  return map[localFaceGate.gateState.value] ?? localFaceGate.gateState.value
+  return formatGateStatus(localFaceGate.gateState.value, statusLocale.value)
 })
 const gateProfileStatusText = computed(() => {
-  const map: Record<string, string> = {
-    not_enrolled: 'not_enrolled',
-    enrolling: 'enrolling',
-    enrolled: 'enrolled',
-    matching: 'matching',
-    matched: 'matched',
-    unmatched: 'unmatched',
-    uncertain: 'uncertain',
-    multiple_faces: 'multiple_faces',
-    no_face: 'no_face',
-  }
-  return map[localFaceGate.profileStatus.value] ?? localFaceGate.profileStatus.value
+  return formatMatchStatus(localFaceGate.profileStatus.value, statusLocale.value)
+})
+const matchedUserLabelText = computed(() => {
+  const hasMatchedUser = matchedDisplayName.value.trim().length > 0
+  if (!hasMatchedUser)
+    return ''
+  const isRuntimeMatched = localFaceGate.profileStatus.value === 'matched'
+    && facePresence.value === 'present'
+  return isRuntimeMatched ? '当前用户' : '已录入用户'
 })
 
 const modelWarmupStatusText = computed(() => {
@@ -398,53 +366,36 @@ const shouldShowPetFeedbackGatedHint = computed(() => {
     || lastEvent.value?.type === 'subject_position_gated'
 })
 const subjectPositionText = computed(() => {
-  const map: Record<string, string> = {
-    left: 'left',
-    right: 'right',
-    up: 'up',
-    down: 'down',
-    center: 'center',
-    unknown: 'unknown',
-  }
-  return map[subjectPosition.value] ?? subjectPosition.value
+  if (facePresence.value === 'absent')
+    return '无主体'
+  return formatFaceDirection(subjectPosition.value, statusLocale.value)
 })
 const stableSubjectPositionText = computed(() => {
-  const map: Record<string, string> = {
-    left: 'left',
-    right: 'right',
-    up: 'up',
-    down: 'down',
-    center: 'center',
-    unknown: 'unknown',
-  }
-  return map[lastStableSubjectPosition.value] ?? lastStableSubjectPosition.value
+  if (facePresence.value === 'absent')
+    return '无主体'
+  return formatFaceDirection(lastStableSubjectPosition.value, statusLocale.value)
 })
 const interactionSubjectResponseStateText = computed(() => {
-  const map: Record<string, string> = {
-    idle: 'idle',
-    following_left: 'following_left',
-    following_right: 'following_right',
-    looking_up: 'looking_up',
-    looking_down: 'looking_down',
-    centered: 'centered',
-    gated: 'gated',
-  }
-  return map[interactionSubjectResponseState.value] ?? interactionSubjectResponseState.value
+  return formatSubjectResponseState(interactionSubjectResponseState.value, statusLocale.value)
 })
 const petSubjectResponseStateText = computed(() => {
-  const map: Record<string, string> = {
-    idle: 'idle',
-    following_left: 'following_left',
-    following_right: 'following_right',
-    looking_up: 'looking_up',
-    looking_down: 'looking_down',
-    centered: 'centered',
-    gated: 'gated',
-  }
-  return map[petSubjectResponseState.value] ?? petSubjectResponseState.value
+  return formatSubjectResponseState(petSubjectResponseState.value, statusLocale.value)
 })
 const subjectResponseGateText = computed(() => {
-  return canTriggerSubjectPositionResponse.value ? 'allowed' : 'gated'
+  return canTriggerSubjectPositionResponse.value
+    ? formatVisionStatusValue('allowed', statusLocale.value)
+    : formatVisionStatusValue('gated', statusLocale.value)
+})
+const subjectResponseGateHintText = computed(() => {
+  if (canTriggerSubjectPositionResponse.value)
+    return '已匹配，可触发位置反馈。'
+  if (localFaceGate.profileStatus.value === 'no_face')
+    return '未检测到人脸，位置反馈已拦截。'
+  if (localFaceGate.profileStatus.value === 'multiple_faces')
+    return '多人入镜，位置反馈已拦截。'
+  if (localFaceGate.gateState.value === 'locked')
+    return '门控已锁定，等待解锁或匹配。'
+  return '未匹配主体，位置反馈已拦截。'
 })
 const subjectResponseCooldownSeconds = computed(() => {
   const now = Date.now()
@@ -455,7 +406,7 @@ const subjectResponseCooldownSeconds = computed(() => {
 })
 const subjectPositionChangedText = computed(() => {
   if (!subjectPositionChangedAt.value)
-    return 'none'
+    return '无'
   return new Date(subjectPositionChangedAt.value).toLocaleTimeString()
 })
 const lastSubjectResponseSummary = computed(() => {
@@ -467,14 +418,14 @@ const lastSubjectResponseSummary = computed(() => {
     const when = new Date(petLastSubjectResponseEvent.value.at).toLocaleTimeString()
     return `${petLastSubjectResponseEvent.value.summary} (${when})`
   }
-  return 'none'
+  return '无'
 })
 const lastContextualFeedbackTypeText = computed(() => {
-  return lastFeedbackType.value ?? 'none'
+  return lastFeedbackType.value ?? '无'
 })
 const lastContextualFeedbackMessageText = computed(() => {
   if (!lastFeedbackMessage.value)
-    return 'none'
+    return '无'
   return lastFeedbackMessage.value
 })
 const contextualFeedbackLevelText = computed(() => {
@@ -485,31 +436,31 @@ const contextualFeedbackPriorityText = computed(() => {
 })
 const contextualFeedbackChannelsText = computed(() => {
   if (lastFeedbackChannels.value.length === 0)
-    return 'none'
+    return '无'
   return lastFeedbackChannels.value.join(', ')
 })
 const contextualFeedbackTemplateIdText = computed(() => {
-  return lastFeedbackTemplateId.value ?? 'none'
+  return lastFeedbackTemplateId.value ?? '无'
 })
 const resolvedFeedbackEventTypeText = computed(() => {
-  return lastResolvedFeedbackEventType.value ?? 'none'
+  return lastResolvedFeedbackEventType.value ?? '无'
 })
 const transitionFeedbackBadgeText = computed(() => {
   return lastIsTransitionFeedback.value ? 'transition' : 'base'
 })
 const activeBubbleMessageText = computed(() => {
   if (!activeBubbleMessage.value)
-    return 'none'
+    return '无'
   return activeBubbleMessage.value
 })
 const activeBubbleLevelText = computed(() => {
-  return activeBubbleLevel.value ?? 'none'
+  return activeBubbleLevel.value ?? '无'
 })
 const activeBubbleEventTypeText = computed(() => {
-  return activeBubbleEventType.value ?? 'none'
+  return activeBubbleEventType.value ?? '无'
 })
 const activeBubbleTemplateIdText = computed(() => {
-  return activeBubbleTemplateId.value ?? 'none'
+  return activeBubbleTemplateId.value ?? '无'
 })
 const bubbleRemainingSeconds = computed(() => {
   return Math.ceil(bubbleRemainingMs.value / 1000)
@@ -522,7 +473,7 @@ const nextAllowedFeedbackSeconds = computed(() => {
 })
 const dwellStatusText = computed(() => {
   if (!lastFeedbackType.value)
-    return 'none'
+    return '无'
   if (lastFeedbackType.value === 'subject_dwelled_left')
     return 'dwelled_left'
   if (lastFeedbackType.value === 'subject_dwelled_right')
@@ -1099,25 +1050,31 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            Core status
+            运行状态
           </div>
-          <div>cameraState: {{ cameraStateText }}</div>
-          <div>facePresence: {{ facePresenceText }}</div>
-          <div>faceDirection: {{ faceDirectionText }}</div>
-          <div>faceGate: {{ gateStateText }}</div>
-          <div>matchStatus: {{ gateProfileStatusText }}</div>
+          <div>{{ formatVisionFieldLabel('cameraState', statusLocale) }}：{{ cameraStateText }}</div>
+          <div>{{ formatVisionFieldLabel('facePresence', statusLocale) }}：{{ facePresenceText }}</div>
+          <div>{{ formatVisionFieldLabel('faceDirection', statusLocale) }}：{{ faceDirectionText }}</div>
+          <div>{{ formatVisionFieldLabel('faceGate', statusLocale) }}：{{ gateStateText }}</div>
+          <div>{{ formatVisionFieldLabel('matchStatus', statusLocale) }}：{{ gateProfileStatusText }}</div>
           <div v-if="matchedDisplayName">
-            matchedUser: {{ matchedDisplayName }}
+            {{ matchedUserLabelText }}：{{ matchedDisplayName }}
           </div>
-          <div>interactiveFeedback: {{ canTriggerInteractiveFeedback ? 'allowed' : 'gated' }}</div>
+          <div>
+            {{ formatVisionFieldLabel('interactiveFeedback', statusLocale) }}：{{
+              canTriggerInteractiveFeedback
+                ? formatVisionStatusValue('allowed', statusLocale)
+                : formatVisionStatusValue('gated', statusLocale)
+            }}
+          </div>
         </div>
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            Subject-position response
+            主体位置反馈
           </div>
           <label :class="['mb-2 flex items-center gap-2']">
-            <span>Feedback intensity:</span>
+            <span>反馈强度：</span>
             <select
               data-testid="feedback-intensity-select"
               :value="feedbackIntensity"
@@ -1153,31 +1110,34 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
               {{ activeBubbleLevelText }} · {{ bubbleRemainingSeconds }}s
             </div>
           </div>
-          <div>latestBubble: {{ activeBubbleMessageText }}</div>
-          <div>faceCenter: {{ faceCenterText }}</div>
-          <div>subjectPosition: {{ subjectPositionText }}</div>
-          <div>stableSubjectPosition: {{ stableSubjectPositionText }}</div>
-          <div>subjectResponseState: {{ interactionSubjectResponseStateText }}</div>
-          <div>petSubjectResponseState: {{ petSubjectResponseStateText }}</div>
-          <div>subjectResponseGate: {{ subjectResponseGateText }}</div>
-          <div>lastFeedbackMessage: {{ lastContextualFeedbackMessageText }}</div>
-          <div>lastSubjectResponseEvent: {{ lastSubjectResponseSummary }}</div>
+          <div>{{ formatVisionFieldLabel('latestBubble', statusLocale) }}：{{ activeBubbleMessageText }}</div>
+          <div>{{ formatVisionFieldLabel('faceCenter', statusLocale) }}：{{ faceCenterText }}</div>
+          <div>{{ formatVisionFieldLabel('subjectPosition', statusLocale) }}：{{ subjectPositionText }}</div>
+          <div>{{ formatVisionFieldLabel('stableSubjectPosition', statusLocale) }}：{{ stableSubjectPositionText }}</div>
+          <div>{{ formatVisionFieldLabel('subjectResponseState', statusLocale) }}：{{ interactionSubjectResponseStateText }}</div>
+          <div>{{ formatVisionFieldLabel('petSubjectResponseState', statusLocale) }}：{{ petSubjectResponseStateText }}</div>
+          <div>{{ formatVisionFieldLabel('subjectResponseGate', statusLocale) }}：{{ subjectResponseGateText }}</div>
+          <div>{{ formatVisionFieldLabel('lastFeedbackMessage', statusLocale) }}：{{ lastContextualFeedbackMessageText }}</div>
+          <div>{{ formatVisionFieldLabel('lastSubjectResponseEvent', statusLocale) }}：{{ lastSubjectResponseSummary }}</div>
           <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
-            Rin reacts only to the matched subject.
+            Rin 只会响应已匹配的主体。
           </div>
           <div :class="['text-neutral-500 dark:text-neutral-400']">
-            This is gaze-like feedback, not strict gaze measurement.
+            这是基于主体位置的类视线反馈，不是严格视线测量。
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            {{ subjectResponseGateHintText }}
           </div>
           <div v-if="bubbleVisible" :class="['mt-1']">
             <Button size="sm" variant="ghost" @click="clearBubble">
-              Clear bubble
+              清除气泡
             </Button>
           </div>
         </div>
 
         <div data-testid="expression-signal-panel" :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            Face Motion Signals
+            面部动作信号
           </div>
           <label :class="['mb-2 flex items-center gap-2']">
             <input
@@ -1186,18 +1146,18 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
               :checked="enableExpressionSignals"
               @change="toggleExpressionSignals"
             >
-            <span>Enable Expression Signals</span>
+            <span>启用面部动作信号</span>
           </label>
-          <div>faceMotionSignals: {{ enableExpressionSignals ? 'on' : 'off' }}</div>
-          <div>currentSignal: {{ currentExpressionSignalText }}</div>
+          <div>{{ formatVisionFieldLabel('faceMotionSignals', statusLocale) }}：{{ enableExpressionSignals ? '开启' : '关闭' }}</div>
+          <div>{{ formatVisionFieldLabel('currentSignal', statusLocale) }}：{{ currentExpressionSignalText }}</div>
           <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
-            Expression signals are local visual cues, not emotion detection.
+            面部动作信号只是本地视觉线索，不是情绪识别。
           </div>
           <div :class="['text-neutral-500 dark:text-neutral-400']">
-            Rin uses them only for local feedback.
+            Rin 只会将它们用于本地反馈。
           </div>
           <div :class="['text-neutral-500 dark:text-neutral-400']">
-            No expression data is uploaded.
+            不会上传任何面部动作数据。
           </div>
         </div>
 
@@ -1217,7 +1177,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             </Button>
           </div>
           <div v-if="matchedDisplayName" :class="['mt-1']">
-            当前匹配用户：{{ matchedDisplayName }}
+            {{ matchedUserLabelText }}：{{ matchedDisplayName }}
           </div>
           <div v-if="gateEnabled && hasEncryptedProfile && !isProfileUnlocked" :class="['mt-1 text-amber-600 dark:text-amber-300']">
             人脸档案已锁定，解锁后才能启用门控交互。
@@ -1306,14 +1266,14 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
               Vision Diagnostics
             </div>
-            <div>runtimeStatus: {{ runtimeStatusText }}</div>
-            <div>cameraState: {{ cameraState }}</div>
-            <div>cameraPermission: {{ cameraPermissionStateText }}</div>
+            <div>运行时状态：{{ runtimeStatusText }}</div>
+            <div>{{ formatVisionFieldLabel('cameraState', statusLocale) }}：{{ cameraStateText }}</div>
+            <div>摄像头权限：{{ cameraPermissionStateText }}</div>
             <div>MediaPipe: {{ mediaPipeStatusText }}</div>
             <div>OpenCV: {{ openCvStatusText }}</div>
-            <div>faceProfile: {{ profileStatus }}</div>
-            <div>faceGate: {{ localFaceGate.gateState }} / {{ gateProfileStatusText }}</div>
-            <div>lastError: {{ visionDiagnosticsLastError }}</div>
+            <div>人脸档案：{{ profileStatus }}</div>
+            <div>{{ formatVisionFieldLabel('faceGate', statusLocale) }}：{{ gateStateText }} / {{ gateProfileStatusText }}</div>
+            <div>最近错误：{{ visionDiagnosticsLastError }}</div>
           </div>
 
           <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
@@ -1477,7 +1437,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 
           <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
             <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-              Expression Signal diagnostics
+              面部动作信号诊断
             </div>
             <Button
               data-testid="expression-diagnostics-toggle"
@@ -1485,20 +1445,20 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
               variant="ghost"
               @click="expressionSignalDiagnosticsExpanded = !expressionSignalDiagnosticsExpanded"
             >
-              {{ expressionSignalDiagnosticsExpanded ? 'Hide expression diagnostics' : 'Show expression diagnostics' }}
+              {{ expressionSignalDiagnosticsExpanded ? '收起信号诊断' : '展开信号诊断' }}
             </Button>
             <div v-if="expressionSignalDiagnosticsExpanded" :class="['mt-2']">
-              <div>expressionSignal: {{ expressionSignal }}</div>
-              <div>expressionSignalCandidate: {{ expressionSignalCandidate }}</div>
-              <div>stableExpressionSignal: {{ stableExpressionSignal }}</div>
-              <div>confidence: {{ expressionSignalConfidenceText }}</div>
-              <div>reason: {{ expressionSignalReason }}</div>
-              <div>source: {{ expressionSignalSource }}</div>
-              <div>stableFrames: {{ expressionSignalStableFrames }}</div>
-              <div>signalChangedAt: {{ expressionSignalChangedText }}</div>
-              <div>cooldownRemainingSec: {{ expressionSignalCooldownRemainingSeconds }}</div>
-              <div>feedbackAllowed: {{ expressionSignalFeedbackAllowed ? 'yes' : 'no' }}</div>
-              <div>signalUnavailable: {{ expressionSignalUnavailable ? 'yes' : 'no' }}</div>
+              <div>{{ formatVisionFieldLabel('expressionSignal', statusLocale) }}：{{ formatExpressionSignal(expressionSignal, statusLocale) }}</div>
+              <div>候选信号：{{ formatExpressionSignal(expressionSignalCandidate, statusLocale) }}</div>
+              <div>{{ formatVisionFieldLabel('stableExpressionSignal', statusLocale) }}：{{ formatExpressionSignal(stableExpressionSignal, statusLocale) }}</div>
+              <div>{{ formatVisionFieldLabel('confidence', statusLocale) }}：{{ expressionSignalConfidenceText }}</div>
+              <div>{{ formatVisionFieldLabel('reason', statusLocale) }}：{{ expressionSignalReason }}</div>
+              <div>{{ formatVisionFieldLabel('source', statusLocale) }}：{{ formatVisionStatusValue(expressionSignalSource, statusLocale) }}</div>
+              <div>稳定帧：{{ expressionSignalStableFrames }}</div>
+              <div>最近变化：{{ expressionSignalChangedText }}</div>
+              <div>{{ formatVisionFieldLabel('cooldown', statusLocale) }}：{{ expressionSignalCooldownRemainingSeconds }}s</div>
+              <div>反馈放行：{{ expressionSignalFeedbackAllowed ? formatVisionStatusValue('yes', statusLocale) : formatVisionStatusValue('no', statusLocale) }}</div>
+              <div>信号不可用：{{ expressionSignalUnavailable ? formatVisionStatusValue('yes', statusLocale) : formatVisionStatusValue('no', statusLocale) }}</div>
             </div>
           </div>
 

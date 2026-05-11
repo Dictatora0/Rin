@@ -448,6 +448,9 @@ async function setupInteractionHarness(
     setup() {
       interaction = useVisionInteraction({
         stableFrames: options?.stableFrames ?? 3,
+        subjectPositionStableFrames: options?.subjectPositionStableFrames ?? 3,
+        subjectDirectionDeadZoneX: options?.subjectDirectionDeadZoneX ?? 0.12,
+        subjectDirectionDeadZoneY: options?.subjectDirectionDeadZoneY ?? 0.12,
         gestureStableFrames: options?.gestureStableFrames ?? 3,
         gestureInferenceIntervalMs: options?.gestureInferenceIntervalMs ?? 180,
         loopIntervalMs: options?.loopIntervalMs ?? 120,
@@ -495,6 +498,47 @@ describe('useVisionInteraction behavior locks', () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('waits for delayed video element attachment before enabling camera', async () => {
+    const { stream } = createMockStream()
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => stream) },
+    })
+
+    let interaction: ReturnType<typeof useVisionInteraction> | null = null
+    const host = defineComponent({
+      setup() {
+        interaction = useVisionInteraction({
+          stableFrames: 3,
+          subjectPositionStableFrames: 2,
+          loopIntervalMs: 120,
+        })
+        return () => h('div')
+      },
+    })
+
+    const app = createApp(host)
+    const container = document.createElement('div')
+    app.mount(container)
+    const readyInteraction = assertInteractionReady(interaction)
+    const videoElement = createMockVideoElement()
+
+    const prewarmPromise = readyInteraction.prewarmVisionModels()
+    await vi.advanceTimersByTimeAsync(300)
+    await prewarmPromise
+
+    const startPromise = readyInteraction.start()
+    await vi.advanceTimersByTimeAsync(120)
+    readyInteraction.attachVideoElement(videoElement)
+    await startPromise
+
+    expect(readyInteraction.isEnabled.value).toBe(true)
+    expect(readyInteraction.cameraState.value).toBe('active')
+
+    await readyInteraction.stop()
+    app.unmount()
   })
 
   it('reacts after robust vote + hold when fast gesture mode is enabled', async () => {
@@ -730,6 +774,56 @@ describe('useVisionInteraction behavior locks', () => {
     app.unmount()
   })
 
+  it('detects near-center movement using tuned subject-position dead zone', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+      subjectPositionStableFrames: 2,
+      subjectDirectionDeadZoneX: 0.09,
+      subjectDirectionDeadZoneY: 0.1,
+    })
+
+    queueFrames({ gesture: 'None', face: [createFaceAt(0.595, 0.5)], count: 2 })
+    await runNextAnimationFrame(200, videoElement, 1)
+    await runNextAnimationFrame(400, videoElement, 2)
+
+    expect(interaction.faceDirection.value).toBe('left')
+    expect(interaction.subjectPosition.value).toBe('left')
+    expect(interaction.lastEvent.value?.type).toBe('user_moved_left')
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('uses fewer stable frames for subject position than expression signals', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      stableFrames: 5,
+      gestureControlsEnabled: false,
+      subjectPositionStableFrames: 2,
+    })
+    interaction.setExpressionSignalsEnabled(true)
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.8, 0.5)],
+      count: 2,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+      blendshapeCategories: [],
+    })
+
+    expect(interaction.faceDirection.value).toBe('left')
+    expect(interaction.subjectPosition.value).toBe('left')
+    expect(interaction.lastStableSubjectPosition.value).toBe('left')
+    expect(interaction.subjectResponseState.value).toBe('following_left')
+    expect(interaction.lastEvent.value?.type).toBe('user_moved_left')
+    expect(interaction.stableExpressionSignal.value).toBe('none')
+    expect(interaction.expressionSignalStableFrames.value).toBeLessThan(5)
+
+    await interaction.stop()
+    app.unmount()
+  })
+
   it('emits subject-position response only after stable direction changes and prevents same-direction spam', async () => {
     const { interaction, videoElement, app } = await setupInteractionHarness()
 
@@ -818,7 +912,44 @@ describe('useVisionInteraction behavior locks', () => {
     await runNextAnimationFrame(1_600, videoElement, 8)
     await runNextAnimationFrame(1_800, videoElement, 9)
     expect(interaction.faceDirection.value).toBe('unknown')
+    expect(interaction.subjectPosition.value).toBe('unknown')
+    expect(interaction.lastStableSubjectPosition.value).toBe('unknown')
     expect(interaction.lastEvent.value?.id).toBe(gatedEventId)
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('does not accumulate looking-away duration across away-direction flips', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+    })
+    interaction.setExpressionSignalsEnabled(true)
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.8, 0.5)],
+      count: 20,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+      blendshapeCategories: [],
+    })
+    expect(interaction.lastEvent.value?.type).toBe('user_moved_left')
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.2, 0.5)],
+      count: 10,
+      startNowMs: 4_400,
+      startTimeSeconds: 21,
+      blendshapeCategories: [],
+    })
+
+    expect(interaction.faceDirection.value).toBe('right')
+    expect(interaction.lastEvent.value?.type).toBe('user_moved_right')
+    expect(interaction.lastEvent.value?.type).not.toBe('expression_looking_away_detected')
 
     await interaction.stop()
     app.unmount()

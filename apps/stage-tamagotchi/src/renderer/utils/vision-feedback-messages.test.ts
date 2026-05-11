@@ -231,6 +231,30 @@ describe('vision feedback templates v2', () => {
     expect(zhFallbackUp.text.includes('{name}')).toBe(false)
   })
 
+  it('uses natural looking-away copy in zh-CN and en locales', () => {
+    const zhLookingAway = selectVisionFeedbackMessage('expression_looking_away', {
+      intensity: 'expressive',
+      locale: 'zh-CN',
+      displayName: 'Lying',
+      random: () => 0,
+    })
+    const enLookingAway = selectVisionFeedbackMessage('expression_looking_away', {
+      intensity: 'expressive',
+      locale: 'en',
+      displayName: 'Lying',
+      random: () => 0,
+    })
+
+    expect(zhLookingAway.text).toBe('Lying，画面里的主体位置不太稳定。')
+    expect(zhLookingAway.text.includes('{name}')).toBe(false)
+    expect(zhLookingAway.text.includes('away-from-center signal stayed active')).toBe(false)
+    expect(zhLookingAway.text.includes('signal stayed active')).toBe(false)
+
+    expect(enLookingAway.text).toBe('Lying, the visual signal is not stable yet.')
+    expect(enLookingAway.text.includes('{name}')).toBe(false)
+    expect(enLookingAway.text.includes('away-from-center')).toBe(false)
+  })
+
   it('prefers requested variant and falls back to default variant when requested one is unavailable', () => {
     const variantA = selectVisionFeedbackMessage('subject_position_center', {
       intensity: 'balanced',

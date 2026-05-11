@@ -87,6 +87,9 @@ export interface VisionSubjectResponseEvent {
 
 export interface VisionInteractionOptions {
   stableFrames?: number
+  subjectPositionStableFrames?: number
+  subjectDirectionDeadZoneX?: number
+  subjectDirectionDeadZoneY?: number
   gestureStableFrames?: number
   gestureInferenceIntervalMs?: number
   gestureScoreThreshold?: number
@@ -150,6 +153,9 @@ interface GestureTopCandidate {
 
 const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
   stableFrames: 3,
+  subjectPositionStableFrames: 2,
+  subjectDirectionDeadZoneX: 0.09,
+  subjectDirectionDeadZoneY: 0.1,
   gestureStableFrames: 2,
   gestureInferenceIntervalMs: 90,
   gestureScoreThreshold: 0.35,
@@ -173,6 +179,7 @@ const TIMESTAMP_MISMATCH_RECOVERY_COOLDOWN_MS = 3_000
 const QUALITY_EVALUATION_INTERVAL_MS = 400
 const UI_YIELD_INTERVAL_MS = 240
 const EXPRESSION_SIGNAL_STABLE_FRAMES = 5
+const EXPRESSION_LOOKING_AWAY_DIRECTION_SETTLE_MS = 2_500
 const EXPRESSION_SIGNAL_COOLDOWN_MS: Record<VisionExpressionSignal, number> = {
   none: 0,
   smile_like_signal: 10_000,
@@ -190,6 +197,8 @@ const CAMERA_VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   height: { ideal: 540, max: 720 },
   frameRate: { ideal: 24, max: 30 },
 }
+const CAMERA_PERMISSION_TIMEOUT_MS = 12_000
+const VIDEO_ELEMENT_ATTACH_TIMEOUT_MS = 1_500
 
 export function useVisionInteraction(options?: VisionInteractionOptions) {
   const runtimeOptions = {
@@ -356,6 +365,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   let expressionSignalCandidateFrames = 0
   let centeredDirectionStartedAt: number | null = null
   let awayDirectionStartedAt: number | null = null
+  let awayDirectionCandidate: Exclude<VisionFaceDirection, 'unknown' | 'center'> | null = null
 
   let previousGestureHandCenter: GestureQualityPoint | null = null
   let previousGestureHandTimestampMs: number | null = null
@@ -646,6 +656,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       expressionSignalCandidateFrames = 0
       centeredDirectionStartedAt = null
       awayDirectionStartedAt = null
+      awayDirectionCandidate = null
     }
   }
 
@@ -946,6 +957,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     expressionSignalCandidateFrames = 0
     centeredDirectionStartedAt = null
     awayDirectionStartedAt = null
+    awayDirectionCandidate = null
 
     lastGesture.value = 'none'
     facePresence.value = 'unknown'
@@ -1197,8 +1209,8 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     const dy = center.y - 0.5
     const absX = Math.abs(dx)
     const absY = Math.abs(dy)
-    const deadZoneX = 0.12
-    const deadZoneY = 0.12
+    const deadZoneX = runtimeOptions.subjectDirectionDeadZoneX
+    const deadZoneY = runtimeOptions.subjectDirectionDeadZoneY
     if (absX <= deadZoneX && absY <= deadZoneY)
       return 'center'
     if (absX >= absY)
@@ -1241,7 +1253,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       candidateDirectionFrames = 1
     }
 
-    if (candidateDirectionFrames < runtimeOptions.stableFrames)
+    if (candidateDirectionFrames < runtimeOptions.subjectPositionStableFrames)
       return
     if (faceDirection.value === rawDirection)
       return
@@ -1252,6 +1264,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     subjectPosition.value = rawDirection
 
     if (rawDirection === 'unknown') {
+      lastStableSubjectPosition.value = 'unknown'
       subjectResponseState.value = options.gateBlockingActive ? 'gated' : 'idle'
       return
     }
@@ -1362,6 +1375,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     if (facePresence.value !== 'present' || faceDirection.value === 'unknown') {
       centeredDirectionStartedAt = null
       awayDirectionStartedAt = null
+      awayDirectionCandidate = null
       return {
         centeredDurationMs: 0,
         awayDurationMs: 0,
@@ -1372,12 +1386,17 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       if (centeredDirectionStartedAt === null)
         centeredDirectionStartedAt = nowMs
       awayDirectionStartedAt = null
+      awayDirectionCandidate = null
       return {
         centeredDurationMs: Math.max(0, nowMs - centeredDirectionStartedAt),
         awayDurationMs: 0,
       }
     }
 
+    if (awayDirectionCandidate !== faceDirection.value) {
+      awayDirectionCandidate = faceDirection.value as Exclude<VisionFaceDirection, 'unknown' | 'center'>
+      awayDirectionStartedAt = nowMs
+    }
     if (awayDirectionStartedAt === null)
       awayDirectionStartedAt = nowMs
     centeredDirectionStartedAt = null
@@ -1407,6 +1426,9 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       expressionSignalFeedbackAllowed.value = false
       expressionSignalUnavailable.value = false
       expressionSignalCandidateFrames = 0
+      centeredDirectionStartedAt = null
+      awayDirectionStartedAt = null
+      awayDirectionCandidate = null
       return
     }
 
@@ -1469,6 +1491,13 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     const cooldownMs = EXPRESSION_SIGNAL_COOLDOWN_MS[resolvedSignal.signal]
     if (cooldownMs > 0 && options.nowMs < expressionSignalCooldownUntil.value)
       return
+    if (
+      resolvedSignal.signal === 'looking_away_signal'
+      && subjectPositionChangedAt.value !== null
+      && (options.nowMs - subjectPositionChangedAt.value) < EXPRESSION_LOOKING_AWAY_DIRECTION_SETTLE_MS
+    ) {
+      return
+    }
 
     const eventType = mapExpressionSignalToEventType(resolvedSignal.signal)
     if (!eventType)
@@ -1869,13 +1898,74 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     return runtime
   }
 
-  function bindVideoStream(nextStream: MediaStream) {
-    const video = videoElement.value
+  function bindVideoStream(nextStream: MediaStream, targetVideo?: HTMLVideoElement) {
+    const video = targetVideo ?? videoElement.value
     if (!video)
       throw new Error('Vision video element is not attached')
     video.srcObject = nextStream
     video.muted = true
     video.playsInline = true
+  }
+
+  async function waitForAttachedVideoElement(timeoutMs = VIDEO_ELEMENT_ATTACH_TIMEOUT_MS) {
+    if (videoElement.value)
+      return videoElement.value
+
+    return await new Promise<HTMLVideoElement>((resolve, reject) => {
+      let settled = false
+      let timeoutId: ReturnType<typeof setTimeout> | null = null
+      const stopWatch = watch(videoElement, (element) => {
+        if (!element || settled)
+          return
+        settled = true
+        if (timeoutId !== null)
+          clearTimeout(timeoutId)
+        stopWatch()
+        resolve(element)
+      }, { immediate: true })
+
+      timeoutId = setTimeout(() => {
+        if (settled)
+          return
+        settled = true
+        stopWatch()
+        reject(new Error('Vision video element is not attached'))
+      }, timeoutMs)
+    })
+  }
+
+  async function requestCameraStream() {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia)
+      throw new Error('Camera API is unavailable')
+
+    return await new Promise<MediaStream>((resolve, reject) => {
+      let settled = false
+      const timeoutId = setTimeout(() => {
+        if (settled)
+          return
+        settled = true
+        reject(new Error('Camera permission request timed out'))
+      }, CAMERA_PERMISSION_TIMEOUT_MS)
+
+      navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: CAMERA_VIDEO_CONSTRAINTS,
+      }).then((nextStream) => {
+        if (settled) {
+          stopCameraStream(nextStream, 'camera-request-timeout-after-resolve')
+          return
+        }
+        settled = true
+        clearTimeout(timeoutId)
+        resolve(nextStream)
+      }).catch((error) => {
+        if (settled)
+          return
+        settled = true
+        clearTimeout(timeoutId)
+        reject(error)
+      })
+    })
   }
 
   async function startLoop() {
@@ -2050,10 +2140,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
         recognizerSource: modelSource.value,
       }
       const permissionStartedAt = nowMs()
-      const nextStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: CAMERA_VIDEO_CONSTRAINTS,
-      })
+      const nextStream = await requestCameraStream()
       cameraPermissionState.value = 'granted'
       trackCameraStream(nextStream)
       if (startToken !== streamLifecycleToken) {
@@ -2071,12 +2158,12 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
         stopCameraStream(previousStream, 'replaced-by-new-start')
 
       attachStreamTrackDiagnostics(nextStream)
-      bindVideoStream(nextStream)
-      const video = videoElement.value
-      if (!video) {
-        stopCameraStream(nextStream, 'video-element-missing-during-start')
-        throw new Error('Vision video element is not attached')
+      const video = await waitForAttachedVideoElement()
+      if (startToken !== streamLifecycleToken) {
+        stopCameraStream(nextStream, 'stale-start-after-video-attach')
+        return
       }
+      bindVideoStream(nextStream, video)
       const videoPlayStartedAt = nowMs()
       await video.play()
       if (startToken !== streamLifecycleToken) {
@@ -2196,6 +2283,20 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   function attachVideoElement(element: HTMLVideoElement | null) {
     videoElement.value = element
+    if (!element || !stream.value || element.srcObject === stream.value)
+      return
+
+    try {
+      bindVideoStream(stream.value, element)
+    }
+    catch (error) {
+      errorMessage.value = errorMessageFrom(error) ?? 'Vision video element is not attached'
+      return
+    }
+
+    if (cameraState.value === 'active' || cameraState.value === 'loading') {
+      void element.play().catch(() => {})
+    }
   }
 
   async function enrollLocalFaceProfile(options: {
