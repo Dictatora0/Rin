@@ -236,15 +236,22 @@ describe('controls island anchor behavior', () => {
     expect(anchor).not.toBeNull()
 
     const anchorButtons = anchor?.querySelectorAll('button') ?? []
-    expect(anchorButtons.length).toBe(1)
+    expect(anchorButtons.length).toBe(2)
 
     const toggleButton = container.querySelector('[data-testid="controls-toggle-button"]') as HTMLButtonElement | null
+    const emergencyAnchorButton = container.querySelector('[data-testid="controls-emergency-anchor"]') as HTMLButtonElement | null
     expect(toggleButton).not.toBeNull()
+    expect(emergencyAnchorButton).not.toBeNull()
     expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.expand')
     expect(toggleButton?.getAttribute('title')).toBe('tamagotchi.stage.controls-island.expand')
     expect(toggleButton?.className).toContain('controls-toggle-button')
     expect(toggleButton?.className).toContain('[-webkit-app-region:no-drag]')
     expect(toggleButton?.className).toContain('pointer-events-auto')
+    expect(emergencyAnchorButton?.getAttribute('aria-label')).toBe('紧急收起')
+    expect(emergencyAnchorButton?.getAttribute('title')).toBe('紧急收起')
+    expect(emergencyAnchorButton?.className).toContain('controls-emergency-anchor')
+    expect(emergencyAnchorButton?.className).toContain('[-webkit-app-region:no-drag]')
+    expect(emergencyAnchorButton?.className).toContain('pointer-events-auto')
 
     toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
@@ -252,11 +259,16 @@ describe('controls island anchor behavior', () => {
     expect(mocks.toggleControlsPanel).toHaveBeenCalledTimes(1)
     expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.collapse')
 
-    toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    emergencyAnchorButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
+    expect(mocks.setControlsPanelExpanded).toHaveBeenCalledWith(false)
+    expect(mocks.controlsPanelExpanded.value).toBe(false)
+
+    toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
     expect(mocks.toggleControlsPanel).toHaveBeenCalledTimes(2)
-    expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.expand')
+    expect(toggleButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.collapse')
 
     unmount()
   })

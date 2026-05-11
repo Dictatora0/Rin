@@ -113,6 +113,55 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
     3. Face gate blocking conditions
   - Updated runtime-related toast copy to natural user-facing messages.
 
+## HCI Usability Pass（学习 + 视觉 + Controls）
+
+- 本轮是有限范围可用性修整，不新增大功能、不改主进程、不改核心识别/门控逻辑。
+
+- 学习模块（Study Island）：
+  - 专注完成后增加“下一步选择卡”：
+    - `休息 5 分钟`
+    - `开始下一轮`（一键，不需要先重置）
+    - `完成当前任务`（无待完成任务时禁用）
+  - TaskList 空状态改为明确引导：
+    - `还没有今日任务`
+    - `添加一个任务，让 Rin 陪你完成它`
+  - 任务从未完成切换为完成时，增加轻量正反馈：
+    - `已完成，做得不错`
+
+- 视觉模块（Vision Island）：
+  - 默认界面从“调试导向”改为“用户状态导向”：
+    - 摄像头
+    - 主体状态
+    - 人脸门控
+    - 最近反馈
+    - 恢复建议
+  - 诊断字段保留但折叠到 `Advanced / Diagnostics`。
+  - 新增“为什么 Rin 没响应？”恢复建议卡，覆盖：
+    - `camera off`
+    - `runtime failed`
+    - `no_face`
+    - `multiple_faces`
+    - `locked / profile locked`
+    - `unmatched`
+
+- Controls Island：
+  - Core / Tools / Window 三组维持统一 `3-column grid`。
+  - 鼠标离开不自动收起，收起行为仅由用户触发。
+  - 保留始终可见的 Toggle Anchor，并补充可点击的 `Emergency Anchor`（紧急收起）。
+  - Move / Zoom In / Zoom Out / Reset / Close 保持在 Window 分组内。
+
+- 对应 HCI 原则：
+  - Recognition rather than recall：
+    - 学习完成后直接给出下一步动作，减少“接下来做什么”的记忆负担。
+    - Rin 无响应时直接给出原因与可执行恢复操作。
+  - Flexibility and efficiency：
+    - 一键开始下一轮；在同一位置完成休息/继续/完成任务。
+    - Controls 收起从“系统推断”改为“用户主动控制”。
+  - Aesthetic and minimalist design：
+    - Vision 默认视图只保留核心信息，把诊断细节折叠到高级区。
+  - Error recovery：
+    - Vision 恢复建议卡提供明确恢复路径（开启摄像头、打开录入、重试运行时、关闭门控）。
+
 ## Demo steps
 
 1. Run `pnpm dev:tamagotchi`.

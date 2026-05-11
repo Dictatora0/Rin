@@ -303,11 +303,13 @@ describe('controls island layout regression locks', () => {
     expect(pageSource).toContain('[-webkit-app-region:no-drag]')
     expect(pageSource).toMatch(/data-control-layer="floating-controls-layer"[\s\S]*?<ControlsIsland[\s\S]*?ref="controlsIslandRef"/)
     expect(pageSource).not.toContain('<ControlAnchor')
-    expect(pageSource).not.toContain('controls-emergency-anchor')
     expect(pageSource).not.toContain('controlAnchorRef')
     expect(controlsSource).toContain('data-testid="controls-panel-viewport"')
+    expect(controlsSource).toContain('data-testid="controls-emergency-anchor"')
+    expect(controlsSource).toContain('controls-emergency-anchor')
     expect(controlsSource).toContain('data-controls-panel-scroll')
     expect(controlsSource).toContain('max-h-full overflow-y-auto overscroll-contain')
+    expect(controlsSource.includes('max-h-[52vh]')).toBe(false)
 
     const fadedStart = pageSource.indexOf('shouldFadeOnCursorWithin ? \'op-0\' : \'op-100\'')
     const loadingSection = pageSource.indexOf('<!-- Loading overlay sits on top, does not hide the stage -->')
@@ -390,7 +392,9 @@ describe('controls island layout regression locks', () => {
     await nextTick()
 
     expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="controls-vision-panel"]')).not.toBeNull()
+    const visionPanel = container.querySelector('[data-testid="controls-vision-panel"]') as HTMLElement | null
+    expect(visionPanel).not.toBeNull()
+    expect(visionPanel?.style.maxHeight).toBe('')
     const studyPanel = container.querySelector('[data-testid="controls-study-panel"]') as HTMLElement | null
     expect(studyPanel).not.toBeNull()
     expect(studyPanel?.style.display).toBe('none')
@@ -429,6 +433,46 @@ describe('controls island layout regression locks', () => {
 
     const cameraButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.vision-panel.collapse')
     expect(cameraButton).toBe(visionButton)
+    unmount()
+  })
+
+  it('keeps study panel content inside a dedicated scroll container when stacked with vision panel', async () => {
+    const { container, unmount } = mountControlsIsland()
+
+    const expandButton = findToggleButton(container)
+    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    const studyButton = container.querySelector('[data-testid="controls-study-toggle"]') as HTMLButtonElement | null
+    if (!studyButton)
+      throw new Error('study toggle button missing')
+
+    studyButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    const visionButton = container.querySelector('[data-testid="controls-vision-toggle"]') as HTMLButtonElement | null
+    if (!visionButton)
+      throw new Error('vision toggle button missing')
+
+    visionButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    const studyPanel = container.querySelector('[data-testid="controls-study-panel"]') as HTMLElement | null
+    if (!studyPanel)
+      throw new Error('study panel missing')
+    expect(studyPanel.style.display).not.toBe('none')
+
+    const studyScrollContainer = container.querySelector('[data-testid="controls-study-panel-scroll"]') as HTMLElement | null
+    if (!studyScrollContainer)
+      throw new Error('study panel scroll container missing')
+
+    expect(studyScrollContainer.className).toContain('overflow-y-auto')
+    expect(studyScrollContainer.className).toContain('overscroll-contain')
+    expect(studyScrollContainer.className).not.toContain('overflow-hidden')
+    expect(studyScrollContainer.className.includes('max-h-[52vh]')).toBe(false)
+    expect(studyScrollContainer.style.maxHeight).toBe('')
+    expect(studyScrollContainer.querySelector('[data-testid="study-island-stub"]')).not.toBeNull()
+
     unmount()
   })
 })

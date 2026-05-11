@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import TaskList from './TaskList.vue'
 
@@ -11,8 +11,9 @@ const emit = defineEmits<{
 }>()
 const studyStore = useStudyCompanionStore()
 const { persisted, isMuted, demoModeEnabled } = storeToRefs(studyStore)
-const { startFocus, startBreak, pause, resume, resetSession, appendEvent, toggleDemoMode } = studyStore
+const { startFocus, startBreak, pause, resume, resetSession, appendEvent, toggleDemoMode, toggleTaskDone } = studyStore
 const MUTE_DURATION_MS = 30 * 60 * 1000
+const hiddenCompletionEventId = ref<string | null>(null)
 
 const isIdle = computed(() => persisted.value.mode === 'idle')
 const isPaused = computed(() => persisted.value.mode === 'paused')
@@ -41,6 +42,37 @@ const todayFocusSessions = computed(() => persisted.value.todayFocusSessions)
 const todayFocusMinutes = computed(() => persisted.value.todayFocusMinutes)
 const todayReminderCount = computed(() => persisted.value.todayReminderCount)
 const showNoStudyRecord = computed(() => persisted.value.studyEvents.length === 0)
+const firstPendingTask = computed(() => persisted.value.tasks.find(task => !task.done) ?? null)
+const hasPendingTask = computed(() => firstPendingTask.value != null)
+
+const latestFocusCompletedEvent = computed(() => {
+  for (let index = persisted.value.studyEvents.length - 1; index >= 0; index -= 1) {
+    const event = persisted.value.studyEvents[index]
+    if (event?.type === 'focus_completed')
+      return event
+  }
+  return null
+})
+
+const latestSessionContinuationAt = computed(() => {
+  for (let index = persisted.value.studyEvents.length - 1; index >= 0; index -= 1) {
+    const event = persisted.value.studyEvents[index]
+    if (!event)
+      continue
+    if (event.type === 'focus_started' || event.type === 'focus_reset' || event.type === 'focus_completion_choice')
+      return event.at
+  }
+  return Number.NEGATIVE_INFINITY
+})
+
+const showFocusCompletionCard = computed(() => {
+  const completionEvent = latestFocusCompletedEvent.value
+  if (!completionEvent)
+    return false
+  if (hiddenCompletionEventId.value === completionEvent.id)
+    return false
+  return completionEvent.at > latestSessionContinuationAt.value
+})
 
 function handleMuteToggle() {
   if (isMuted.value) {
@@ -77,22 +109,49 @@ const demoDurationText = computed(() => {
 function handleTaskInteractionLock(locked: boolean) {
   emit('interactionLockChange', locked)
 }
+
+function hideCompletionCard() {
+  hiddenCompletionEventId.value = latestFocusCompletedEvent.value?.id ?? null
+}
+
+function handleStartNextRound() {
+  startFocus()
+  hideCompletionCard()
+}
+
+function handleStartBreakFromCompletion() {
+  startBreak()
+  appendEvent('focus_completion_choice', { action: 'break' })
+  hideCompletionCard()
+}
+
+function handleCompleteCurrentTaskFromCompletion() {
+  if (!firstPendingTask.value)
+    return
+  toggleTaskDone(firstPendingTask.value.id)
+  appendEvent('focus_completion_choice', { action: 'complete_task' })
+  hideCompletionCard()
+}
+
+function handleResetSession() {
+  resetSession()
+  hideCompletionCard()
+}
 </script>
 
 <template>
   <div
     :class="[
-      'h-full w-full min-h-0',
-      'flex flex-col overflow-hidden',
+      'w-full',
+      'flex flex-col',
       'rounded-xl border border-neutral-200/60 px-3 py-3',
       'bg-white/90 shadow-md backdrop-blur-md dark:border-neutral-700/70 dark:bg-neutral-900/90',
     ]"
   >
     <div
       :class="[
-        'min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-py-4',
-        'gap-2',
-        'pr-1 pb-8',
+        'flex flex-col gap-2',
+        'pr-1 pb-4',
       ]"
     >
       <div :class="['flex items-center justify-between gap-2']">
@@ -162,6 +221,57 @@ function handleTaskInteractionLock(locked: boolean) {
         {{ modeHintText }}
       </p>
 
+      <section
+        v-if="showFocusCompletionCard"
+        :class="[
+          'rounded-xl border border-emerald-200/80 bg-emerald-50/85 p-2',
+          'text-xs text-emerald-900',
+          'dark:border-emerald-700/70 dark:bg-emerald-900/25 dark:text-emerald-100',
+        ]"
+      >
+        <h3 :class="['text-sm font-semibold']">
+          本轮专注已完成
+        </h3>
+        <p :class="['mt-1 text-[12px] text-emerald-700 dark:text-emerald-200']">
+          可以休息一下，也可以继续下一轮
+        </p>
+        <div :class="['mt-2 grid grid-cols-1 gap-1.5']">
+          <button
+            type="button"
+            :class="[
+              'rounded-lg bg-emerald-600 px-2.5 py-1.5 text-left text-xs font-medium text-white transition-colors',
+              'hover:bg-emerald-500',
+            ]"
+            @click="handleStartBreakFromCompletion"
+          >
+            休息 5 分钟
+          </button>
+          <button
+            type="button"
+            :class="[
+              'rounded-lg bg-primary-600 px-2.5 py-1.5 text-left text-xs font-medium text-white transition-colors',
+              'hover:bg-primary-500',
+            ]"
+            @click="handleStartNextRound"
+          >
+            开始下一轮
+          </button>
+          <button
+            type="button"
+            :disabled="!hasPendingTask"
+            :class="[
+              'rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-colors',
+              hasPendingTask
+                ? 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600'
+                : 'cursor-not-allowed bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500',
+            ]"
+            @click="handleCompleteCurrentTaskFromCompletion"
+          >
+            完成当前任务
+          </button>
+        </div>
+      </section>
+
       <!-- Control Buttons -->
       <div :class="['grid grid-cols-2 gap-1.5']">
         <button
@@ -228,7 +338,7 @@ function handleTaskInteractionLock(locked: boolean) {
             'bg-neutral-200 text-neutral-700 hover:bg-neutral-300',
             'dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600',
           ]"
-          @click="resetSession"
+          @click="handleResetSession"
         >
           <div class="i-solar:restart-bold size-4" />
           重置

@@ -17,6 +17,37 @@
 - gesture-driven pet feedback（手势驱动 Rin 形象反馈）。
 - Vision Runtime Manager（MediaPipe + OpenCV 单例复用、状态可观测、可重试/可重置）。
 
+## 可用性修整（默认界面 + 恢复建议）
+
+- Vision Island 默认视图调整为“用户状态面板”，默认只展示：
+  - 摄像头
+  - 主体状态
+  - 人脸门控
+  - 最近反馈
+  - 为什么 Rin 没响应（恢复建议）
+  - 开启/关闭摄像头、打开人脸录入页
+
+- 诊断字段未删除，统一折叠到 `Advanced / Diagnostics`，包括但不限于：
+  - `faceCenter`
+  - `subjectPosition`
+  - `stableSubjectPosition`
+  - `subjectResponseState`
+  - `petSubjectResponseState`
+  - `subjectResponseGate`
+  - `lastSubjectResponseEvent`
+  - runtime raw status / templateId / channels / variant / cooldown
+  - expression signal confidence / source / reason
+  - gesture debug 字段
+
+- 新增“为什么 Rin 没响应？”自然语言恢复建议卡：
+  - `camera off`：提示开启摄像头
+  - `runtime failed`：提示重试视觉运行时
+  - `no_face`：提示靠近摄像头并保持单人入镜
+  - `multiple_faces`：提示仅保留当前用户
+  - `locked / profile locked`：提示打开录入页并解锁本地资料
+  - `unmatched`：提示使用已录入用户或重新录入
+  - 状态正常时：显示 `Rin 可以响应当前主体`
+
 ## 手势语义
 - `open_palm`: quiet Rin temporarily
 - `victory`: celebrate completed moment

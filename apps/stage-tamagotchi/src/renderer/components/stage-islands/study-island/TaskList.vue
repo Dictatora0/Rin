@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 
 const emit = defineEmits<{
   interactionLockChange: [locked: boolean]
@@ -13,6 +13,9 @@ const draftTitle = ref('')
 const taskInputRef = ref<HTMLInputElement>()
 const isTaskInputFocused = ref(false)
 const isComposing = ref(false)
+const taskCompletionFeedbackVisible = ref(false)
+const taskCompletionFeedbackText = ref('已完成，做得不错')
+let completionFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
 const tasks = computed(() => persisted.value.tasks)
 const showTaskOverloadHint = computed(() => taskPending.value >= 5)
@@ -24,6 +27,22 @@ function submitTask() {
 
   addTask(normalizedTitle)
   draftTitle.value = ''
+}
+
+function clearTaskCompletionFeedbackTimer() {
+  if (!completionFeedbackTimer)
+    return
+  clearTimeout(completionFeedbackTimer)
+  completionFeedbackTimer = null
+}
+
+function showTaskCompletionFeedback() {
+  clearTaskCompletionFeedbackTimer()
+  taskCompletionFeedbackVisible.value = true
+  completionFeedbackTimer = setTimeout(() => {
+    taskCompletionFeedbackVisible.value = false
+    completionFeedbackTimer = null
+  }, 1700)
 }
 
 function handleTaskInputFocus() {
@@ -62,6 +81,21 @@ function handleTaskInputKeydown(event: KeyboardEvent) {
   event.preventDefault()
   submitTask()
 }
+
+function handleToggleTaskDone(taskId: string) {
+  const targetTask = tasks.value.find(task => task.id === taskId)
+  if (!targetTask)
+    return
+
+  const shouldShowCompletionFeedback = !targetTask.done
+  toggleTaskDone(taskId)
+  if (shouldShowCompletionFeedback)
+    showTaskCompletionFeedback()
+}
+
+onBeforeUnmount(() => {
+  clearTaskCompletionFeedbackTimer()
+})
 </script>
 
 <template>
@@ -120,6 +154,18 @@ function handleTaskInputKeydown(event: KeyboardEvent) {
       </button>
     </div>
 
+    <div
+      v-if="taskCompletionFeedbackVisible"
+      data-testid="task-completion-feedback"
+      :class="[
+        'mt-2 flex items-center gap-1.5 rounded-md border border-emerald-200/85 bg-emerald-50/85 px-2 py-1 text-xs',
+        'text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-900/30 dark:text-emerald-200',
+      ]"
+    >
+      <span :class="['i-solar:check-circle-bold text-sm animate-pulse']" />
+      <span>{{ taskCompletionFeedbackText }}</span>
+    </div>
+
     <ul
       v-if="tasks.length > 0"
       :class="['mt-2 space-y-1 pb-4']"
@@ -139,7 +185,7 @@ function handleTaskInputKeydown(event: KeyboardEvent) {
             task.done ? 'text-neutral-400 line-through dark:text-neutral-500' : 'text-neutral-700 dark:text-neutral-100',
           ]"
           :title="task.title"
-          @click="toggleTaskDone(task.id)"
+          @click="handleToggleTaskDone(task.id)"
         >
           {{ task.title }}
         </button>
@@ -152,7 +198,7 @@ function handleTaskInputKeydown(event: KeyboardEvent) {
               ? 'bg-neutral-200 text-neutral-600 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600'
               : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60',
           ]"
-          @click="toggleTaskDone(task.id)"
+          @click="handleToggleTaskDone(task.id)"
         >
           {{ task.done ? '取消完成' : '完成' }}
         </button>
@@ -171,11 +217,20 @@ function handleTaskInputKeydown(event: KeyboardEvent) {
       </li>
     </ul>
 
-    <p
+    <div
       v-else
-      :class="['mt-2 text-xs text-neutral-500 dark:text-neutral-400']"
+      data-testid="task-list-empty-state"
+      :class="[
+        'mt-2 rounded-lg border border-dashed border-neutral-300/70 px-2.5 py-2',
+        'text-xs text-neutral-600 dark:border-neutral-700/70 dark:text-neutral-300',
+      ]"
     >
-      今天还没有任务。
-    </p>
+      <p :class="['font-medium text-neutral-700 dark:text-neutral-100']">
+        还没有今日任务
+      </p>
+      <p :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+        添加一个任务，让 Rin 陪你完成它
+      </p>
+    </div>
   </section>
 </template>

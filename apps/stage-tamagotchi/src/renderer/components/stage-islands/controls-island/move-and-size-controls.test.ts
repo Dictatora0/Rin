@@ -459,6 +459,15 @@ describe('controls island move mode and size controls', () => {
       expect(button.className).toContain('pointer-events-auto')
     }
 
+    const emergencyAnchorButton = container.querySelector('[data-testid="controls-emergency-anchor"]') as HTMLButtonElement | null
+    if (!emergencyAnchorButton)
+      throw new Error('emergency anchor button missing')
+    expect(emergencyAnchorButton.getAttribute('aria-label')).toBe('紧急收起')
+    expect(emergencyAnchorButton.getAttribute('title')).toBe('紧急收起')
+    expect(emergencyAnchorButton.className).toContain('controls-emergency-anchor')
+    expect(emergencyAnchorButton.className).toContain('[-webkit-app-region:no-drag]')
+    expect(emergencyAnchorButton.className).toContain('pointer-events-auto')
+
     zoomInButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     zoomOutButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     resetButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))

@@ -48,7 +48,6 @@ const {
   mediaPipeStatus,
   facePresence,
   faceCenter,
-  faceDirection,
   subjectPosition,
   lastStableSubjectPosition,
   subjectPositionChangedAt,
@@ -244,10 +243,6 @@ const openCvStatusText = computed(() => {
 
 const facePresenceText = computed(() => {
   return formatFacePresence(facePresence.value, statusLocale.value)
-})
-
-const faceDirectionText = computed(() => {
-  return formatFaceDirection(faceDirection.value, statusLocale.value)
 })
 
 const gestureText = computed(() => {
@@ -498,7 +493,6 @@ const rootClasses = computed(() => {
   if (props.embedded) {
     return [
       'relative w-full',
-      'max-h-[68vh] overflow-y-auto',
     ]
   }
 
@@ -509,28 +503,79 @@ function localizeVisionText(zhCN: string, en: string) {
   return statusLocale.value === 'en' ? en : zhCN
 }
 
-const visionRecoveryIssue = computed(() => {
-  const hasCameraIssue = cameraPermissionState.value === 'denied'
+const gateSummaryText = computed(() => {
+  if (!gateEnabled.value)
+    return '未启用'
+  return `${gateStateText.value} / ${gateProfileStatusText.value}`
+})
+
+const recentFeedbackSummary = computed(() => {
+  if (activeBubbleMessage.value.trim())
+    return activeBubbleMessage.value
+  if (lastFeedbackMessage.value.trim())
+    return lastFeedbackMessage.value
+  return '暂时没有新的反馈'
+})
+
+const canRespondCurrentSubject = computed(() => {
+  if (!isEnabled.value || cameraState.value !== 'active')
+    return false
+  if (runtimeStatus.value === 'failed')
+    return false
+  if (!gateEnabled.value)
+    return facePresence.value === 'present'
+  return localFaceGate.gateState.value === 'enabled'
+    && localFaceGate.profileStatus.value === 'matched'
+    && facePresence.value === 'present'
+})
+
+interface VisionRecoveryAction {
+  id: string
+  label: string
+  handler: () => void
+}
+
+interface VisionRecoveryGuidance {
+  id: string
+  reason: string
+  suggestion: string
+  actions: VisionRecoveryAction[]
+  healthy?: boolean
+}
+
+const visionRecoveryGuidance = computed<VisionRecoveryGuidance>(() => {
+  if (cameraState.value === 'off') {
+    return {
+      id: 'camera-off',
+      reason: '摄像头未开启',
+      suggestion: '点击开启摄像头',
+      actions: [
+        {
+          id: 'turn-on-camera',
+          label: '开启摄像头',
+          handler: toggleCamera,
+        },
+      ],
+    }
+  }
+
+  const hasCameraPermissionIssue = cameraPermissionState.value === 'denied'
     || cameraPermissionState.value === 'unsupported'
     || cameraState.value === 'error'
-
-  if (hasCameraIssue) {
+  if (hasCameraPermissionIssue) {
     return {
-      id: 'camera',
-      title: localizeVisionText('摄像头暂不可用', 'Camera is unavailable'),
-      description: localizeVisionText(
-        '请先检查系统摄像头权限，然后重试开启摄像头。',
-        'Check camera permission first, then retry camera startup.',
-      ),
+      id: 'camera-unavailable',
+      reason: '摄像头暂不可用',
+      suggestion: '请先检查系统权限，再点击重试摄像头',
       actions: [
         {
           id: 'retry-camera',
-          label: localizeVisionText('重试摄像头', 'Retry camera'),
+          label: '重试摄像头',
           handler: handleRetryCamera,
         },
         {
           id: 'open-settings',
-          label: localizeVisionText('打开设置', 'Open settings'),
+          label: '打开设置',
           handler: openSettingsPage,
         },
       ],
@@ -539,56 +584,88 @@ const visionRecoveryIssue = computed(() => {
 
   const hasRuntimeIssue = runtimeStatus.value === 'failed'
     || runtimeLastError.value.trim().length > 0
-
   if (hasRuntimeIssue) {
     return {
-      id: 'runtime',
-      title: localizeVisionText('视觉运行时需要恢复', 'Vision runtime needs recovery'),
-      description: localizeVisionText(
-        '运行时初始化失败或状态异常。你可以先重试，再执行重置。',
-        'Runtime startup failed or became unstable. Retry first, then reset if needed.',
-      ),
+      id: 'runtime-failed',
+      reason: '视觉模型加载失败',
+      suggestion: '点击重试，或关闭视觉功能继续使用桌宠',
       actions: [
         {
           id: 'retry-runtime',
-          label: localizeVisionText('重试 Runtime', 'Retry runtime'),
+          label: '重试视觉运行时',
           handler: handleRetryRuntime,
         },
         {
-          id: 'reset-runtime',
-          label: localizeVisionText('重置 Runtime', 'Reset runtime'),
-          handler: handleResetRuntime,
+          id: 'disable-face-gate',
+          label: '关闭人脸门控',
+          handler: () => setFaceGateEnabled(false),
         },
       ],
     }
   }
 
-  const gateBlocked = gateEnabled.value && (
-    localFaceGate.gateState.value === 'locked'
-    || localFaceGate.profileStatus.value === 'unmatched'
-    || localFaceGate.profileStatus.value === 'no_face'
-    || localFaceGate.profileStatus.value === 'multiple_faces'
-  )
-
-  if (gateBlocked) {
+  if (gateEnabled.value && (localFaceGate.gateState.value === 'locked' || (hasEncryptedProfile.value && !isProfileUnlocked.value))) {
     return {
-      id: 'gate',
-      title: localizeVisionText('反馈被门控拦截', 'Feedback is blocked by face gate'),
-      description: localizeVisionText(
-        '当前主体未通过门控条件。请保持单人入镜并完成匹配，或前往录入页确认档案。',
-        'Current subject does not pass gate conditions. Keep one face in frame and match profile, or verify enrollment.',
-      ),
+      id: 'gate-locked',
+      reason: '本地人脸资料尚未解锁',
+      suggestion: '打开人脸录入页，输入本地口令解锁',
       actions: [
         {
           id: 'open-enrollment',
-          label: localizeVisionText('打开录入页', 'Open enrollment'),
+          label: '打开人脸录入',
           handler: openEnrollmentPage,
         },
       ],
     }
   }
 
-  return null
+  if (gateEnabled.value && localFaceGate.profileStatus.value === 'multiple_faces') {
+    return {
+      id: 'multiple-faces',
+      reason: '检测到多人入镜',
+      suggestion: '为了避免误触发，请让画面中只保留当前用户',
+      actions: [],
+    }
+  }
+
+  if (gateEnabled.value && localFaceGate.profileStatus.value === 'no_face') {
+    return {
+      id: 'no-face',
+      reason: '没有检测到人脸',
+      suggestion: '请靠近摄像头，确保画面中只有你一人',
+      actions: [],
+    }
+  }
+
+  if (gateEnabled.value && localFaceGate.profileStatus.value === 'unmatched') {
+    return {
+      id: 'unmatched',
+      reason: '当前主体未通过本地人脸门控',
+      suggestion: '请使用已录入用户，或重新录入本地人脸资料',
+      actions: [
+        {
+          id: 'open-enrollment',
+          label: '打开人脸录入',
+          handler: openEnrollmentPage,
+        },
+        {
+          id: 'disable-face-gate',
+          label: '关闭人脸门控',
+          handler: () => setFaceGateEnabled(false),
+        },
+      ],
+    }
+  }
+
+  return {
+    id: 'healthy',
+    reason: 'Rin 可以响应当前主体',
+    suggestion: canRespondCurrentSubject.value
+      ? '当前状态正常，可以继续互动。'
+      : '请保持单人入镜并确保主体在画面中。',
+    actions: [],
+    healthy: true,
+  }
 })
 
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
@@ -1119,7 +1196,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 </script>
 
 <template>
-  <div :class="rootClasses">
+  <div data-testid="vision-island-root" :class="rootClasses">
     <div
       :class="[
         props.embedded ? 'w-full' : 'w-80',
@@ -1157,42 +1234,40 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 
         <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-            运行状态
+            核心状态
           </div>
           <div>{{ formatVisionFieldLabel('cameraState', statusLocale) }}：{{ cameraStateText }}</div>
           <div>{{ formatVisionFieldLabel('facePresence', statusLocale) }}：{{ facePresenceText }}</div>
-          <div>{{ formatVisionFieldLabel('faceDirection', statusLocale) }}：{{ faceDirectionText }}</div>
-          <div>{{ formatVisionFieldLabel('faceGate', statusLocale) }}：{{ gateStateText }}</div>
-          <div>{{ formatVisionFieldLabel('matchStatus', statusLocale) }}：{{ gateProfileStatusText }}</div>
-          <div v-if="matchedDisplayName">
-            {{ matchedUserLabelText }}：{{ matchedDisplayName }}
-          </div>
-          <div>
-            {{ formatVisionFieldLabel('interactiveFeedback', statusLocale) }}：{{
-              canTriggerInteractiveFeedback
-                ? formatVisionStatusValue('allowed', statusLocale)
-                : formatVisionStatusValue('gated', statusLocale)
-            }}
-          </div>
+          <div>{{ formatVisionFieldLabel('faceGate', statusLocale) }}：{{ gateSummaryText }}</div>
+          <div>最近反馈：{{ recentFeedbackSummary }}</div>
+          <div>Rin 响应：{{ canRespondCurrentSubject ? '可响应' : '暂不可响应' }}</div>
         </div>
 
-        <div
-          v-if="visionRecoveryIssue"
+        <section
           data-testid="vision-recovery-panel"
           :class="[
             'rounded-xl border border-amber-300/75 bg-amber-50/85 p-2 text-xs text-amber-900',
             'dark:border-amber-500/40 dark:bg-amber-950/35 dark:text-amber-200',
           ]"
         >
-          <div class="font-semibold">
-            {{ visionRecoveryIssue.title }}
+          <div :class="['font-semibold']">
+            为什么 Rin 没响应？
           </div>
-          <div class="mt-1">
-            {{ visionRecoveryIssue.description }}
+          <div :class="['mt-1']">
+            {{ visionRecoveryGuidance.healthy ? 'Rin 可以响应当前主体' : 'Rin 暂时没有响应' }}
           </div>
-          <div class="mt-2 flex flex-wrap gap-1.5">
+          <div :class="['mt-1']">
+            原因：{{ visionRecoveryGuidance.reason }}
+          </div>
+          <div :class="['mt-1']">
+            建议：{{ visionRecoveryGuidance.suggestion }}
+          </div>
+          <div
+            v-if="visionRecoveryGuidance.actions.length > 0"
+            :class="['mt-2 flex flex-wrap gap-1.5']"
+          >
             <Button
-              v-for="action in visionRecoveryIssue.actions"
+              v-for="action in visionRecoveryGuidance.actions"
               :key="action.id"
               :data-testid="`vision-recovery-action-${action.id}`"
               size="sm"
@@ -1202,9 +1277,12 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
               {{ action.label }}
             </Button>
           </div>
-        </div>
+        </section>
 
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+        <div
+          v-if="isExpertMode && advancedDiagnosticsExpanded"
+          :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']"
+        >
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
             主体位置反馈
           </div>
@@ -1270,7 +1348,11 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           </div>
         </div>
 
-        <div data-testid="expression-signal-panel" :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+        <div
+          v-if="isExpertMode && advancedDiagnosticsExpanded"
+          data-testid="expression-signal-panel"
+          :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']"
+        >
           <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
             面部动作信号
           </div>
@@ -1296,7 +1378,10 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           </div>
         </div>
 
-        <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
+        <div
+          v-if="isExpertMode && advancedDiagnosticsExpanded"
+          :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']"
+        >
           <div :class="['font-600 text-neutral-700 dark:text-neutral-200']">
             本地人脸门控
           </div>
@@ -1495,14 +1580,14 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             <div>transitionFeedback: {{ transitionFeedbackBadgeText }}</div>
             <div>feedbackLevel: {{ contextualFeedbackLevelText }}</div>
             <div>feedbackPriority: {{ contextualFeedbackPriorityText }}</div>
-            <div>feedbackChannels: {{ contextualFeedbackChannelsText }}</div>
-            <div>feedbackTemplateId: {{ contextualFeedbackTemplateIdText }}</div>
+            <div>反馈通道：{{ contextualFeedbackChannelsText }}</div>
+            <div>模板 ID：{{ contextualFeedbackTemplateIdText }}</div>
             <div>activeBubbleLevel: {{ activeBubbleLevelText }}</div>
             <div>activeBubbleEventType: {{ activeBubbleEventTypeText }}</div>
-            <div>activeBubbleTemplateId: {{ activeBubbleTemplateIdText }}</div>
+            <div>气泡模板 ID：{{ activeBubbleTemplateIdText }}</div>
             <div>bubbleVisibleUntil: {{ bubbleVisibleUntil }}</div>
             <div>bubbleRemainingSec: {{ bubbleRemainingSeconds }}</div>
-            <div>nextAllowedFeedbackIn: {{ nextAllowedFeedbackSeconds }}</div>
+            <div>反馈冷却：{{ nextAllowedFeedbackSeconds }} 秒</div>
             <div>dwellStatus: {{ dwellStatusText }}</div>
             <div>subjectResponseCooldownSec: {{ subjectResponseCooldownSeconds }}</div>
             <div>subjectPositionChangedAt: {{ subjectPositionChangedText }}</div>
@@ -1586,9 +1671,9 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
               <div>{{ formatVisionFieldLabel('expressionSignal', statusLocale) }}：{{ formatExpressionSignal(expressionSignal, statusLocale) }}</div>
               <div>候选信号：{{ formatExpressionSignal(expressionSignalCandidate, statusLocale) }}</div>
               <div>{{ formatVisionFieldLabel('stableExpressionSignal', statusLocale) }}：{{ formatExpressionSignal(stableExpressionSignal, statusLocale) }}</div>
-              <div>{{ formatVisionFieldLabel('confidence', statusLocale) }}：{{ expressionSignalConfidenceText }}</div>
-              <div>{{ formatVisionFieldLabel('reason', statusLocale) }}：{{ expressionSignalReason }}</div>
-              <div>{{ formatVisionFieldLabel('source', statusLocale) }}：{{ formatVisionStatusValue(expressionSignalSource, statusLocale) }}</div>
+              <div>信号置信度：{{ expressionSignalConfidenceText }}</div>
+              <div>信号原因：{{ expressionSignalReason }}</div>
+              <div>信号来源：{{ formatVisionStatusValue(expressionSignalSource, statusLocale) }}</div>
               <div>稳定帧：{{ expressionSignalStableFrames }}</div>
               <div>最近变化：{{ expressionSignalChangedText }}</div>
               <div>{{ formatVisionFieldLabel('cooldown', statusLocale) }}：{{ expressionSignalCooldownRemainingSeconds }}s</div>

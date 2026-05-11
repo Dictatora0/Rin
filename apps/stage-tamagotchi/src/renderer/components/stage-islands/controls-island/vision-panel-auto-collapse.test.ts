@@ -330,6 +330,33 @@ describe('controls island vision panel interaction flow', () => {
     unmount()
   })
 
+  it('collapses only when user clicks emergency anchor', async () => {
+    const { container, unmount } = mountControlsIsland()
+
+    const expandButton = findToggleButton(container)
+    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
+
+    mocks.isOutside.value = true
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(8_000)
+    await nextTick()
+    expect(mocks.controlsPanelExpanded.value).toBe(true)
+    expect(mocks.setControlsPanelExpanded).toHaveBeenCalledTimes(0)
+
+    const emergencyAnchorButton = container.querySelector('[data-testid="controls-emergency-anchor"]') as HTMLButtonElement | null
+    if (!emergencyAnchorButton)
+      throw new Error('emergency anchor button missing')
+    emergencyAnchorButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect(mocks.setControlsPanelExpanded).toHaveBeenCalledWith(false)
+    expect(mocks.controlsPanelExpanded.value).toBe(false)
+
+    unmount()
+  })
+
   it('does not auto collapse when move mode is active and pointer is outside', async () => {
     const { container, unmount } = mountControlsIsland()
 

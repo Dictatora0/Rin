@@ -215,6 +215,10 @@ function toggleShortcutsCard() {
   shortcutsCardExpanded.value = !shortcutsCardExpanded.value
 }
 
+function collapseControlsPanelFromEmergencyAnchor() {
+  controlsIslandStore.setControlsPanelExpanded(false)
+}
+
 async function resizeWindowByAction(action: StageWindowSizeAction) {
   try {
     const [currentBounds, primaryDisplay] = await Promise.all([
@@ -761,13 +765,19 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                 v-show="studyPanelExpanded"
                 data-testid="controls-study-panel"
                 :class="[
-                  'min-h-0 flex flex-1 flex-col border-t border-neutral-200/70 pt-2',
+                  'min-h-0 flex flex-col border-t border-neutral-200/70 pt-2',
                   'dark:border-neutral-700/70',
                 ]"
               >
-                <div :class="['min-h-0 flex-1 overflow-hidden']">
+                <div
+                  data-testid="controls-study-panel-scroll"
+                  :class="[
+                    'min-h-0 overflow-y-auto overscroll-contain',
+                    'pr-1',
+                  ]"
+                >
                   <StudyIsland
-                    :class="['h-full w-full']"
+                    :class="['w-full !h-auto']"
                     @interaction-lock-change="handleStudyPanelInteractionLock"
                     @close="closeStudyPanel"
                   />
@@ -787,7 +797,7 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
         </div>
       </Transition>
 
-      <div data-testid="controls-anchor" class="flex flex-col items-end">
+      <div data-testid="controls-anchor" class="flex flex-col items-end gap-1.5">
         <ControlButtonTooltip side="left">
           <ControlButton
             data-testid="controls-toggle-button"
@@ -805,6 +815,26 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
           </ControlButton>
           <template #tooltip>
             {{ panelToggleLabel }}
+          </template>
+        </ControlButtonTooltip>
+
+        <ControlButtonTooltip side="left">
+          <ControlButton
+            data-testid="controls-emergency-anchor"
+            class="controls-emergency-anchor [-webkit-app-region:no-drag] pointer-events-auto"
+            :button-style="adjustStyleClasses.button"
+            aria-label="紧急收起"
+            title="紧急收起"
+            @click="collapseControlsPanelFromEmergencyAnchor"
+          >
+            <div
+              i-solar:danger-circle-outline
+              :class="adjustStyleClasses.icon"
+              text="red-500 dark:red-300"
+            />
+          </ControlButton>
+          <template #tooltip>
+            紧急收起
           </template>
         </ControlButtonTooltip>
       </div>
@@ -833,6 +863,11 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
 }
 
 .controls-toggle-button {
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.controls-emergency-anchor {
   -webkit-app-region: no-drag;
   pointer-events: auto;
 }
