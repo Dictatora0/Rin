@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => {
     moveModeEnabled: { value: false } as { value: boolean },
     controlsUIMode: { value: 'novice' } as { value: 'novice' | 'expert' },
     controlsPanelExpanded: { value: false } as { value: boolean },
+    studyPanelOpen: { value: false } as { value: boolean },
+    visionPanelOpen: { value: false } as { value: boolean },
+    visionCameraRunning: { value: false } as { value: boolean },
     visionPanelUnmounted: vi.fn(),
     openSettings: vi.fn(),
     openChat: vi.fn(),
@@ -31,6 +34,21 @@ const mocks = vi.hoisted(() => {
     }),
     setControlsPanelExpanded: vi.fn((expanded: boolean) => {
       mocks.controlsPanelExpanded.value = expanded
+    }),
+    toggleStudyPanel: vi.fn(() => {
+      mocks.studyPanelOpen.value = !mocks.studyPanelOpen.value
+    }),
+    toggleVisionPanel: vi.fn(() => {
+      mocks.visionPanelOpen.value = !mocks.visionPanelOpen.value
+    }),
+    setStudyPanelOpen: vi.fn((open: boolean) => {
+      mocks.studyPanelOpen.value = open
+    }),
+    setVisionPanelOpen: vi.fn((open: boolean) => {
+      mocks.visionPanelOpen.value = open
+    }),
+    setVisionCameraRunning: vi.fn((running: boolean) => {
+      mocks.visionCameraRunning.value = running
     }),
   }
 })
@@ -71,10 +89,18 @@ vi.mock('../../../stores/controls-island', () => ({
     moveModeEnabled: mocks.moveModeEnabled,
     controlsUIMode: mocks.controlsUIMode,
     controlsPanelExpanded: mocks.controlsPanelExpanded,
+    studyPanelOpen: mocks.studyPanelOpen,
+    visionPanelOpen: mocks.visionPanelOpen,
+    visionCameraRunning: mocks.visionCameraRunning,
     toggleMoveMode: mocks.toggleMoveMode,
     toggleControlsUIMode: mocks.toggleControlsUIMode,
     toggleControlsPanel: mocks.toggleControlsPanel,
     setControlsPanelExpanded: mocks.setControlsPanelExpanded,
+    toggleStudyPanel: mocks.toggleStudyPanel,
+    toggleVisionPanel: mocks.toggleVisionPanel,
+    setStudyPanelOpen: mocks.setStudyPanelOpen,
+    setVisionPanelOpen: mocks.setVisionPanelOpen,
+    setVisionCameraRunning: mocks.setVisionCameraRunning,
   }),
 }))
 
@@ -277,6 +303,9 @@ describe('controls island layout regression locks', () => {
     mocks.moveModeEnabled = ref(false)
     mocks.controlsUIMode = ref<'novice' | 'expert'>('novice')
     mocks.controlsPanelExpanded = ref(false)
+    mocks.studyPanelOpen = ref(false)
+    mocks.visionPanelOpen = ref(false)
+    mocks.visionCameraRunning = ref(false)
     mocks.visionPanelUnmounted.mockReset()
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
@@ -287,6 +316,11 @@ describe('controls island layout regression locks', () => {
     mocks.toggleControlsUIMode.mockReset()
     mocks.toggleControlsPanel.mockReset()
     mocks.setControlsPanelExpanded.mockReset()
+    mocks.toggleStudyPanel.mockReset()
+    mocks.toggleVisionPanel.mockReset()
+    mocks.setStudyPanelOpen.mockReset()
+    mocks.setVisionPanelOpen.mockReset()
+    mocks.setVisionCameraRunning.mockReset()
   })
 
   afterEach(() => {
@@ -300,6 +334,16 @@ describe('controls island layout regression locks', () => {
     const controlsSource = readFileSync(resolve(process.cwd(), 'src/renderer/components/stage-islands/controls-island/index.vue'), 'utf8')
     expect(pageSource).toContain('data-control-layer="floating-controls-layer"')
     expect(pageSource).toContain('pointer-events-none fixed inset-0 z-[170]')
+    expect(pageSource).toContain('data-control-layer="floating-content-panels-layer"')
+    expect(pageSource).toContain('pointer-events-none fixed inset-0 z-[185]')
+    expect(pageSource).toContain('<StageFloatingPanel')
+    expect(pageSource).toContain('panel-kind="study"')
+    expect(pageSource).toContain('panel-kind="vision"')
+    expect(pageSource).toContain('function closeStudyFloatingPanel()')
+    expect(pageSource).toContain('setStudyPanelOpen(false)')
+    expect(pageSource).toContain('function closeVisionFloatingPanel()')
+    expect(pageSource).toContain('setVisionPanelOpen(false)')
+    expect(pageSource).toContain('@camera-running-change="handleVisionCameraRunningChange"')
     expect(pageSource).toContain('[-webkit-app-region:no-drag]')
     expect(pageSource).toMatch(/data-control-layer="floating-controls-layer"[\s\S]*?<ControlsIsland[\s\S]*?ref="controlsIslandRef"/)
     expect(pageSource).not.toContain('<ControlAnchor')
@@ -309,6 +353,10 @@ describe('controls island layout regression locks', () => {
     expect(controlsSource).toContain('controls-emergency-anchor')
     expect(controlsSource).toContain('data-controls-panel-scroll')
     expect(controlsSource).toContain('max-h-full overflow-y-auto overscroll-contain')
+    expect(controlsSource).not.toContain('data-testid="controls-study-panel"')
+    expect(controlsSource).not.toContain('data-testid="controls-vision-panel"')
+    expect(controlsSource).not.toContain('<StudyIsland')
+    expect(controlsSource).not.toContain('<VisionIsland')
     expect(controlsSource.includes('max-h-[52vh]')).toBe(false)
 
     const fadedStart = pageSource.indexOf('shouldFadeOnCursorWithin ? \'op-0\' : \'op-100\'')
@@ -319,7 +367,7 @@ describe('controls island layout regression locks', () => {
     expect(fadedContainerSegment).not.toContain('<ControlsIsland')
   })
 
-  it('keeps functional groups stable after opening vision panel', async () => {
+  it('keeps functional groups stable after toggling vision entry', async () => {
     const { container, unmount } = mountControlsIsland()
 
     const expandButton = findToggleButton(container)
@@ -391,13 +439,12 @@ describe('controls island layout regression locks', () => {
     visionButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
-    const visionPanel = container.querySelector('[data-testid="controls-vision-panel"]') as HTMLElement | null
-    expect(visionPanel).not.toBeNull()
-    expect(visionPanel?.style.maxHeight).toBe('')
-    const studyPanel = container.querySelector('[data-testid="controls-study-panel"]') as HTMLElement | null
-    expect(studyPanel).not.toBeNull()
-    expect(studyPanel?.style.display).toBe('none')
+    expect(mocks.toggleVisionPanel).toHaveBeenCalledTimes(1)
+    expect(mocks.visionPanelOpen.value).toBe(true)
+    expect(container.querySelector('[data-testid="controls-study-panel"]')).toBeNull()
+    expect(container.querySelector('[data-testid="controls-vision-panel"]')).toBeNull()
+    expect(container.querySelector('[data-testid="vision-island-stub"]')).toBeNull()
+    expect(container.querySelector('[data-testid="study-island-stub"]')).toBeNull()
 
     const coreGridAfter = container.querySelector('[data-testid="controls-core-grid"]') as HTMLDivElement | null
     const toolsGridAfter = container.querySelector('[data-testid="controls-tools-grid"]') as HTMLDivElement | null
@@ -429,14 +476,14 @@ describe('controls island layout regression locks', () => {
     await nextTick()
 
     expect(mocks.closeWindow).toHaveBeenCalledTimes(1)
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="controls-vision-panel"]')).toBeNull()
 
     const cameraButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.vision-panel.collapse')
     expect(cameraButton).toBe(visionButton)
     unmount()
   })
 
-  it('keeps study panel content inside a dedicated scroll container when stacked with vision panel', async () => {
+  it('keeps study entry in controls while full study panel is rendered outside controls island', async () => {
     const { container, unmount } = mountControlsIsland()
 
     const expandButton = findToggleButton(container)
@@ -450,28 +497,12 @@ describe('controls island layout regression locks', () => {
     studyButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
-    const visionButton = container.querySelector('[data-testid="controls-vision-toggle"]') as HTMLButtonElement | null
-    if (!visionButton)
-      throw new Error('vision toggle button missing')
-
-    visionButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await nextTick()
-
-    const studyPanel = container.querySelector('[data-testid="controls-study-panel"]') as HTMLElement | null
-    if (!studyPanel)
-      throw new Error('study panel missing')
-    expect(studyPanel.style.display).not.toBe('none')
-
-    const studyScrollContainer = container.querySelector('[data-testid="controls-study-panel-scroll"]') as HTMLElement | null
-    if (!studyScrollContainer)
-      throw new Error('study panel scroll container missing')
-
-    expect(studyScrollContainer.className).toContain('overflow-y-auto')
-    expect(studyScrollContainer.className).toContain('overscroll-contain')
-    expect(studyScrollContainer.className).not.toContain('overflow-hidden')
-    expect(studyScrollContainer.className.includes('max-h-[52vh]')).toBe(false)
-    expect(studyScrollContainer.style.maxHeight).toBe('')
-    expect(studyScrollContainer.querySelector('[data-testid="study-island-stub"]')).not.toBeNull()
+    expect(mocks.toggleStudyPanel).toHaveBeenCalledTimes(1)
+    expect(mocks.studyPanelOpen.value).toBe(true)
+    expect(studyButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.study-panel.collapse')
+    expect(container.querySelector('[data-testid="controls-study-panel"]')).toBeNull()
+    expect(container.querySelector('[data-testid="controls-study-panel-scroll"]')).toBeNull()
+    expect(container.querySelector('[data-testid="study-island-stub"]')).toBeNull()
 
     unmount()
   })

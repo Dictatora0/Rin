@@ -28,6 +28,9 @@ const props = withDefaults(defineProps<{
   embedded: false,
   uiMode: 'novice',
 })
+const emit = defineEmits<{
+  'camera-running-change': [running: boolean]
+}>()
 
 const collapsed = ref(!props.embedded)
 const advancedDiagnosticsExpanded = ref(false)
@@ -528,6 +531,9 @@ const canRespondCurrentSubject = computed(() => {
     && localFaceGate.profileStatus.value === 'matched'
     && facePresence.value === 'present'
 })
+const isCameraRunning = computed(() => {
+  return isEnabled.value && cameraState.value === 'active'
+})
 
 interface VisionRecoveryAction {
   id: string
@@ -682,6 +688,10 @@ watch(maxInferenceStallInput, (value) => {
     return
   setMaxInferenceStallMs(parsed)
 })
+
+watch(isCameraRunning, (running) => {
+  emit('camera-running-change', running)
+}, { immediate: true })
 
 watch(lastEvent, (event) => {
   if (!event)

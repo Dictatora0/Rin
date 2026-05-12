@@ -285,6 +285,23 @@ describe('vision enrollment page stability behaviors', () => {
     unmount()
   })
 
+  it('uses opaque panel shell and cards for better readability', async () => {
+    const { container, unmount } = mountPage()
+    await nextTick()
+
+    const markup = container.innerHTML
+    expect(markup).toContain('bg-neutral-100')
+    expect(markup).toContain('dark:bg-neutral-950')
+    expect(markup).toContain('bg-white')
+    expect(markup).toContain('dark:bg-neutral-900')
+    expect(markup).not.toContain('bg-white/88')
+    expect(markup).not.toContain('dark:bg-neutral-900/80')
+    expect(markup).not.toContain('border-neutral-200/70')
+    expect(markup).not.toContain('dark:border-neutral-700/70')
+
+    unmount()
+  })
+
   it('deletes profile only after confirmation and reflects cleared state in UI', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { container, unmount } = mountPage()

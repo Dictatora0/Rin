@@ -35,10 +35,13 @@ import { refDebounced, useAsyncState, useBroadcastChannel } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
+import StageFloatingPanel from '../components/stage-floating-panel.vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 import StatusIsland from '../components/stage-islands/status-island/index.vue'
 import StudyBubble from '../components/stage-islands/study-bubble/index.vue'
+import StudyIsland from '../components/stage-islands/study-island/index.vue'
+import VisionIsland from '../components/stage-islands/vision-island/index.vue'
 import StageMoveOverlay from '../components/stage-move-overlay.vue'
 
 import { electronOpenOnboarding, electronStartDraggingWindow } from '../../shared/eventa'
@@ -98,7 +101,17 @@ const modelStore = useModelStore()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
 const controlsIslandStore = useControlsIslandStore()
-const { fadeOnHoverEnabled, moveModeEnabled, controlsPanelExpanded } = storeToRefs(controlsIslandStore)
+const {
+  fadeOnHoverEnabled,
+  moveModeEnabled,
+  controlsUIMode,
+  controlsPanelExpanded,
+  studyPanelOpen,
+  visionPanelOpen,
+} = storeToRefs(controlsIslandStore)
+const studyPanelInteractionLocked = ref(false)
+const studyPanelActivated = ref(false)
+const visionPanelActivated = ref(false)
 const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
 const { data: modelSettingsRuntimeChannelEvent, post: postModelSettingsRuntimeChannelEvent } = useBroadcastChannel<ModelSettingsRuntimeChannelEvent, ModelSettingsRuntimeChannelEvent>({ name: modelSettingsRuntimeSnapshotChannelName })
 const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransparency({
@@ -144,8 +157,39 @@ const { pause, resume } = watch(isTransparent, (transparent) => {
 }, { immediate: true })
 
 const hearingDialogOpen = computed(() => controlsIslandRef.value?.hearingDialogOpen ?? false)
-const studyPanelPinned = computed(() => controlsIslandRef.value?.studyPanelPinned ?? false)
-const studyPanelInputActive = computed(() => controlsIslandRef.value?.studyPanelInputActive ?? false)
+const studyPanelPinned = computed(() => {
+  return studyPanelOpen.value || studyPanelInteractionLocked.value
+})
+const studyPanelInputActive = computed(() => studyPanelInteractionLocked.value)
+
+watch(studyPanelOpen, (open) => {
+  if (open)
+    studyPanelActivated.value = true
+  if (!open)
+    studyPanelInteractionLocked.value = false
+}, { immediate: true })
+
+watch(visionPanelOpen, (open) => {
+  if (open)
+    visionPanelActivated.value = true
+}, { immediate: true })
+
+function handleStudyPanelInteractionLock(locked: boolean) {
+  studyPanelInteractionLocked.value = locked
+}
+
+function closeStudyFloatingPanel() {
+  controlsIslandStore.setStudyPanelOpen(false)
+  studyPanelInteractionLocked.value = false
+}
+
+function closeVisionFloatingPanel() {
+  controlsIslandStore.setVisionPanelOpen(false)
+}
+
+function handleVisionCameraRunningChange(running: boolean) {
+  controlsIslandStore.setVisionCameraRunning(running)
+}
 
 const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() => {
   const hasModel = !!stageModelSelectedUrl.value
@@ -606,6 +650,40 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
       ref="controlsIslandRef"
       class="pointer-events-auto"
     />
+  </div>
+  <div
+    data-control-layer="floating-content-panels-layer"
+    :class="[
+      'pointer-events-none fixed inset-0 z-[185]',
+      '[-webkit-app-region:no-drag]',
+    ]"
+  >
+    <StageFloatingPanel
+      v-if="studyPanelActivated"
+      v-show="studyPanelOpen"
+      panel-kind="study"
+      title="学习陪伴"
+      @close="closeStudyFloatingPanel"
+    >
+      <StudyIsland
+        @interaction-lock-change="handleStudyPanelInteractionLock"
+        @close="closeStudyFloatingPanel"
+      />
+    </StageFloatingPanel>
+
+    <StageFloatingPanel
+      v-if="visionPanelActivated"
+      v-show="visionPanelOpen"
+      panel-kind="vision"
+      title="视觉感知"
+      @close="closeVisionFloatingPanel"
+    >
+      <VisionIsland
+        embedded
+        :ui-mode="controlsUIMode"
+        @camera-running-change="handleVisionCameraRunningChange"
+      />
+    </StageFloatingPanel>
   </div>
   <StageMoveOverlay
     :enabled="moveModeEnabled && !isLoading"

@@ -6,6 +6,13 @@ import {
   DEFAULT_FOCUS_DURATION_MS,
   DEMO_BREAK_DURATION_MS,
   DEMO_FOCUS_DURATION_MS,
+  isStudyTaskDueToday,
+  isStudyTaskOverdue,
+  MAX_BREAK_MINUTES,
+  MAX_FOCUS_MINUTES,
+  MIN_BREAK_MINUTES,
+  MIN_FOCUS_MINUTES,
+  sortStudyTasks,
   useStudyCompanionStore,
 } from './study-companion'
 
@@ -102,7 +109,7 @@ describe('useStudyCompanionStore', () => {
     store.persisted.todayFocusSessions = 3
     store.persisted.todayFocusMinutes = 90
     store.persisted.todayReminderCount = 5
-    store.persisted.tasks = [{ id: 't1', title: 'x', done: false, createdAt: 1 }]
+    store.persisted.tasks = [{ id: 't1', title: 'x', done: false, createdAt: '2026-05-06T11:00:00.000Z', priority: 'medium' }]
 
     vi.setSystemTime(new Date('2026-05-07T08:00:00.000Z'))
     store.rolloverIfNeeded()
@@ -141,7 +148,7 @@ describe('useStudyCompanionStore', () => {
     expect(store.persisted.studyEvents.at(-1)?.detail?.id).toBe(taskId)
     store.toggleTaskDone(taskId)
     expect(store.persisted.tasks[0]?.done).toBe(true)
-    expect(store.persisted.tasks[0]?.completedAt).toBeTypeOf('number')
+    expect(store.persisted.tasks[0]?.completedAt).toBeTypeOf('string')
     expect(taskCompleted.value).toBe(1)
     expect(taskPending.value).toBe(0)
     expect(store.persisted.studyEvents.at(-1)).toMatchObject({
@@ -183,15 +190,15 @@ describe('useStudyCompanionStore', () => {
     const store = useStudyCompanionStore()
     const { taskTotal, taskCompleted, taskPending } = storeToRefs(store)
     store.persisted.tasks = [
-      { id: 'task-1', title: '阅读', done: true, createdAt: 1, completedAt: 2 },
-      { id: 'task-2', title: '整理笔记', done: false, createdAt: 3 },
-      { id: 'task-3', title: '做题', done: true, createdAt: 4, completedAt: 5 },
+      { id: 'task-1', title: '阅读', done: true, createdAt: '2026-05-06T08:00:00.000Z', completedAt: '2026-05-06T08:30:00.000Z', priority: 'high' },
+      { id: 'task-2', title: '整理笔记', done: false, createdAt: '2026-05-06T09:00:00.000Z', priority: 'medium' },
+      { id: 'task-3', title: '做题', done: true, createdAt: '2026-05-06T10:00:00.000Z', completedAt: '2026-05-06T10:30:00.000Z', priority: 'low' },
     ]
 
     store.clearCompletedTasks()
 
     expect(store.persisted.tasks).toEqual([
-      { id: 'task-2', title: '整理笔记', done: false, createdAt: 3 },
+      { id: 'task-2', title: '整理笔记', done: false, createdAt: '2026-05-06T09:00:00.000Z', priority: 'medium' },
     ])
     expect(taskTotal.value).toBe(1)
     expect(taskCompleted.value).toBe(0)
@@ -285,8 +292,8 @@ describe('useStudyCompanionStore', () => {
     store.persisted.focusDurationMs = 1_500_000
     store.persisted.breakDurationMs = 300_000
     store.persisted.tasks = [
-      { id: 'task-1', title: 'Read chapter', done: true, createdAt: 1 },
-      { id: 'task-2', title: 'Solve problems', done: false, createdAt: 2 },
+      { id: 'task-1', title: 'Read chapter', done: true, createdAt: '2026-05-06T09:00:00.000Z', priority: 'high' },
+      { id: 'task-2', title: 'Solve problems', done: false, createdAt: '2026-05-06T10:00:00.000Z', priority: 'medium' },
     ]
     store.persisted.mutedUntil = Date.now() + 5_000
     store.persisted.studyEvents = [
@@ -309,13 +316,24 @@ describe('useStudyCompanionStore', () => {
     expect(snapshot.summary.taskTotal).toBe(2)
     expect(snapshot.summary.taskCompleted).toBe(1)
     expect(snapshot.summary.taskPending).toBe(1)
+    expect(snapshot.summary.todayInterruptCount).toBe(0)
     expect(snapshot.summary.mode).toBe('paused')
     expect(snapshot.summary.isRunning).toBe(false)
     expect(snapshot.summary.isMuted).toBe(true)
     expect(snapshot.timer.remainingMs).toBe(12_345)
     expect(snapshot.timer.segmentEndsAt).toBeNull()
-    expect(snapshot.tasks).toEqual(store.persisted.tasks)
+    expect(snapshot.tasks).toHaveLength(2)
     expect(snapshot.tasks).not.toBe(store.persisted.tasks)
+    expect(snapshot.tasks[0]).toMatchObject({
+      id: 'task-2',
+      done: false,
+      priority: 'medium',
+    })
+    expect(snapshot.tasks[1]).toMatchObject({
+      id: 'task-1',
+      done: true,
+      priority: 'high',
+    })
     expect(snapshot.events).not.toBe(store.persisted.studyEvents)
     expect(snapshot.events.find(event => event.id === 'evt-2')?.detail).toEqual({
       notice: 'detail_not_serializable',
@@ -375,7 +393,7 @@ describe('useStudyCompanionStore', () => {
     store.persisted.segmentEndsAt = Date.now() + 60_000
     store.persisted.focusDurationMs = 1_500_000
     store.persisted.breakDurationMs = 300_000
-    store.persisted.tasks = [{ id: 'task-1', title: 'Read chapter', done: false, createdAt: 1 }]
+    store.persisted.tasks = [{ id: 'task-1', title: 'Read chapter', done: false, createdAt: '2026-05-06T11:00:00.000Z', priority: 'medium' }]
 
     store.clearTodayStudyStats()
 
@@ -395,6 +413,244 @@ describe('useStudyCompanionStore', () => {
     expect(store.persisted.segmentEndsAt).toBe(Date.now() + 60_000)
     expect(store.persisted.focusDurationMs).toBe(1_500_000)
     expect(store.persisted.breakDurationMs).toBe(300_000)
-    expect(store.persisted.tasks).toEqual([{ id: 'task-1', title: 'Read chapter', done: false, createdAt: 1 }])
+    expect(store.persisted.tasks).toEqual([{ id: 'task-1', title: 'Read chapter', done: false, createdAt: '2026-05-06T11:00:00.000Z', priority: 'medium' }])
+  })
+
+  it('keeps default focus/break minutes as 25/5', () => {
+    const store = useStudyCompanionStore()
+    expect(store.focusMinutes).toBe(25)
+    expect(store.breakMinutes).toBe(5)
+  })
+
+  it('persists custom focus/break minutes using setters', () => {
+    const store = useStudyCompanionStore()
+    store.setFocusMinutes(30)
+    store.setBreakMinutes(10)
+
+    expect(store.focusMinutes).toBe(30)
+    expect(store.breakMinutes).toBe(10)
+    expect(store.persisted.focusDurationMs).toBe(30 * 60 * 1000)
+    expect(store.persisted.breakDurationMs).toBe(10 * 60 * 1000)
+  })
+
+  it('clamps focus minutes into allowed range', () => {
+    const store = useStudyCompanionStore()
+
+    store.setFocusMinutes(1)
+    expect(store.focusMinutes).toBe(MIN_FOCUS_MINUTES)
+
+    store.setFocusMinutes(999)
+    expect(store.focusMinutes).toBe(MAX_FOCUS_MINUTES)
+  })
+
+  it('clamps break minutes into allowed range', () => {
+    const store = useStudyCompanionStore()
+
+    store.setBreakMinutes(0)
+    expect(store.breakMinutes).toBe(MIN_BREAK_MINUTES)
+
+    store.setBreakMinutes(999)
+    expect(store.breakMinutes).toBe(MAX_BREAK_MINUTES)
+  })
+
+  it('does not reset an active timer when changing durations and uses new duration on next round', () => {
+    const store = useStudyCompanionStore()
+    store.startFocus()
+    const runningRemaining = store.persisted.remainingMs
+
+    store.setFocusMinutes(30)
+    store.setBreakMinutes(8)
+
+    expect(store.persisted.mode).toBe('focus')
+    expect(store.persisted.remainingMs).toBe(runningRemaining)
+    expect(store.persisted.focusDurationMs).toBe(30 * 60 * 1000)
+    expect(store.persisted.breakDurationMs).toBe(8 * 60 * 1000)
+
+    store.resetSession()
+    store.startFocus()
+    expect(store.persisted.remainingMs).toBe(30 * 60 * 1000)
+  })
+
+  it('supports selected focus task lifecycle', () => {
+    const store = useStudyCompanionStore()
+    store.addTask('任务 A')
+    store.addTask('任务 B')
+
+    const taskAId = store.persisted.tasks[0]!.id
+    const taskBId = store.persisted.tasks[1]!.id
+    expect(store.persisted.selectedFocusTaskId).toBeNull()
+
+    store.setSelectedFocusTaskId(taskAId)
+    expect(store.persisted.selectedFocusTaskId).toBe(taskAId)
+    expect(store.getSelectedFocusTask()?.title).toBe('任务 A')
+
+    store.toggleTaskDone(taskAId)
+    expect(store.persisted.selectedFocusTaskId).toBeNull()
+    expect(store.getSelectedFocusTask()).toBeNull()
+
+    store.setSelectedFocusTaskId(taskAId)
+    expect(store.persisted.selectedFocusTaskId).toBeNull()
+
+    store.setSelectedFocusTaskId(taskBId)
+    store.deleteTask(taskBId)
+    expect(store.persisted.selectedFocusTaskId).toBeNull()
+  })
+
+  it('falls back to medium priority for legacy task rows without priority field', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.tasks = [
+      {
+        id: 'legacy-task',
+        title: '旧任务',
+        done: false,
+        createdAt: '2026-05-06T09:00:00.000Z',
+      } as any,
+    ]
+
+    const snapshot = store.exportStudySnapshot()
+    expect(snapshot.tasks[0]?.priority).toBe('medium')
+  })
+
+  it('sorts tasks with smart mode: pending first, then priority, then due date, then createdAt', () => {
+    const sorted = sortStudyTasks([
+      { id: 'done', title: 'done', done: true, createdAt: '2026-05-06T08:00:00.000Z', priority: 'high' },
+      { id: 'low', title: 'low', done: false, createdAt: '2026-05-06T08:20:00.000Z', priority: 'low' },
+      { id: 'high-late', title: 'high-late', done: false, createdAt: '2026-05-06T08:30:00.000Z', priority: 'high', dueDate: '2026-05-08' },
+      { id: 'high-early', title: 'high-early', done: false, createdAt: '2026-05-06T08:10:00.000Z', priority: 'high', dueDate: '2026-05-07' },
+    ], 'smart')
+
+    expect(sorted.map(task => task.id)).toEqual(['high-early', 'high-late', 'low', 'done'])
+  })
+
+  it('identifies due-today and overdue tasks correctly', () => {
+    const now = new Date('2026-05-06T12:00:00.000Z')
+    const dueTodayTask = { id: 'due-today', title: 'today', done: false, createdAt: '2026-05-06T08:00:00.000Z', priority: 'medium', dueDate: '2026-05-06' } as const
+    const overdueTask = { id: 'overdue', title: 'old', done: false, createdAt: '2026-05-06T07:00:00.000Z', priority: 'medium', dueDate: '2026-05-05' } as const
+    const doneTask = { id: 'done', title: 'done', done: true, createdAt: '2026-05-06T07:30:00.000Z', priority: 'medium', dueDate: '2026-05-05' } as const
+
+    expect(isStudyTaskDueToday(dueTodayTask, now)).toBe(true)
+    expect(isStudyTaskOverdue(dueTodayTask, now)).toBe(false)
+    expect(isStudyTaskOverdue(overdueTask, now)).toBe(true)
+    expect(isStudyTaskDueToday(doneTask, now)).toBe(false)
+    expect(isStudyTaskOverdue(doneTask, now)).toBe(false)
+  })
+
+  it('returns continuous last-7-day history and fills missing dates with zero values', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.statsDate = '2026-05-06'
+    store.persisted.todayFocusMinutes = 60
+    store.persisted.todayFocusSessions = 2
+    store.persisted.historyEntries = [
+      {
+        dayKey: '2026-05-04',
+        focusMinutes: 25,
+        focusSessions: 1,
+        completedTasks: 1,
+        interruptCount: 0,
+        createdTasks: 1,
+        focusTaskIds: [],
+      },
+    ]
+
+    const range = store.getLast7DaysStats()
+    expect(range).toHaveLength(7)
+    expect(range[0]?.dayKey).toBe('2026-04-30')
+    expect(range[6]?.dayKey).toBe('2026-05-06')
+    expect(range.find(entry => entry.dayKey === '2026-05-05')?.focusMinutes).toBe(0)
+    expect(range.find(entry => entry.dayKey === '2026-05-06')?.focusMinutes).toBe(60)
+  })
+
+  it('preserves previous-day history when rolling over to a new day', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.statsDate = '2026-05-06'
+    store.persisted.todayFocusMinutes = 50
+    store.persisted.todayFocusSessions = 2
+    store.persisted.studyEvents = [
+      { id: 'evt-1', at: Date.parse('2026-05-06T09:00:00.000Z'), type: 'task_added' },
+      { id: 'evt-2', at: Date.parse('2026-05-06T10:00:00.000Z'), type: 'task_completed' },
+      { id: 'evt-3', at: Date.parse('2026-05-06T11:00:00.000Z'), type: 'focus_reset' },
+    ]
+
+    vi.setSystemTime(new Date('2026-05-07T08:00:00.000Z'))
+    store.rolloverIfNeeded()
+
+    const dayEntry = store.persisted.historyEntries.find(entry => entry.dayKey === '2026-05-06')
+    expect(dayEntry?.focusMinutes).toBe(50)
+    expect(dayEntry?.focusSessions).toBe(2)
+    expect(dayEntry?.completedTasks).toBe(1)
+    expect(dayEntry?.interruptCount).toBe(1)
+  })
+
+  it('records selected task id when starting focus and can complete selected task in one action', () => {
+    const store = useStudyCompanionStore()
+    store.addTask('完成课程实验')
+    const taskId = store.persisted.tasks[0]!.id
+    store.setSelectedFocusTaskId(taskId)
+
+    store.startFocus()
+    expect(store.persisted.studyEvents.at(-1)).toMatchObject({
+      type: 'focus_started',
+      detail: {
+        taskId,
+      },
+    })
+
+    store.resetSession()
+    const completed = store.completeSelectedFocusTask()
+    expect(completed).toBe(true)
+    expect(store.persisted.tasks[0]?.done).toBe(true)
+    expect(store.persisted.selectedFocusTaskId).toBeNull()
+  })
+
+  it('counts today interrupts by focus_reset only', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.statsDate = '2026-05-06'
+    store.persisted.studyEvents = [
+      { id: 'evt-1', at: Date.parse('2026-05-06T01:00:00.000Z'), type: 'focus_reset' },
+      { id: 'evt-2', at: Date.parse('2026-05-06T02:00:00.000Z'), type: 'focus_reset' },
+      { id: 'evt-3', at: Date.parse('2026-05-06T03:00:00.000Z'), type: 'session_paused' },
+      { id: 'evt-4', at: Date.parse('2026-05-05T23:59:59.000Z'), type: 'focus_reset' },
+    ]
+
+    expect(store.todayInterruptCount).toBe(2)
+    expect(store.getTodayInterruptCount()).toBe(2)
+  })
+
+  it('builds markdown report with summary, tasks, interrupts and recent events', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.statsDate = '2026-05-06'
+    store.persisted.todayFocusMinutes = 50
+    store.persisted.todayFocusSessions = 2
+    store.persisted.tasks = [
+      { id: 'task-1', title: '读书', done: true, createdAt: '2026-05-06T08:00:00.000Z', completedAt: '2026-05-06T10:00:00.000Z', priority: 'high', dueDate: '2026-05-06' },
+      { id: 'task-2', title: '写总结', done: false, createdAt: '2026-05-06T09:00:00.000Z', priority: 'medium', dueDate: '2026-05-07' },
+    ]
+    store.persisted.studyEvents = [
+      { id: 'evt-focus-reset', at: Date.parse('2026-05-06T11:00:00.000Z'), type: 'focus_reset', detail: {} },
+      { id: 'evt-task-completed', at: Date.parse('2026-05-06T11:30:00.000Z'), type: 'task_completed', detail: { id: 'task-1' } },
+    ]
+
+    const markdown = store.buildStudyMarkdownReport()
+    expect(markdown).toContain('# Rin 学习陪伴报告')
+    expect(markdown).toContain('日期：2026-05-06')
+    expect(markdown).toContain('| 今日专注分钟 | 50 |')
+    expect(markdown).toContain('| 今日专注轮数 | 2 |')
+    expect(markdown).toContain('| 今日完成任务数 | 1 |')
+    expect(markdown).toContain('| 今日中断次数 | 1 |')
+    expect(markdown).toContain('| 任务 | 状态 | 优先级 | 截止日期 | 完成时间 |')
+    expect(markdown).toContain('| 读书 | 已完成 | 高 | 2026-05-06 |')
+    expect(markdown).toContain('## 最近 7 天学习趋势')
+    expect(markdown).toContain('## 最近学习事件（最多 10 条）')
+  })
+
+  it('exports markdown report with expected file name format', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.statsDate = '2026-05-06'
+
+    const report = store.exportStudyMarkdownReport()
+
+    expect(report.filename).toBe('rin-study-report-2026-05-06.md')
+    expect(report.markdown).toContain('# Rin 学习陪伴报告')
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('study_markdown_report_exported')
   })
 })

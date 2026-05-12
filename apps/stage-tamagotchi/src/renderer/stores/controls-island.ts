@@ -8,6 +8,9 @@ export const useControlsIslandStore = defineStore('controls-island', () => {
   const moveModeEnabled = useLocalStorage<boolean>('controls-island/move-mode-enabled', false)
   const controlsUIMode = useLocalStorage<'novice' | 'expert'>('controls-island/ui-mode', 'novice')
   const controlsPanelExpanded = ref(false)
+  const studyPanelOpen = ref(false)
+  const visionPanelOpen = ref(false)
+  const visionCameraRunning = ref(false)
   const dontShowItAgainNoticeFadeOnHover = useLocalStorage<boolean>('preferences/dont-show-it-again/notice/fade-on-hover', false)
 
   function enableFadeOnHover() {
@@ -38,11 +41,34 @@ export const useControlsIslandStore = defineStore('controls-island', () => {
     controlsPanelExpanded.value = expanded
   }
 
+  function toggleStudyPanel() {
+    studyPanelOpen.value = !studyPanelOpen.value
+  }
+
+  function toggleVisionPanel() {
+    visionPanelOpen.value = !visionPanelOpen.value
+  }
+
+  function setStudyPanelOpen(open: boolean) {
+    studyPanelOpen.value = open
+  }
+
+  function setVisionPanelOpen(open: boolean) {
+    visionPanelOpen.value = open
+  }
+
+  function setVisionCameraRunning(running: boolean) {
+    visionCameraRunning.value = running
+  }
+
   return {
     fadeOnHoverEnabled,
     moveModeEnabled,
     controlsUIMode,
     controlsPanelExpanded,
+    studyPanelOpen,
+    visionPanelOpen,
+    visionCameraRunning,
     dontShowItAgainNoticeFadeOnHover,
     enableFadeOnHover,
     disableFadeOnHover,
@@ -51,5 +77,10 @@ export const useControlsIslandStore = defineStore('controls-island', () => {
     toggleControlsUIMode,
     toggleControlsPanel,
     setControlsPanelExpanded,
+    toggleStudyPanel,
+    toggleVisionPanel,
+    setStudyPanelOpen,
+    setVisionPanelOpen,
+    setVisionCameraRunning,
   }
 })

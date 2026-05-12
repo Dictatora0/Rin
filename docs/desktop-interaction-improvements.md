@@ -162,6 +162,117 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - Error recovery：
     - Vision 恢复建议卡提供明确恢复路径（开启摄像头、打开录入、重试运行时、关闭门控）。
 
+## Study / Vision 独立 Floating Panel（Round 3）
+
+- Controls Island 回归“轻量入口 + 桌面控制器”：
+  - 保留学习入口、视觉入口、聊天/设置、Move/Zoom/Reset/Close、Emergency Anchor。
+  - 不再在 Controls 内承载 Study/Vision 的完整长内容。
+
+- 新增 renderer 层独立浮动面板壳 `StageFloatingPanel`：
+  - `fixed` 定位，`pointer-events-auto`，`-webkit-app-region: no-drag`。
+  - 与 Controls 分层渲染，不进入 Controls 内部滚动流。
+  - 内容区独立滚动，宽高受限：
+    - `max-height: min(80vh, 720px)`
+    - `max-width: calc(100vw - 32px)`
+  - Study / Vision 分别使用不同宽度区间（study 更窄，vision 更宽）。
+
+- Study 浮动面板：
+  - 标题：`学习陪伴`。
+  - 关闭只改变 `studyPanelOpen`，不触发重置计时、不清空任务/统计。
+  - 再次打开继续当前学习状态。
+
+- Vision 浮动面板：
+  - 标题：`视觉感知`。
+  - 关闭只改变 `visionPanelOpen`，不强制 stop camera、不重置 runtime、不改 face gate。
+  - Controls 视觉入口区分两类信号：
+    - 面板打开态（高亮 ring）
+    - 摄像头运行态（状态点），避免把“正在运行”误读成“面板仍打开”。
+
+- 层级与交互：
+  - 浮动面板层级高于 move overlay，Move Mode 开启时仍可点击。
+  - 浮动面板默认放在右侧偏中上，避免压住右下角 anchor 的基本可用性。
+
+- 对应 HCI 原则：
+  - Aesthetic and minimalist design：Controls 不再拥挤，职责清晰。
+  - Recognition rather than recall：入口、标题、关闭语义更直接。
+  - Flexibility and efficiency of use：快捷入口与完整面板分离，减少滚动冲突与误操作。
+
+## Study Companion 可用性补强（Round 4，仅学习模块）
+
+- 本轮仅增强学习模块，不改视觉模块、不改拖拽/缩放与 Controls 架构、不改主进程。
+
+- 自定义专注/休息节奏：
+  - 新增 `focusMinutes` / `breakMinutes` 可配置项。
+  - 默认值维持 `25 / 5`，并做范围限制：
+    - 专注：`5-120` 分钟
+    - 休息：`1-60` 分钟
+  - 设置项持久化；运行中不强制打断当前计时，仅下一轮使用新时长。
+
+- 任务与专注关联：
+  - 新增 `selectedFocusTaskId`，允许选择“当前专注任务”。
+  - 专注开始事件可记录 taskId（用于复盘与导出）。
+  - 专注完成卡支持“一键完成当前任务”，完成后自动清空选择并给出轻量正反馈。
+
+- Markdown 学习报告导出：
+  - 保留原 JSON 导出，新增 Markdown 报告导出。
+  - 文件名：`rin-study-report-YYYY-MM-DD.md`。
+  - 报告包含：
+    - 今日核心指标（专注分钟、轮数、完成任务数、中断次数、当前时长设置）
+    - 今日任务表格
+    - 最近学习事件摘要（最多 10 条）
+
+- 休息建议：
+  - 新增本地建议池（不接 LLM），在进入休息时给出一条短建议。
+  - 同一次休息期间不频繁变化；离开休息状态后隐藏。
+
+- 今日中断次数展示：
+  - 基于当天 `focus_reset` 事件统计“今日中断”。
+  - `pause` 不计入中断。
+  - UI 统计卡与 Markdown 报告都展示中断次数。
+
+- 对应 HCI 原则：
+  - Flexibility and efficiency of use：支持个性化节奏与一键完成任务。
+  - Recognition rather than recall：明确展示当前专注任务、今日中断与下一步动作。
+  - Help and documentation：一键导出结构化 Markdown 报告，便于课程答辩与复盘。
+  - Aesthetic and minimalist design：新增能力收敛到学习设置/导出区，主面板保持轻量。
+
+## Study Analytics & Readability（Round 5）
+
+- 目标：
+  - 在不破坏原有学习计时/任务/导出/浮动面板的前提下，增强学习数据能力与默认可理解性。
+
+- 学习模块新增：
+  - 多日历史统计（7/14/30 天）与持久化 `historyEntries`。
+  - 最近 7 天专注柱状图（Study Floating Panel 内可见）。
+  - 最近 30 天学习热力图（学习设置页可见）。
+  - 今日任务扩展字段：
+    - 优先级（高/中/低）
+    - 截止日期（可选）
+  - 智能排序规则：
+    - 未完成优先
+    - 高优先级优先
+    - 更早截止优先
+    - 同条件按创建时间
+  - Markdown 报告增强：
+    - 任务表新增优先级/截止日期
+    - 新增最近 7 天趋势摘要
+    - 保留原 JSON 导出能力
+
+- 默认界面可理解性：
+  - Study 默认面板仅展示任务、状态、统计与趋势，不暴露技术型字段。
+  - Vision 默认视图继续保持“用户状态面板”而非 raw debug 面板。
+  - 诊断信息保留在 Advanced / Diagnostics，不删除调试能力。
+
+- 对应 HCI 原则：
+  - Recognition rather than recall：
+    - 用中文状态与可视化趋势替代抽象事件理解负担。
+  - Flexibility and efficiency of use：
+    - 通过优先级、截止日期、智能排序快速决定“先做什么”。
+  - Aesthetic and minimalist design：
+    - 技术字段默认折叠，主视图只保留高价值信息。
+  - Help users recover / Help and documentation：
+    - 报告导出包含趋势与任务语义字段，便于复盘与展示。
+
 ## Demo steps
 
 1. Run `pnpm dev:tamagotchi`.

@@ -86,7 +86,14 @@ describe('resolveStudyBubbleText', () => {
     const history = createStudyBubbleCopyHistory()
 
     const allDone = createSnapshot()
-    allDone.tasks = [{ id: '1', title: 'A', done: true, createdAt: Date.now(), completedAt: Date.now() }]
+    allDone.tasks = [{
+      id: '1',
+      title: 'A',
+      done: true,
+      createdAt: new Date(Date.now() - 120_000).toISOString(),
+      completedAt: new Date().toISOString(),
+      priority: 'medium',
+    }]
     const allDoneCopy = resolveStudyBubbleText({ type: 'task_completed' }, allDone, history)
     expect(allDoneCopy).toEqual({
       text: '今日任务清空了，可以轻松一点。',
@@ -97,9 +104,16 @@ describe('resolveStudyBubbleText', () => {
 
     const pendingTasks = createSnapshot()
     pendingTasks.tasks = [
-      { id: '1', title: 'A', done: true, createdAt: Date.now(), completedAt: Date.now() },
-      { id: '2', title: 'B', done: false, createdAt: Date.now() },
-      { id: '3', title: 'C', done: false, createdAt: Date.now() },
+      {
+        id: '1',
+        title: 'A',
+        done: true,
+        createdAt: new Date(Date.now() - 180_000).toISOString(),
+        completedAt: new Date().toISOString(),
+        priority: 'medium',
+      },
+      { id: '2', title: 'B', done: false, createdAt: new Date(Date.now() - 60_000).toISOString(), priority: 'medium' },
+      { id: '3', title: 'C', done: false, createdAt: new Date(Date.now() - 30_000).toISOString(), priority: 'medium' },
     ]
     const pendingCopy = resolveStudyBubbleText({ type: 'task_completed' }, pendingTasks, history)
     expect(pendingCopy).toEqual({

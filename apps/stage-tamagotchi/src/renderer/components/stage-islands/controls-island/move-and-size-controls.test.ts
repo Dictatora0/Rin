@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => {
     moveModeEnabled: { value: false } as { value: boolean },
     controlsUIMode: { value: 'novice' } as { value: 'novice' | 'expert' },
     controlsPanelExpanded: { value: false } as { value: boolean },
+    studyPanelOpen: { value: false } as { value: boolean },
+    visionPanelOpen: { value: false } as { value: boolean },
+    visionCameraRunning: { value: false } as { value: boolean },
     isOutside: { value: false } as { value: boolean },
     openSettings: vi.fn(),
     openChat: vi.fn(),
@@ -34,6 +37,21 @@ const mocks = vi.hoisted(() => {
     }),
     setControlsPanelExpanded: vi.fn((expanded: boolean) => {
       mocks.controlsPanelExpanded.value = expanded
+    }),
+    toggleStudyPanel: vi.fn(() => {
+      mocks.studyPanelOpen.value = !mocks.studyPanelOpen.value
+    }),
+    toggleVisionPanel: vi.fn(() => {
+      mocks.visionPanelOpen.value = !mocks.visionPanelOpen.value
+    }),
+    setStudyPanelOpen: vi.fn((open: boolean) => {
+      mocks.studyPanelOpen.value = open
+    }),
+    setVisionPanelOpen: vi.fn((open: boolean) => {
+      mocks.visionPanelOpen.value = open
+    }),
+    setVisionCameraRunning: vi.fn((running: boolean) => {
+      mocks.visionCameraRunning.value = running
     }),
   }
 })
@@ -74,10 +92,18 @@ vi.mock('../../../stores/controls-island', () => ({
     moveModeEnabled: mocks.moveModeEnabled,
     controlsUIMode: mocks.controlsUIMode,
     controlsPanelExpanded: mocks.controlsPanelExpanded,
+    studyPanelOpen: mocks.studyPanelOpen,
+    visionPanelOpen: mocks.visionPanelOpen,
+    visionCameraRunning: mocks.visionCameraRunning,
     toggleMoveMode: mocks.toggleMoveMode,
     toggleControlsUIMode: mocks.toggleControlsUIMode,
     toggleControlsPanel: mocks.toggleControlsPanel,
     setControlsPanelExpanded: mocks.setControlsPanelExpanded,
+    toggleStudyPanel: mocks.toggleStudyPanel,
+    toggleVisionPanel: mocks.toggleVisionPanel,
+    setStudyPanelOpen: mocks.setStudyPanelOpen,
+    setVisionPanelOpen: mocks.setVisionPanelOpen,
+    setVisionCameraRunning: mocks.setVisionCameraRunning,
   }),
 }))
 
@@ -274,6 +300,9 @@ describe('controls island move mode and size controls', () => {
     mocks.moveModeEnabled = ref(false)
     mocks.controlsUIMode = ref<'novice' | 'expert'>('novice')
     mocks.controlsPanelExpanded = ref(false)
+    mocks.studyPanelOpen = ref(false)
+    mocks.visionPanelOpen = ref(false)
+    mocks.visionCameraRunning = ref(false)
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
     mocks.closeWindow.mockReset()
@@ -286,6 +315,11 @@ describe('controls island move mode and size controls', () => {
     mocks.toggleControlsUIMode.mockClear()
     mocks.toggleControlsPanel.mockClear()
     mocks.setControlsPanelExpanded.mockClear()
+    mocks.toggleStudyPanel.mockClear()
+    mocks.toggleVisionPanel.mockClear()
+    mocks.setStudyPanelOpen.mockClear()
+    mocks.setVisionPanelOpen.mockClear()
+    mocks.setVisionCameraRunning.mockClear()
     mocks.unknownEvents.length = 0
   })
 
@@ -551,6 +585,43 @@ describe('controls island move mode and size controls', () => {
     await vi.advanceTimersByTimeAsync(250)
     await nextTick()
     expect(container.querySelector('[data-testid="controls-shortcuts-card"]')).toBeNull()
+
+    unmount()
+  })
+
+  it('separates study open state from vision running hint state', async () => {
+    const { container, unmount } = mountControlsIsland()
+    clickExpand(container)
+    await nextTick()
+
+    const studyButton = container.querySelector('[data-testid="controls-study-toggle"]') as HTMLButtonElement | null
+    const visionButton = container.querySelector('[data-testid="controls-vision-toggle"]') as HTMLButtonElement | null
+    if (!studyButton || !visionButton)
+      throw new Error('study or vision toggle missing')
+
+    expect(studyButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.study-panel.expand')
+    expect(visionButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.vision-panel.expand')
+    expect(container.querySelector('[data-testid="controls-vision-running-dot"]')).toBeNull()
+
+    studyButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.toggleStudyPanel).toHaveBeenCalledTimes(1)
+    expect(mocks.studyPanelOpen.value).toBe(true)
+    expect(studyButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.study-panel.collapse')
+
+    mocks.visionCameraRunning.value = true
+    await nextTick()
+    expect(visionButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.vision-panel.expand（摄像头运行中）')
+    expect(container.querySelector('[data-testid="controls-vision-running-dot"]')).not.toBeNull()
+    expect(visionButton.className.includes('ring-2')).toBe(false)
+
+    visionButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.toggleVisionPanel).toHaveBeenCalledTimes(1)
+    expect(mocks.visionPanelOpen.value).toBe(true)
+    expect(visionButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.vision-panel.collapse')
+    expect(visionButton.className).toContain('ring-2')
+    expect(container.querySelector('[data-testid="controls-vision-running-dot"]')).toBeNull()
 
     unmount()
   })

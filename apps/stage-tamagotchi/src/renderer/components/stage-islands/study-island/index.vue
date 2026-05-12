@@ -1,19 +1,38 @@
 <script setup lang="ts">
 import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
+import StudyHistoryChart from './StudyHistoryChart.vue'
 import TaskList from './TaskList.vue'
+
+import { createStudyBreakSuggestionPicker } from '../../../utils/study-break-suggestions'
 
 const emit = defineEmits<{
   close: []
   interactionLockChange: [locked: boolean]
 }>()
 const studyStore = useStudyCompanionStore()
-const { persisted, isMuted, demoModeEnabled } = storeToRefs(studyStore)
-const { startFocus, startBreak, pause, resume, resetSession, appendEvent, toggleDemoMode, toggleTaskDone } = studyStore
+const { persisted, isMuted, demoModeEnabled, selectedFocusTask, todayInterruptCount, sortedPendingTasks } = storeToRefs(studyStore)
+const {
+  startFocus,
+  startBreak,
+  pause,
+  resume,
+  resetSession,
+  appendEvent,
+  toggleDemoMode,
+  setSelectedFocusTaskId,
+  completeSelectedFocusTask,
+  getLast7DaysStats,
+} = studyStore
 const MUTE_DURATION_MS = 30 * 60 * 1000
 const hiddenCompletionEventId = ref<string | null>(null)
+const currentBreakSuggestion = ref<string | null>(null)
+const completionFeedbackVisible = ref(false)
+const completionFeedbackText = ref('已完成，做得不错')
+let completionFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+const pickBreakSuggestion = createStudyBreakSuggestionPicker()
 
 const isIdle = computed(() => persisted.value.mode === 'idle')
 const isPaused = computed(() => persisted.value.mode === 'paused')
@@ -42,8 +61,18 @@ const todayFocusSessions = computed(() => persisted.value.todayFocusSessions)
 const todayFocusMinutes = computed(() => persisted.value.todayFocusMinutes)
 const todayReminderCount = computed(() => persisted.value.todayReminderCount)
 const showNoStudyRecord = computed(() => persisted.value.studyEvents.length === 0)
-const firstPendingTask = computed(() => persisted.value.tasks.find(task => !task.done) ?? null)
-const hasPendingTask = computed(() => firstPendingTask.value != null)
+const pendingTasks = computed(() => sortedPendingTasks.value)
+const hasPendingTask = computed(() => pendingTasks.value.length > 0)
+const last7DaysStats = computed(() => getLast7DaysStats())
+const hasSelectedFocusTask = computed(() => selectedFocusTask.value != null)
+const selectedFocusTaskIdModel = computed({
+  get() {
+    return persisted.value.selectedFocusTaskId ?? ''
+  },
+  set(taskId: string) {
+    setSelectedFocusTaskId(taskId || null)
+  },
+})
 
 const latestFocusCompletedEvent = computed(() => {
   for (let index = persisted.value.studyEvents.length - 1; index >= 0; index -= 1) {
@@ -110,6 +139,22 @@ function handleTaskInteractionLock(locked: boolean) {
   emit('interactionLockChange', locked)
 }
 
+function clearCompletionFeedbackTimer() {
+  if (!completionFeedbackTimer)
+    return
+  clearTimeout(completionFeedbackTimer)
+  completionFeedbackTimer = null
+}
+
+function showCompletionFeedback() {
+  clearCompletionFeedbackTimer()
+  completionFeedbackVisible.value = true
+  completionFeedbackTimer = setTimeout(() => {
+    completionFeedbackVisible.value = false
+    completionFeedbackTimer = null
+  }, 1700)
+}
+
 function hideCompletionCard() {
   hiddenCompletionEventId.value = latestFocusCompletedEvent.value?.id ?? null
 }
@@ -126,9 +171,10 @@ function handleStartBreakFromCompletion() {
 }
 
 function handleCompleteCurrentTaskFromCompletion() {
-  if (!firstPendingTask.value)
+  const completed = completeSelectedFocusTask()
+  if (!completed)
     return
-  toggleTaskDone(firstPendingTask.value.id)
+  showCompletionFeedback()
   appendEvent('focus_completion_choice', { action: 'complete_task' })
   hideCompletionCard()
 }
@@ -137,6 +183,24 @@ function handleResetSession() {
   resetSession()
   hideCompletionCard()
 }
+
+watch(
+  () => persisted.value.mode,
+  (mode, previousMode) => {
+    if (mode === 'break' && previousMode !== 'break') {
+      currentBreakSuggestion.value = pickBreakSuggestion()
+      return
+    }
+
+    if (mode !== 'break')
+      currentBreakSuggestion.value = null
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  clearCompletionFeedbackTimer()
+})
 </script>
 
 <template>
@@ -144,23 +208,23 @@ function handleResetSession() {
     :class="[
       'w-full',
       'flex flex-col',
-      'rounded-xl border border-neutral-200/60 px-3 py-3',
-      'bg-white/90 shadow-md backdrop-blur-md dark:border-neutral-700/70 dark:bg-neutral-900/90',
+      'rounded-2xl border border-neutral-200/70 p-3',
+      'bg-neutral-50 shadow-sm dark:border-neutral-700/70 dark:bg-neutral-900',
     ]"
   >
     <div
       :class="[
-        'flex flex-col gap-2',
-        'pr-1 pb-4',
+        'flex flex-col gap-2.5',
+        'pr-1 pb-3',
       ]"
     >
       <div :class="['flex items-center justify-between gap-2']">
-        <span :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-100']">学习计时</span>
+        <span :class="['text-sm font-semibold text-neutral-700 dark:text-neutral-100']">学习计时</span>
         <div :class="['flex items-center gap-1.5']">
           <button
             type="button"
             :class="[
-              'rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
+              'rounded-lg px-2.5 py-1 text-xs font-medium transition-colors',
               demoModeEnabled
                 ? 'bg-orange-500 text-white hover:bg-orange-400'
                 : 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600',
@@ -172,7 +236,7 @@ function handleResetSession() {
           <button
             type="button"
             :class="[
-              'rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-neutral-700',
+              'rounded-lg p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-neutral-700',
               'dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200',
             ]"
             title="关闭学习面板"
@@ -185,7 +249,7 @@ function handleResetSession() {
       <p
         v-if="demoModeEnabled"
         :class="[
-          'rounded-md border border-orange-200/80 bg-orange-50/80 px-2 py-1 text-[11px]',
+          'rounded-lg border border-orange-200/80 bg-orange-50/80 px-2.5 py-1.5 text-xs leading-5',
           'text-orange-700 dark:border-orange-800/70 dark:bg-orange-950/40 dark:text-orange-200',
         ]"
       >
@@ -196,10 +260,10 @@ function handleResetSession() {
       <div :class="['flex items-center justify-between gap-2']">
         <div
           :class="[
-            'shrink-0 rounded-full px-3 py-1 text-xs font-medium',
+            'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium',
             isIdle ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
-            : isFocusing ? 'bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-300'
-              : isBreaking ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300'
+            : isFocusing ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/35 dark:text-primary-200'
+              : isBreaking ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/35 dark:text-teal-200'
                 : 'bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300',
           ]"
         >
@@ -208,39 +272,98 @@ function handleResetSession() {
 
         <div
           :class="[
-            'font-mono text-lg font-semibold tabular-nums',
-            isFocusing ? 'text-rose-600 dark:text-rose-400'
-            : isBreaking ? 'text-emerald-600 dark:text-emerald-400'
+            'font-mono text-xl font-semibold tabular-nums',
+            isFocusing ? 'text-primary-600 dark:text-primary-300'
+            : isBreaking ? 'text-teal-600 dark:text-teal-300'
               : 'text-neutral-800 dark:text-neutral-200',
           ]"
         >
           {{ formattedRemaining }}
         </div>
       </div>
-      <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+      <p :class="['text-[12px] leading-5 text-neutral-500 dark:text-neutral-400']">
         {{ modeHintText }}
       </p>
 
       <section
-        v-if="showFocusCompletionCard"
         :class="[
-          'rounded-xl border border-emerald-200/80 bg-emerald-50/85 p-2',
-          'text-xs text-emerald-900',
-          'dark:border-emerald-700/70 dark:bg-emerald-900/25 dark:text-emerald-100',
+          'rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2',
+          'dark:border-neutral-700/70 dark:bg-neutral-800/70',
         ]"
       >
-        <h3 :class="['text-sm font-semibold']">
+        <div :class="['text-xs font-medium text-neutral-700 dark:text-neutral-200']">
+          当前专注任务
+        </div>
+        <p
+          v-if="!hasPendingTask"
+          :class="['mt-1 text-xs text-neutral-500 dark:text-neutral-400']"
+        >
+          还没有可选择的任务
+        </p>
+        <div
+          v-else
+          :class="['mt-1 flex flex-col gap-1']"
+        >
+          <select
+            v-model="selectedFocusTaskIdModel"
+            data-testid="study-selected-task-select"
+            :class="[
+              'rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-700',
+              'outline-none transition-colors focus:border-primary-500',
+              'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
+            ]"
+          >
+            <option value="">
+              不指定任务
+            </option>
+            <option
+              v-for="task in pendingTasks"
+              :key="task.id"
+              :value="task.id"
+            >
+              {{ task.title }}
+            </option>
+          </select>
+          <p
+            v-if="selectedFocusTask"
+            :class="['text-[11px] text-neutral-500 dark:text-neutral-400']"
+          >
+            已选择：{{ selectedFocusTask.title }}
+          </p>
+        </div>
+      </section>
+
+      <section
+        v-if="isBreaking && currentBreakSuggestion"
+        data-testid="study-break-suggestion"
+        :class="[
+          'rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-2 text-xs text-teal-800',
+          'dark:border-teal-700/60 dark:bg-teal-900/25 dark:text-teal-200',
+        ]"
+      >
+        休息建议：{{ currentBreakSuggestion }}
+      </section>
+
+      <section
+        v-if="showFocusCompletionCard"
+        :class="[
+          'rounded-lg border border-primary-200 bg-primary-50 p-2.5',
+          'text-xs text-primary-900',
+          'dark:border-primary-700/60 dark:bg-primary-900/20 dark:text-primary-100',
+        ]"
+      >
+        <h3 :class="['text-[13px] font-semibold']">
           本轮专注已完成
         </h3>
-        <p :class="['mt-1 text-[12px] text-emerald-700 dark:text-emerald-200']">
+        <p :class="['mt-1 text-xs leading-5 text-primary-700 dark:text-primary-200']">
           可以休息一下，也可以继续下一轮
         </p>
-        <div :class="['mt-2 grid grid-cols-1 gap-1.5']">
+        <div :class="['mt-2.5 grid grid-cols-1 gap-2']">
           <button
             type="button"
             :class="[
-              'rounded-lg bg-emerald-600 px-2.5 py-1.5 text-left text-xs font-medium text-white transition-colors',
-              'hover:bg-emerald-500',
+              'rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-left text-xs font-medium text-neutral-700 transition-colors',
+              'hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700',
             ]"
             @click="handleStartBreakFromCompletion"
           >
@@ -249,7 +372,7 @@ function handleResetSession() {
           <button
             type="button"
             :class="[
-              'rounded-lg bg-primary-600 px-2.5 py-1.5 text-left text-xs font-medium text-white transition-colors',
+              'rounded-md bg-primary-600 px-2.5 py-1.5 text-left text-xs font-medium text-white transition-colors',
               'hover:bg-primary-500',
             ]"
             @click="handleStartNextRound"
@@ -258,11 +381,11 @@ function handleResetSession() {
           </button>
           <button
             type="button"
-            :disabled="!hasPendingTask"
+            :disabled="!hasSelectedFocusTask"
             :class="[
-              'rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-colors',
-              hasPendingTask
-                ? 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600'
+              'rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors',
+              hasSelectedFocusTask
+                ? 'border border-neutral-200 bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700'
                 : 'cursor-not-allowed bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500',
             ]"
             @click="handleCompleteCurrentTaskFromCompletion"
@@ -272,15 +395,26 @@ function handleResetSession() {
         </div>
       </section>
 
+      <div
+        v-if="completionFeedbackVisible"
+        data-testid="study-completion-feedback"
+        :class="[
+          'rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs text-primary-700',
+          'dark:border-primary-700/60 dark:bg-primary-900/20 dark:text-primary-200',
+        ]"
+      >
+        {{ completionFeedbackText }}
+      </div>
+
       <!-- Control Buttons -->
       <div :class="['grid grid-cols-2 gap-1.5']">
         <button
           type="button"
           :disabled="!canStartFocus"
           :class="[
-            'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+            'flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all',
             canStartFocus
-              ? 'bg-rose-500 text-white hover:bg-rose-600'
+              ? 'bg-primary-600 text-white hover:bg-primary-500'
               : 'cursor-not-allowed bg-neutral-200 text-neutral-400 dark:bg-neutral-700 dark:text-neutral-500',
           ]"
           @click="startFocus"
@@ -293,9 +427,9 @@ function handleResetSession() {
           type="button"
           :disabled="!canStartBreak"
           :class="[
-            'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+            'flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all',
             canStartBreak
-              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+              ? 'border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700'
               : 'cursor-not-allowed bg-neutral-200 text-neutral-400 dark:bg-neutral-700 dark:text-neutral-500',
           ]"
           @click="startBreak"
@@ -308,8 +442,8 @@ function handleResetSession() {
           v-if="canPause"
           type="button"
           :class="[
-            'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
-            'bg-amber-500 text-white hover:bg-amber-600',
+            'flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all',
+            'bg-neutral-200 text-neutral-700 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600',
           ]"
           @click="pause"
         >
@@ -321,8 +455,8 @@ function handleResetSession() {
           v-if="canResume"
           type="button"
           :class="[
-            'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
-            'bg-sky-500 text-white hover:bg-sky-600',
+            'flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all',
+            'bg-primary-500 text-white hover:bg-primary-400',
           ]"
           @click="resume"
         >
@@ -334,7 +468,7 @@ function handleResetSession() {
           v-if="!isIdle"
           type="button"
           :class="[
-            'col-span-2 flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+            'col-span-2 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all',
             'bg-neutral-200 text-neutral-700 hover:bg-neutral-300',
             'dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600',
           ]"
@@ -349,8 +483,7 @@ function handleResetSession() {
         <button
           type="button"
           :class="[
-            'flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition-all',
-            'hover:scale-105 active:scale-95',
+            'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors',
             isMuted
               ? 'bg-orange-100 text-orange-600 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50'
               : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700',
@@ -368,7 +501,7 @@ function handleResetSession() {
       </div>
 
       <!-- Stats Panel -->
-      <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+      <div :class="['rounded-lg bg-neutral-100 px-2.5 py-2 text-xs text-neutral-500 dark:bg-neutral-800/70 dark:text-neutral-400']">
         <div :class="['flex flex-wrap items-center gap-1']">
           <div class="i-solar:list-check-bold size-3.5" />
           <span>今日：{{ todayFocusSessions }} 轮 · {{ todayFocusMinutes }} 分钟</span>
@@ -376,6 +509,10 @@ function handleResetSession() {
         <div v-if="todayReminderCount > 0" :class="['mt-1 flex items-center gap-1']">
           <div class="i-solar:bell-bold size-3.5" />
           <span>{{ todayReminderCount }} 条提醒</span>
+        </div>
+        <div :class="['mt-1 flex items-center gap-1']">
+          <div class="i-solar:danger-circle-bold size-3.5" />
+          <span>今日中断：{{ todayInterruptCount }} 次</span>
         </div>
         <div v-if="isMuted" :class="['mt-1 flex items-center gap-1']">
           <div class="i-solar:bell-off-bold size-3.5" />
@@ -385,6 +522,8 @@ function handleResetSession() {
           暂无学习记录。
         </div>
       </div>
+
+      <StudyHistoryChart :entries="last7DaysStats" />
 
       <TaskList @interaction-lock-change="handleTaskInteractionLock" />
     </div>

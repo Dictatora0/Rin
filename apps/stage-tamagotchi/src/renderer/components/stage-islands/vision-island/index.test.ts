@@ -223,10 +223,17 @@ vi.mock('../../../composables/use-vision-pet-feedback', () => ({
   useVisionPetFeedback: () => mocks.petFeedbackState,
 }))
 
-function mountVisionIsland(uiMode: 'novice' | 'expert' = 'novice') {
+function mountVisionIsland(
+  uiMode: 'novice' | 'expert' = 'novice',
+  options: { onCameraRunningChange?: (running: boolean) => void } = {},
+) {
   const host = defineComponent({
     setup() {
-      return () => h(VisionIsland, { embedded: true, uiMode })
+      return () => h(VisionIsland, {
+        embedded: true,
+        uiMode,
+        onCameraRunningChange: options.onCameraRunningChange,
+      })
     },
   })
 
@@ -481,6 +488,28 @@ describe('vision island usability pass', () => {
     expect(text).toContain('点击重试，或关闭视觉功能继续使用桌宠')
     await clickButton(container, '重试视觉运行时')
     expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
+
+    unmount()
+  })
+
+  it('emits camera running status for floating panel entry indicator', async () => {
+    const cameraRunningChanges: boolean[] = []
+    mocks.interactionState.isEnabled.value = false
+    mocks.interactionState.cameraState.value = 'off'
+
+    const { unmount } = mountVisionIsland('novice', {
+      onCameraRunningChange: running => cameraRunningChanges.push(running),
+    })
+    await nextTick()
+
+    mocks.interactionState.isEnabled.value = true
+    mocks.interactionState.cameraState.value = 'active'
+    await nextTick()
+
+    mocks.interactionState.cameraState.value = 'off'
+    await nextTick()
+
+    expect(cameraRunningChanges).toEqual([false, true, false])
 
     unmount()
   })

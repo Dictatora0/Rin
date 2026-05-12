@@ -48,6 +48,32 @@
   - `unmatched`：提示使用已录入用户或重新录入
   - 状态正常时：显示 `Rin 可以响应当前主体`
 
+### 状态字段中文化与折叠策略（Round 5）
+
+- 默认视图坚持“用户可理解状态”：
+  - 摄像头
+  - 主体状态
+  - 人脸门控
+  - 最近反馈
+  - 恢复建议
+- 默认界面不直接暴露 raw key（例如 `cameraState`、`faceGate`、`templateId`、`channels` 等）。
+- 技术字段保留在 `Advanced / Diagnostics`，用于专家排障与实验验证。
+- 文案统一走 `vision-status-labels.ts` 映射层，避免在模板里散落硬编码判断。
+
+## 与 Controls 的解耦（Floating Panel）
+
+- Controls Island 仅保留视觉入口，不再嵌入 Vision Island 的完整内容。
+- 点击视觉入口后，Vision Island 渲染在独立 renderer 浮动面板（`StageFloatingPanel`）中。
+- 面板关闭语义为“只关闭 UI”：
+  - 不强制 `Stop Camera`
+  - 不重置 runtime
+  - 不关闭 Face Gate
+  - 不清空最近反馈状态
+- 视觉入口状态拆分：
+  - `visionPanelOpen`：表示面板是否打开
+  - `visionCameraRunning`：表示摄像头是否运行（用于入口状态点提示）
+- 这样可以减少 Controls 内部拥挤与滚动冲突，同时保留视觉功能连续性。
+
 ## 手势语义
 - `open_palm`: quiet Rin temporarily
 - `victory`: celebrate completed moment

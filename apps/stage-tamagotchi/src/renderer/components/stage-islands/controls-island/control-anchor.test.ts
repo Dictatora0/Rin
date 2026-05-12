@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => {
     moveModeEnabled: { value: false } as { value: boolean },
     controlsUIMode: { value: 'novice' } as { value: 'novice' | 'expert' },
     controlsPanelExpanded: { value: false } as { value: boolean },
+    studyPanelOpen: { value: false } as { value: boolean },
+    visionPanelOpen: { value: false } as { value: boolean },
+    visionCameraRunning: { value: false } as { value: boolean },
     toggleControlsPanel: vi.fn(() => {
       mocks.controlsPanelExpanded.value = !mocks.controlsPanelExpanded.value
     }),
@@ -22,6 +25,21 @@ const mocks = vi.hoisted(() => {
     }),
     toggleMoveMode: vi.fn(() => {
       mocks.moveModeEnabled.value = !mocks.moveModeEnabled.value
+    }),
+    toggleStudyPanel: vi.fn(() => {
+      mocks.studyPanelOpen.value = !mocks.studyPanelOpen.value
+    }),
+    toggleVisionPanel: vi.fn(() => {
+      mocks.visionPanelOpen.value = !mocks.visionPanelOpen.value
+    }),
+    setStudyPanelOpen: vi.fn((open: boolean) => {
+      mocks.studyPanelOpen.value = open
+    }),
+    setVisionPanelOpen: vi.fn((open: boolean) => {
+      mocks.visionPanelOpen.value = open
+    }),
+    setVisionCameraRunning: vi.fn((running: boolean) => {
+      mocks.visionCameraRunning.value = running
     }),
     startDraggingWindow: vi.fn(),
   }
@@ -63,10 +81,18 @@ vi.mock('../../../stores/controls-island', () => ({
     moveModeEnabled: mocks.moveModeEnabled,
     controlsUIMode: mocks.controlsUIMode,
     controlsPanelExpanded: mocks.controlsPanelExpanded,
+    studyPanelOpen: mocks.studyPanelOpen,
+    visionPanelOpen: mocks.visionPanelOpen,
+    visionCameraRunning: mocks.visionCameraRunning,
     toggleControlsUIMode: mocks.toggleControlsUIMode,
     toggleMoveMode: mocks.toggleMoveMode,
     toggleControlsPanel: mocks.toggleControlsPanel,
     setControlsPanelExpanded: mocks.setControlsPanelExpanded,
+    toggleStudyPanel: mocks.toggleStudyPanel,
+    toggleVisionPanel: mocks.toggleVisionPanel,
+    setStudyPanelOpen: mocks.setStudyPanelOpen,
+    setVisionPanelOpen: mocks.setVisionPanelOpen,
+    setVisionCameraRunning: mocks.setVisionCameraRunning,
   }),
 }))
 
@@ -218,10 +244,18 @@ describe('controls island anchor behavior', () => {
     mocks.moveModeEnabled = ref(false)
     mocks.controlsUIMode = ref<'novice' | 'expert'>('novice')
     mocks.controlsPanelExpanded = ref(false)
+    mocks.studyPanelOpen = ref(false)
+    mocks.visionPanelOpen = ref(false)
+    mocks.visionCameraRunning = ref(false)
     mocks.toggleControlsPanel.mockClear()
     mocks.setControlsPanelExpanded.mockClear()
     mocks.toggleControlsUIMode.mockClear()
     mocks.toggleMoveMode.mockClear()
+    mocks.toggleStudyPanel.mockClear()
+    mocks.toggleVisionPanel.mockClear()
+    mocks.setStudyPanelOpen.mockClear()
+    mocks.setVisionPanelOpen.mockClear()
+    mocks.setVisionCameraRunning.mockClear()
     mocks.startDraggingWindow.mockClear()
   })
 

@@ -384,304 +384,301 @@ function formatTiming(ms: number | null) {
     return '无'
   return `${ms.toFixed(1)} ms`
 }
+
+const pageRootClasses = [
+  'mx-auto max-w-5xl p-4 text-neutral-800 dark:text-neutral-100',
+]
+const pageShellClasses = [
+  'rounded-3xl border border-neutral-200 bg-neutral-100 p-4 shadow-xl',
+  'dark:border-neutral-800 dark:bg-neutral-950',
+]
+const sectionCardClasses = [
+  'rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm',
+  'dark:border-neutral-700 dark:bg-neutral-900',
+]
+const sectionTitleClasses = [
+  'mb-2 text-sm font-700',
+]
+const fieldInputClasses = [
+  'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
+  'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
+]
 </script>
 
 <template>
-  <div :class="['mx-auto max-w-4xl p-4 text-neutral-800 dark:text-neutral-100']">
-    <div :class="['mb-4 flex items-center justify-between gap-2']">
-      <div>
-        <div :class="['text-2xl font-700']">
-          人脸录入
+  <div :class="pageRootClasses">
+    <section :class="pageShellClasses">
+      <div :class="['mb-4 flex items-center justify-between gap-2']">
+        <div>
+          <div :class="['text-2xl font-700']">
+            人脸录入
+          </div>
+          <div :class="['text-sm text-neutral-500 dark:text-neutral-400']">
+            为 Rin 视觉交互门控配置本地加密人脸档案。
+          </div>
         </div>
-        <div :class="['text-sm text-neutral-500 dark:text-neutral-400']">
-          为 Rin 视觉交互门控配置本地加密人脸档案。
+        <Button size="sm" variant="ghost" @click="backToStage">
+          返回主界面
+        </Button>
+      </div>
+
+      <div :class="['grid gap-3 md:grid-cols-2']">
+        <div :class="sectionCardClasses">
+          <div :class="sectionTitleClasses">
+            摄像头控制
+          </div>
+          <div :class="['flex items-center gap-2']">
+            <Button size="sm" :variant="isEnabled ? 'secondary' : 'primary'" @click="toggleCamera">
+              {{ isEnabled ? '关闭摄像头' : '开启摄像头' }}
+            </Button>
+          </div>
+          <div :class="['mt-2 text-xs']">
+            <div>摄像头状态：{{ cameraStateText }}</div>
+            <div v-if="errorMessage" :class="['text-rose-600 dark:text-rose-300']">
+              {{ errorMessage }}
+            </div>
+          </div>
+        </div>
+
+        <div :class="sectionCardClasses">
+          <div :class="sectionTitleClasses">
+            OpenCV 状态
+          </div>
+          <div :class="['text-xs']">
+            <div>OpenCV：{{ openCvStatusText }}</div>
+            <div>质量分：{{ qualityText }}</div>
+            <div>亮度：{{ latestQuality?.brightness?.toFixed(1) ?? '无' }}</div>
+            <div>清晰度：{{ latestQuality?.sharpness?.toFixed(1) ?? '无' }}</div>
+            <div>对比度：{{ latestQuality?.contrast?.toFixed(1) ?? '无' }}</div>
+            <div>人脸尺寸：{{ latestQuality?.faceSize?.toFixed(2) ?? '无' }}</div>
+            <div v-if="openCvErrorMessage" :class="['text-amber-600 dark:text-amber-300']">
+              {{ openCvErrorMessage }}
+            </div>
+          </div>
         </div>
       </div>
-      <Button size="sm" variant="ghost" @click="backToStage">
-        返回主界面
-      </Button>
-    </div>
 
-    <div :class="['grid gap-3 md:grid-cols-2']">
-      <div :class="['rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-        <div :class="['mb-2 text-sm font-700']">
-          摄像头控制
+      <div :class="[sectionCardClasses, 'mt-3']">
+        <div :class="sectionTitleClasses">
+          Vision Runtime
         </div>
-        <div :class="['flex items-center gap-2']">
-          <Button size="sm" :variant="isEnabled ? 'secondary' : 'primary'" @click="toggleCamera">
-            {{ isEnabled ? '关闭摄像头' : '开启摄像头' }}
+        <div :class="['text-xs']">
+          <div>status：{{ runtimeStatusText }}</div>
+          <div>warmupDuration：{{ runtimeWarmupDurationText }}</div>
+          <div>retryCount：{{ runtimeRetryCount }}</div>
+          <div>lastError：{{ runtimeLastError || 'none' }}</div>
+          <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+            First startup may take a moment.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Models are reused after warmup.
+          </div>
+          <div :class="['text-neutral-500 dark:text-neutral-400']">
+            Stop Camera releases camera only; models stay ready.
+          </div>
+        </div>
+        <div :class="['mt-2 flex flex-wrap items-center gap-2']">
+          <Button size="sm" variant="ghost" :disabled="runtimeWorking" @click="handleRetryRuntime">
+            {{ runtimeWorking ? '处理中...' : 'Retry Runtime' }}
+          </Button>
+          <Button size="sm" variant="ghost" :disabled="runtimeWorking" @click="handleResetRuntime">
+            Reset Runtime
+          </Button>
+        </div>
+      </div>
+
+      <div :class="[sectionCardClasses, 'mt-3']">
+        <div :class="sectionTitleClasses">
+          基础信息
+        </div>
+        <div :class="['grid gap-2 md:grid-cols-2']">
+          <label :class="['flex flex-col gap-1 text-xs']">
+            <span>显示昵称</span>
+            <input
+              v-model="displayNameInput"
+              :class="fieldInputClasses"
+            >
+          </label>
+          <label :class="['flex flex-col gap-1 text-xs']">
+            <span>加密口令 / PIN</span>
+            <input
+              v-model="passphrase"
+              type="password"
+              :class="fieldInputClasses"
+            >
+          </label>
+          <label :class="['flex flex-col gap-1 text-xs']">
+            <span>确认口令</span>
+            <input
+              v-model="confirmPassphrase"
+              type="password"
+              :class="fieldInputClasses"
+            >
+          </label>
+          <label :class="['flex flex-col gap-1 text-xs']">
+            <span>匹配阈值</span>
+            <input
+              v-model="thresholdInput"
+              inputmode="decimal"
+              :class="fieldInputClasses"
+            >
+          </label>
+          <label :class="['flex flex-col gap-1 text-xs']">
+            <span>质量阈值</span>
+            <input
+              v-model="qualityThresholdInput"
+              inputmode="decimal"
+              :class="fieldInputClasses"
+            >
+          </label>
+          <label :class="['flex flex-col gap-1 text-xs']">
+            <span>目标采样数</span>
+            <input
+              v-model="enrollSampleCountInput"
+              inputmode="numeric"
+              :class="fieldInputClasses"
+            >
+          </label>
+          <label :class="['flex flex-col gap-1 text-xs']">
+            <span>稳定判定帧数</span>
+            <input
+              v-model="stableFramesInput"
+              inputmode="numeric"
+              :class="fieldInputClasses"
+            >
+          </label>
+        </div>
+      </div>
+
+      <div :class="[sectionCardClasses, 'mt-3']">
+        <div :class="sectionTitleClasses">
+          采样录入
+        </div>
+        <div :class="['flex flex-wrap items-center gap-2']">
+          <Button size="sm" variant="primary" :disabled="enrolling || !isEnabled" @click="runEnrollment">
+            {{ enrolling ? '录入中...' : (hasEncryptedProfile ? '重新录入' : '开始录入') }}
           </Button>
         </div>
         <div :class="['mt-2 text-xs']">
-          <div>摄像头状态：{{ cameraStateText }}</div>
-          <div v-if="errorMessage" :class="['text-rose-600 dark:text-rose-300']">
-            {{ errorMessage }}
+          <div>通过样本数：{{ acceptedSamples }}</div>
+          <div>拒绝样本数：{{ rejectedSamples }}</div>
+          <div v-if="enrollmentMessage">
+            {{ enrollmentMessage }}
           </div>
         </div>
       </div>
 
-      <div :class="['rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-        <div :class="['mb-2 text-sm font-700']">
-          OpenCV 状态
+      <div :class="[sectionCardClasses, 'mt-3']">
+        <div :class="sectionTitleClasses">
+          加密档案
         </div>
         <div :class="['text-xs']">
+          <div>档案状态：{{ profileStatusText }}</div>
+          <div>门控状态：{{ gateStateText }}</div>
+          <div>样本数量：{{ localFaceGate.profileSampleCount }}</div>
+          <div v-if="unlockedProfile">
+            显示昵称：{{ unlockedProfile.displayName }}
+          </div>
+          <div v-if="unlockedProfile">
+            创建时间：{{ unlockedProfile.createdAt }}
+          </div>
+          <div v-if="unlockedProfile">
+            更新时间：{{ unlockedProfile.updatedAt }}
+          </div>
+        </div>
+        <div :class="['mt-2 flex flex-wrap items-center gap-2']">
+          <label :class="['flex items-center gap-1 text-xs']">
+            <span>启用人脸门控</span>
+            <input
+              :checked="gateEnabled"
+              type="checkbox"
+              @change="setFaceGateEnabled(($event.target as HTMLInputElement).checked)"
+            >
+          </label>
+          <input
+            v-if="profileStatus !== 'unlocked'"
+            v-model="unlockPassphrase"
+            type="password"
+            placeholder="输入解锁口令"
+            :class="fieldInputClasses"
+          >
+          <Button
+            v-if="profileStatus !== 'unlocked'"
+            size="sm"
+            variant="secondary"
+            :disabled="unlocking || !hasEncryptedProfile"
+            @click="runUnlock"
+          >
+            {{ unlocking ? '解锁中...' : '解锁档案' }}
+          </Button>
+          <Button v-if="profileStatus === 'unlocked'" size="sm" variant="secondary" @click="runLock">
+            锁定档案
+          </Button>
+          <Button size="sm" variant="ghost" :disabled="!hasEncryptedProfile" @click="runDelete">
+            删除档案
+          </Button>
+        </div>
+        <div v-if="hasEncryptedProfile" :class="['mt-2 flex flex-col gap-1 text-xs']">
+          <label :class="['flex items-center gap-1 text-neutral-600 dark:text-neutral-300']">
+            <input
+              :checked="rememberOnDevice"
+              type="checkbox"
+              :disabled="!secureStoreAvailable"
+              @change="toggleRememberOnDevice"
+            >
+            <span>在本机记住并自动解锁</span>
+          </label>
+          <div v-if="!secureStoreAvailable && isDev" :class="['text-amber-600 dark:text-amber-300']">
+            当前环境未启用安全存储，无法开启无感自动解锁。
+          </div>
+        </div>
+        <div v-if="encryptedProfile.errorMessage" :class="['mt-2 text-xs text-rose-600 dark:text-rose-300']">
+          {{ encryptedProfile.errorMessage }}
+        </div>
+      </div>
+
+      <div :class="[sectionCardClasses, 'mt-3']">
+        <div :class="sectionTitleClasses">
+          Vision Diagnostics
+        </div>
+        <div :class="['grid gap-1 text-xs md:grid-cols-2']">
+          <div>runtimeStatus：{{ runtimeStatusText }}</div>
+          <div>runtimeWarmup：{{ runtimeWarmupDurationText }}</div>
+          <div>runtimeRetryCount：{{ runtimeRetryCount }}</div>
+          <div>cameraState：{{ cameraState }}</div>
+          <div>cameraPermission：{{ cameraPermissionStateText }}</div>
+          <div>MediaPipe：{{ mediaPipeStatusText }}</div>
           <div>OpenCV：{{ openCvStatusText }}</div>
-          <div>质量分：{{ qualityText }}</div>
-          <div>亮度：{{ latestQuality?.brightness?.toFixed(1) ?? '无' }}</div>
-          <div>清晰度：{{ latestQuality?.sharpness?.toFixed(1) ?? '无' }}</div>
-          <div>对比度：{{ latestQuality?.contrast?.toFixed(1) ?? '无' }}</div>
-          <div>人脸尺寸：{{ latestQuality?.faceSize?.toFixed(2) ?? '无' }}</div>
-          <div v-if="openCvErrorMessage" :class="['text-amber-600 dark:text-amber-300']">
-            {{ openCvErrorMessage }}
+          <div>faceProfile：{{ profileStatus }}</div>
+          <div>faceGate：{{ localFaceGate.gateState }} / {{ gateProfileStatusText }}</div>
+          <div :class="['md:col-span-2']">
+            lastError：{{ visionLastError }}
           </div>
         </div>
       </div>
-    </div>
 
-    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-      <div :class="['mb-2 text-sm font-700']">
-        Vision Runtime
-      </div>
-      <div :class="['text-xs']">
-        <div>status：{{ runtimeStatusText }}</div>
-        <div>warmupDuration：{{ runtimeWarmupDurationText }}</div>
-        <div>retryCount：{{ runtimeRetryCount }}</div>
-        <div>lastError：{{ runtimeLastError || 'none' }}</div>
-        <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
-          First startup may take a moment.
+      <div :class="[sectionCardClasses, 'mt-3']">
+        <div :class="sectionTitleClasses">
+          摄像头诊断日志
         </div>
-        <div :class="['text-neutral-500 dark:text-neutral-400']">
-          Models are reused after warmup.
-        </div>
-        <div :class="['text-neutral-500 dark:text-neutral-400']">
-          Stop Camera releases camera only; models stay ready.
+        <div :class="['text-xs']">
+          <div>轨道结束次数：{{ cameraDiagnostics.trackEndedCount }}</div>
+          <div>意外轨道结束次数：{{ cameraDiagnostics.unexpectedTrackEndedCount }}</div>
+          <div>最近轨道结束时间：{{ lastTrackEndedAtText }}</div>
+          <div>最近轨道 ID：{{ cameraDiagnostics.lastTrackEndedTrackId ?? '无' }}</div>
+          <div>最近轨道标签：{{ cameraDiagnostics.lastTrackEndedTrackLabel ?? '无' }}</div>
+          <div>最近轨道结束是否主动：{{ cameraDiagnostics.lastTrackEndedIntentional === null ? '无' : (cameraDiagnostics.lastTrackEndedIntentional ? '是' : '否') }}</div>
+          <div>识别异常总数：{{ cameraDiagnostics.inferenceErrorCount }}</div>
+          <div>连续识别异常：{{ cameraDiagnostics.consecutiveInferenceErrorCount }}</div>
+          <div>最近识别异常时间：{{ lastInferenceErrorAtText }}</div>
+          <div>最近识别异常信息：{{ cameraDiagnostics.lastInferenceErrorMessage || '无' }}</div>
         </div>
       </div>
-      <div :class="['mt-2 flex flex-wrap items-center gap-2']">
-        <Button size="sm" variant="ghost" :disabled="runtimeWorking" @click="handleRetryRuntime">
-          {{ runtimeWorking ? '处理中...' : 'Retry Runtime' }}
-        </Button>
-        <Button size="sm" variant="ghost" :disabled="runtimeWorking" @click="handleResetRuntime">
-          Reset Runtime
-        </Button>
-      </div>
-    </div>
 
-    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-      <div :class="['mb-2 text-sm font-700']">
-        基础信息
+      <div :class="[sectionCardClasses, 'mt-3 text-xs']">
+        人脸档案仅在本地加密保存，不会上传任何摄像头数据；口令不会被持久化保存，本地档案可随时删除，本功能仅用于提升 Rin 视觉交互体验。
       </div>
-      <div :class="['grid gap-2 md:grid-cols-2']">
-        <label :class="['flex flex-col gap-1 text-xs']">
-          <span>显示昵称</span>
-          <input
-            v-model="displayNameInput"
-            :class="[
-              'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-              'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-          >
-        </label>
-        <label :class="['flex flex-col gap-1 text-xs']">
-          <span>加密口令 / PIN</span>
-          <input
-            v-model="passphrase"
-            type="password"
-            :class="[
-              'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-              'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-          >
-        </label>
-        <label :class="['flex flex-col gap-1 text-xs']">
-          <span>确认口令</span>
-          <input
-            v-model="confirmPassphrase"
-            type="password"
-            :class="[
-              'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-              'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-          >
-        </label>
-        <label :class="['flex flex-col gap-1 text-xs']">
-          <span>匹配阈值</span>
-          <input
-            v-model="thresholdInput"
-            inputmode="decimal"
-            :class="[
-              'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-              'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-          >
-        </label>
-        <label :class="['flex flex-col gap-1 text-xs']">
-          <span>质量阈值</span>
-          <input
-            v-model="qualityThresholdInput"
-            inputmode="decimal"
-            :class="[
-              'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-              'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-          >
-        </label>
-        <label :class="['flex flex-col gap-1 text-xs']">
-          <span>目标采样数</span>
-          <input
-            v-model="enrollSampleCountInput"
-            inputmode="numeric"
-            :class="[
-              'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-              'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-          >
-        </label>
-        <label :class="['flex flex-col gap-1 text-xs']">
-          <span>稳定判定帧数</span>
-          <input
-            v-model="stableFramesInput"
-            inputmode="numeric"
-            :class="[
-              'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-              'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-          >
-        </label>
-      </div>
-    </div>
-
-    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-      <div :class="['mb-2 text-sm font-700']">
-        采样录入
-      </div>
-      <div :class="['flex flex-wrap items-center gap-2']">
-        <Button size="sm" variant="primary" :disabled="enrolling || !isEnabled" @click="runEnrollment">
-          {{ enrolling ? '录入中...' : (hasEncryptedProfile ? '重新录入' : '开始录入') }}
-        </Button>
-      </div>
-      <div :class="['mt-2 text-xs']">
-        <div>通过样本数：{{ acceptedSamples }}</div>
-        <div>拒绝样本数：{{ rejectedSamples }}</div>
-        <div v-if="enrollmentMessage">
-          {{ enrollmentMessage }}
-        </div>
-      </div>
-    </div>
-
-    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-      <div :class="['mb-2 text-sm font-700']">
-        加密档案
-      </div>
-      <div :class="['text-xs']">
-        <div>档案状态：{{ profileStatusText }}</div>
-        <div>门控状态：{{ gateStateText }}</div>
-        <div>样本数量：{{ localFaceGate.profileSampleCount }}</div>
-        <div v-if="unlockedProfile">
-          显示昵称：{{ unlockedProfile.displayName }}
-        </div>
-        <div v-if="unlockedProfile">
-          创建时间：{{ unlockedProfile.createdAt }}
-        </div>
-        <div v-if="unlockedProfile">
-          更新时间：{{ unlockedProfile.updatedAt }}
-        </div>
-      </div>
-      <div :class="['mt-2 flex flex-wrap items-center gap-2']">
-        <label :class="['flex items-center gap-1 text-xs']">
-          <span>启用人脸门控</span>
-          <input
-            :checked="gateEnabled"
-            type="checkbox"
-            @change="setFaceGateEnabled(($event.target as HTMLInputElement).checked)"
-          >
-        </label>
-        <input
-          v-if="profileStatus !== 'unlocked'"
-          v-model="unlockPassphrase"
-          type="password"
-          placeholder="输入解锁口令"
-          :class="[
-            'rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-800 outline-none',
-            'focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100',
-          ]"
-        >
-        <Button
-          v-if="profileStatus !== 'unlocked'"
-          size="sm"
-          variant="secondary"
-          :disabled="unlocking || !hasEncryptedProfile"
-          @click="runUnlock"
-        >
-          {{ unlocking ? '解锁中...' : '解锁档案' }}
-        </Button>
-        <Button v-if="profileStatus === 'unlocked'" size="sm" variant="secondary" @click="runLock">
-          锁定档案
-        </Button>
-        <Button size="sm" variant="ghost" :disabled="!hasEncryptedProfile" @click="runDelete">
-          删除档案
-        </Button>
-      </div>
-      <div v-if="hasEncryptedProfile" :class="['mt-2 flex flex-col gap-1 text-xs']">
-        <label :class="['flex items-center gap-1 text-neutral-600 dark:text-neutral-300']">
-          <input
-            :checked="rememberOnDevice"
-            type="checkbox"
-            :disabled="!secureStoreAvailable"
-            @change="toggleRememberOnDevice"
-          >
-          <span>在本机记住并自动解锁</span>
-        </label>
-        <div v-if="!secureStoreAvailable && isDev" :class="['text-amber-600 dark:text-amber-300']">
-          当前环境未启用安全存储，无法开启无感自动解锁。
-        </div>
-      </div>
-      <div v-if="encryptedProfile.errorMessage" :class="['mt-2 text-xs text-rose-600 dark:text-rose-300']">
-        {{ encryptedProfile.errorMessage }}
-      </div>
-    </div>
-
-    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-      <div :class="['mb-2 text-sm font-700']">
-        Vision Diagnostics
-      </div>
-      <div :class="['grid gap-1 text-xs md:grid-cols-2']">
-        <div>runtimeStatus：{{ runtimeStatusText }}</div>
-        <div>runtimeWarmup：{{ runtimeWarmupDurationText }}</div>
-        <div>runtimeRetryCount：{{ runtimeRetryCount }}</div>
-        <div>cameraState：{{ cameraState }}</div>
-        <div>cameraPermission：{{ cameraPermissionStateText }}</div>
-        <div>MediaPipe：{{ mediaPipeStatusText }}</div>
-        <div>OpenCV：{{ openCvStatusText }}</div>
-        <div>faceProfile：{{ profileStatus }}</div>
-        <div>faceGate：{{ localFaceGate.gateState }} / {{ gateProfileStatusText }}</div>
-        <div :class="['md:col-span-2']">
-          lastError：{{ visionLastError }}
-        </div>
-      </div>
-    </div>
-
-    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-      <div :class="['mb-2 text-sm font-700']">
-        摄像头诊断日志
-      </div>
-      <div :class="['text-xs']">
-        <div>轨道结束次数：{{ cameraDiagnostics.trackEndedCount }}</div>
-        <div>意外轨道结束次数：{{ cameraDiagnostics.unexpectedTrackEndedCount }}</div>
-        <div>最近轨道结束时间：{{ lastTrackEndedAtText }}</div>
-        <div>最近轨道 ID：{{ cameraDiagnostics.lastTrackEndedTrackId ?? '无' }}</div>
-        <div>最近轨道标签：{{ cameraDiagnostics.lastTrackEndedTrackLabel ?? '无' }}</div>
-        <div>最近轨道结束是否主动：{{ cameraDiagnostics.lastTrackEndedIntentional === null ? '无' : (cameraDiagnostics.lastTrackEndedIntentional ? '是' : '否') }}</div>
-        <div>识别异常总数：{{ cameraDiagnostics.inferenceErrorCount }}</div>
-        <div>连续识别异常：{{ cameraDiagnostics.consecutiveInferenceErrorCount }}</div>
-        <div>最近识别异常时间：{{ lastInferenceErrorAtText }}</div>
-        <div>最近识别异常信息：{{ cameraDiagnostics.lastInferenceErrorMessage || '无' }}</div>
-      </div>
-    </div>
-
-    <div :class="['mt-3 rounded-2xl border border-neutral-200/70 bg-white/88 p-3 text-xs shadow-md dark:border-neutral-700/70 dark:bg-neutral-900/80']">
-      人脸档案仅在本地加密保存，不会上传任何摄像头数据；口令不会被持久化保存，本地档案可随时删除，本功能仅用于提升 Rin 视觉交互体验。
-    </div>
+    </section>
 
     <video
       ref="videoRef"

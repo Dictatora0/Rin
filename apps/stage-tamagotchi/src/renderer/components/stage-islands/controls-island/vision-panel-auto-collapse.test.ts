@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => {
     moveModeEnabled: { value: false } as { value: boolean },
     controlsUIMode: { value: 'novice' } as { value: 'novice' | 'expert' },
     controlsPanelExpanded: { value: false } as { value: boolean },
+    studyPanelOpen: { value: false } as { value: boolean },
+    visionPanelOpen: { value: false } as { value: boolean },
+    visionCameraRunning: { value: false } as { value: boolean },
     visionUnmountStop: vi.fn(),
     openSettings: vi.fn(),
     openChat: vi.fn(),
@@ -28,6 +31,21 @@ const mocks = vi.hoisted(() => {
     }),
     setControlsPanelExpanded: vi.fn((expanded: boolean) => {
       mocks.controlsPanelExpanded.value = expanded
+    }),
+    toggleStudyPanel: vi.fn(() => {
+      mocks.studyPanelOpen.value = !mocks.studyPanelOpen.value
+    }),
+    toggleVisionPanel: vi.fn(() => {
+      mocks.visionPanelOpen.value = !mocks.visionPanelOpen.value
+    }),
+    setStudyPanelOpen: vi.fn((open: boolean) => {
+      mocks.studyPanelOpen.value = open
+    }),
+    setVisionPanelOpen: vi.fn((open: boolean) => {
+      mocks.visionPanelOpen.value = open
+    }),
+    setVisionCameraRunning: vi.fn((running: boolean) => {
+      mocks.visionCameraRunning.value = running
     }),
   }
 })
@@ -68,10 +86,18 @@ vi.mock('../../../stores/controls-island', () => ({
     moveModeEnabled: mocks.moveModeEnabled,
     controlsUIMode: mocks.controlsUIMode,
     controlsPanelExpanded: mocks.controlsPanelExpanded,
+    studyPanelOpen: mocks.studyPanelOpen,
+    visionPanelOpen: mocks.visionPanelOpen,
+    visionCameraRunning: mocks.visionCameraRunning,
     toggleMoveMode: mocks.toggleMoveMode,
     toggleControlsUIMode: mocks.toggleControlsUIMode,
     toggleControlsPanel: mocks.toggleControlsPanel,
     setControlsPanelExpanded: mocks.setControlsPanelExpanded,
+    toggleStudyPanel: mocks.toggleStudyPanel,
+    toggleVisionPanel: mocks.toggleVisionPanel,
+    setStudyPanelOpen: mocks.setStudyPanelOpen,
+    setVisionPanelOpen: mocks.setVisionPanelOpen,
+    setVisionCameraRunning: mocks.setVisionCameraRunning,
   }),
 }))
 
@@ -275,6 +301,9 @@ describe('controls island vision panel interaction flow', () => {
     mocks.moveModeEnabled = ref(false)
     mocks.controlsUIMode = ref<'novice' | 'expert'>('novice')
     mocks.controlsPanelExpanded = ref(false)
+    mocks.studyPanelOpen = ref(false)
+    mocks.visionPanelOpen = ref(false)
+    mocks.visionCameraRunning = ref(false)
     mocks.visionUnmountStop.mockReset()
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
@@ -285,6 +314,11 @@ describe('controls island vision panel interaction flow', () => {
     mocks.toggleControlsUIMode.mockReset()
     mocks.toggleControlsPanel.mockReset()
     mocks.setControlsPanelExpanded.mockReset()
+    mocks.toggleStudyPanel.mockReset()
+    mocks.toggleVisionPanel.mockReset()
+    mocks.setStudyPanelOpen.mockReset()
+    mocks.setVisionPanelOpen.mockReset()
+    mocks.setVisionCameraRunning.mockReset()
   })
 
   afterEach(() => {
@@ -307,7 +341,9 @@ describe('controls island vision panel interaction flow', () => {
     cameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(mocks.toggleVisionPanel).toHaveBeenCalledTimes(1)
+    expect(mocks.visionPanelOpen.value).toBe(true)
+    expect(container.querySelector('[data-testid="controls-vision-panel"]')).toBeNull()
     expect(container.querySelector('[data-testid="controls-window-grid"]')).not.toBeNull()
 
     mocks.isOutside.value = true
@@ -321,7 +357,7 @@ describe('controls island vision panel interaction flow', () => {
     await vi.advanceTimersByTimeAsync(10_000)
     await nextTick()
 
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(mocks.visionPanelOpen.value).toBe(true)
     expect(mocks.controlsPanelExpanded.value).toBe(true)
     expect(mocks.setControlsPanelExpanded).toHaveBeenCalledTimes(0)
     expect(mocks.visionUnmountStop).toHaveBeenCalledTimes(0)
@@ -384,7 +420,7 @@ describe('controls island vision panel interaction flow', () => {
     unmount()
   })
 
-  it('keeps vision runtime mounted when collapsing controls drawer manually', async () => {
+  it('keeps vision panel open state when collapsing controls drawer manually', async () => {
     const { container, unmount } = mountControlsIsland()
 
     const expandButton = findToggleButton(container)
@@ -394,13 +430,15 @@ describe('controls island vision panel interaction flow', () => {
     const cameraButton = findButtonByTooltipText(container, 'tamagotchi.stage.controls-island.vision-panel.expand')
     cameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(mocks.visionPanelOpen.value).toBe(true)
 
     const collapseButton = findToggleButton(container)
     collapseButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
-    expect(container.querySelector('[data-testid="vision-island-stub"]')).not.toBeNull()
+    expect(mocks.controlsPanelExpanded.value).toBe(false)
+    expect(mocks.visionPanelOpen.value).toBe(true)
+    expect(container.querySelector('[data-testid="controls-vision-panel"]')).toBeNull()
     expect(mocks.visionUnmountStop).toHaveBeenCalledTimes(0)
 
     unmount()

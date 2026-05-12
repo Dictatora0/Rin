@@ -6,11 +6,9 @@ import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/el
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { useTheme } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import StudyIsland from '../study-island/index.vue'
-import VisionIsland from '../vision-island/index.vue'
 import ControlButtonTooltip from './control-button-tooltip.vue'
 import ControlButton from './control-button.vue'
 import ControlsIslandAuthButton from './controls-island-auth-button.vue'
@@ -39,7 +37,14 @@ const controlsIslandStore = useControlsIslandStore()
 const context = useElectronEventaContext()
 const { enabled } = storeToRefs(settingsAudioDeviceStore)
 const { alwaysOnTop, controlsIslandIconSize } = storeToRefs(settingsStore)
-const { moveModeEnabled, controlsPanelExpanded, controlsUIMode } = storeToRefs(controlsIslandStore)
+const {
+  moveModeEnabled,
+  controlsPanelExpanded,
+  controlsUIMode,
+  studyPanelOpen,
+  visionPanelOpen,
+  visionCameraRunning,
+} = storeToRefs(controlsIslandStore)
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const openChat = useElectronEventaInvoke(electronOpenChat)
 const isLinux = useElectronEventaInvoke(electron.app.isLinux)
@@ -49,12 +54,7 @@ const getWindowBounds = useElectronEventaInvoke(electron.window.getBounds)
 const setWindowBounds = useElectronEventaInvoke(electron.window.setBounds)
 const getPrimaryDisplay = useElectronEventaInvoke(electron.screen.getPrimaryDisplay)
 
-const visionPanelVisible = ref(false)
-const studyPanelExpanded = ref(false)
-const studyPanelInteractionLocked = ref(false)
 const shortcutsCardExpanded = ref(false)
-const controlsPanelScrollElement = ref<HTMLElement | null>(null)
-const visionPanelElement = ref<HTMLElement | null>(null)
 
 // Tracks open overlays/dialogs that should prevent auto-collapse (e.g. 'hearing', 'profile-picker')
 const blockingOverlays = reactive(new Set<string>())
@@ -75,12 +75,22 @@ const isNoviceMode = computed(() => controlsUIMode.value === 'novice')
 const moveModeControlLabel = computed(() => moveModeEnabled.value
   ? t('tamagotchi.stage.controls-island.move-mode.disable')
   : t('tamagotchi.stage.controls-island.move-mode.enable'))
-const studyPanelToggleLabel = computed(() => studyPanelExpanded.value
+const studyPanelToggleLabel = computed(() => studyPanelOpen.value
   ? t('tamagotchi.stage.controls-island.study-panel.collapse')
   : t('tamagotchi.stage.controls-island.study-panel.expand'))
-const visionPanelToggleLabel = computed(() => visionPanelVisible.value
+const visionPanelToggleLabel = computed(() => visionPanelOpen.value
   ? t('tamagotchi.stage.controls-island.vision-panel.collapse')
   : t('tamagotchi.stage.controls-island.vision-panel.expand'))
+const visionCameraRunningHintLabel = computed(() => {
+  return '摄像头运行中'
+})
+const visionButtonLabel = computed(() => {
+  if (visionPanelOpen.value)
+    return visionPanelToggleLabel.value
+  if (visionCameraRunning.value)
+    return `${t('tamagotchi.stage.controls-island.vision-panel.expand')}（摄像头运行中）`
+  return visionPanelToggleLabel.value
+})
 
 function setOverlay(key: string, active: boolean) {
   if (active)
@@ -93,31 +103,13 @@ function setOverlay(key: string, active: boolean) {
 defineExpose({
   get hearingDialogOpen() { return blockingOverlays.has('hearing') },
   set hearingDialogOpen(v: boolean) { setOverlay('hearing', v) },
-  get studyPanelPinned() { return studyPanelExpanded.value || studyPanelInteractionLocked.value },
-  get studyPanelInputActive() { return studyPanelInteractionLocked.value },
 })
 
 watch(controlsPanelExpanded, (isExpanded) => {
-  if (isExpanded && visionPanelVisible.value) {
-    void scrollVisionPanelIntoView()
-    return
-  }
-
   if (!isExpanded) {
-    const keepVisionPanelOverlay = visionPanelVisible.value
     blockingOverlays.clear()
-    if (keepVisionPanelOverlay)
-      blockingOverlays.add('vision-panel')
-    studyPanelExpanded.value = false
-    studyPanelInteractionLocked.value = false
     shortcutsCardExpanded.value = false
   }
-})
-
-watch(visionPanelVisible, (visible) => {
-  setOverlay('vision-panel', visible)
-  if (visible)
-    void scrollVisionPanelIntoView()
 })
 
 // Apply alwaysOnTop on mount and when it changes
@@ -167,40 +159,12 @@ function refreshWindow() {
   window.location.reload()
 }
 
-function handleStudyPanelInteractionLock(locked: boolean) {
-  studyPanelInteractionLocked.value = locked
-}
-
 function toggleStudyPanel() {
-  studyPanelExpanded.value = !studyPanelExpanded.value
-}
-
-function closeStudyPanel() {
-  studyPanelExpanded.value = false
-  studyPanelInteractionLocked.value = false
+  controlsIslandStore.toggleStudyPanel()
 }
 
 function toggleVisionPanel() {
-  visionPanelVisible.value = !visionPanelVisible.value
-}
-
-async function scrollVisionPanelIntoView() {
-  await nextTick()
-  const panelSection = visionPanelElement.value
-  const scrollContainer = controlsPanelScrollElement.value
-  if (!panelSection || !scrollContainer)
-    return
-
-  if (typeof panelSection.scrollIntoView === 'function') {
-    panelSection.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'nearest',
-    })
-    return
-  }
-
-  scrollContainer.scrollTop = scrollContainer.scrollHeight
+  controlsIslandStore.toggleVisionPanel()
 }
 
 function toggleMoveMode() {
@@ -265,7 +229,6 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
           class="mb-2 max-w-[76vw] min-h-0 w-[18.5rem] flex flex-1 items-end self-end"
         >
           <div
-            ref="controlsPanelScrollElement"
             data-testid="controls-panel"
             data-controls-panel-scroll
             :class="[
@@ -479,7 +442,7 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     @click="toggleStudyPanel"
                   >
                     <div
-                      :class="[adjustStyleClasses.icon, studyPanelExpanded ? 'text-primary-600 dark:text-primary-300' : 'text-neutral-800 dark:text-neutral-300']"
+                      :class="[adjustStyleClasses.icon, studyPanelOpen ? 'text-primary-600 dark:text-primary-300' : 'text-neutral-800 dark:text-neutral-300']"
                       i-solar:book-bold-duotone
                     />
                   </ControlButton>
@@ -495,17 +458,24 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                     :button-style="adjustStyleClasses.button"
                     :show-label="isNoviceMode"
                     :label="t('tamagotchi.stage.controls-island.labels.vision')"
-                    :aria-label="visionPanelToggleLabel"
-                    :title="visionPanelToggleLabel"
+                    :aria-label="visionButtonLabel"
+                    :title="visionButtonLabel"
                     :class="[
-                      visionPanelVisible ? 'bg-sky-100/80 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300' : '',
+                      'relative',
+                      visionPanelOpen ? 'bg-sky-100/80 text-sky-600 ring-2 ring-sky-400/75 dark:bg-sky-900/40 dark:text-sky-300 dark:ring-sky-400/60' : '',
                     ]"
                     @click="toggleVisionPanel"
                   >
+                    <span
+                      v-if="visionCameraRunning && !visionPanelOpen"
+                      data-testid="controls-vision-running-dot"
+                      class="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-sky-500 dark:bg-sky-300"
+                      :title="visionCameraRunningHintLabel"
+                    />
                     <div i-solar:camera-outline :class="adjustStyleClasses.icon" />
                   </ControlButton>
                   <template #tooltip>
-                    {{ visionPanelToggleLabel }}
+                    {{ visionButtonLabel }}
                   </template>
                 </ControlButtonTooltip>
 
@@ -751,47 +721,6 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                 <span class="font-semibold">{{ t('tamagotchi.stage.controls-island.move-mode.status-on') }}</span>
                 <span class="ml-1">{{ t('tamagotchi.stage.controls-island.move-mode.status-hint') }}</span>
               </div>
-            </section>
-
-            <Transition
-              enter-active-class="transition-all duration-200 ease-out"
-              enter-from-class="opacity-0 -translate-y-1"
-              enter-to-class="opacity-100 translate-y-0"
-              leave-active-class="transition-all duration-150 ease-in"
-              leave-from-class="opacity-100 translate-y-0"
-              leave-to-class="opacity-0 -translate-y-1"
-            >
-              <section
-                v-show="studyPanelExpanded"
-                data-testid="controls-study-panel"
-                :class="[
-                  'min-h-0 flex flex-col border-t border-neutral-200/70 pt-2',
-                  'dark:border-neutral-700/70',
-                ]"
-              >
-                <div
-                  data-testid="controls-study-panel-scroll"
-                  :class="[
-                    'min-h-0 overflow-y-auto overscroll-contain',
-                    'pr-1',
-                  ]"
-                >
-                  <StudyIsland
-                    :class="['w-full !h-auto']"
-                    @interaction-lock-change="handleStudyPanelInteractionLock"
-                    @close="closeStudyPanel"
-                  />
-                </div>
-              </section>
-            </Transition>
-
-            <section
-              v-if="visionPanelVisible"
-              ref="visionPanelElement"
-              data-testid="controls-vision-panel"
-              class="min-h-0 flex flex-col"
-            >
-              <VisionIsland embedded :ui-mode="controlsUIMode" />
             </section>
           </div>
         </div>

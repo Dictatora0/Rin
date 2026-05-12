@@ -2,14 +2,25 @@
 import type { StudyEventLogEntry } from '@proj-airi/stage-ui/stores/modules/study-companion'
 
 import { useDownload } from '@proj-airi/stage-ui/composables/download'
-import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
+import {
+  MAX_BREAK_MINUTES,
+  MAX_FOCUS_MINUTES,
+  MIN_BREAK_MINUTES,
+  MIN_FOCUS_MINUTES,
+  useStudyCompanionStore,
+} from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { Button, Callout, DoubleCheckButton } from '@proj-airi/ui'
 import { useNow } from '@vueuse/core'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+
+import StudyHeatmap from '../../../components/stage-islands/study-island/StudyHeatmap.vue'
+import StudyHistoryChart from '../../../components/stage-islands/study-island/StudyHistoryChart.vue'
 
 const studyCompanion = useStudyCompanionStore()
 const now = useNow({ interval: 1000 })
 const expandedEventIds = ref<Set<string>>(new Set())
+const focusMinutesInput = ref(studyCompanion.focusMinutes)
+const breakMinutesInput = ref(studyCompanion.breakMinutes)
 
 const EVENT_DETAIL_PREVIEW_LIMIT = 120
 
@@ -33,6 +44,7 @@ const todayStatsRows = computed(() => [
   { label: '今日专注轮数', value: String(studyCompanion.persisted.todayFocusSessions) },
   { label: '今日累计专注分钟', value: String(studyCompanion.persisted.todayFocusMinutes) },
   { label: '今日完成任务数', value: String(studyCompanion.taskCompleted) },
+  { label: '今日中断次数', value: String(studyCompanion.todayInterruptCount) },
   { label: '今日提醒次数', value: String(studyCompanion.persisted.todayReminderCount) },
   { label: '当前模式', value: modeText.value },
   { label: '是否静音', value: isMutedText.value },
@@ -48,6 +60,44 @@ const taskSummaryRows = computed(() => {
     { label: '未完成', value: String(studyCompanion.taskPending) },
   ]
 })
+const last7DaysStats = computed(() => studyCompanion.getLast7DaysStats())
+const last14DaysStats = computed(() => studyCompanion.getLast14DaysStats())
+const last30DaysStats = computed(() => studyCompanion.getLast30DaysStats())
+
+function summarizeHistory(entries: Array<{ focusMinutes: number, focusSessions: number, completedTasks: number, interruptCount: number }>) {
+  return entries.reduce((summary, entry) => {
+    summary.focusMinutes += entry.focusMinutes
+    summary.focusSessions += entry.focusSessions
+    summary.completedTasks += entry.completedTasks
+    summary.interruptCount += entry.interruptCount
+    return summary
+  }, {
+    focusMinutes: 0,
+    focusSessions: 0,
+    completedTasks: 0,
+    interruptCount: 0,
+  })
+}
+
+const historySummaryRows = computed(() => {
+  const last7 = summarizeHistory(last7DaysStats.value)
+  const last14 = summarizeHistory(last14DaysStats.value)
+  const last30 = summarizeHistory(last30DaysStats.value)
+  return [
+    {
+      label: '最近 7 天',
+      value: `${last7.focusMinutes} 分钟 / ${last7.focusSessions} 轮 / ${last7.completedTasks} 任务 / ${last7.interruptCount} 中断`,
+    },
+    {
+      label: '最近 14 天',
+      value: `${last14.focusMinutes} 分钟 / ${last14.focusSessions} 轮 / ${last14.completedTasks} 任务 / ${last14.interruptCount} 中断`,
+    },
+    {
+      label: '最近 30 天',
+      value: `${last30.focusMinutes} 分钟 / ${last30.focusSessions} 轮 / ${last30.completedTasks} 任务 / ${last30.interruptCount} 中断`,
+    },
+  ]
+})
 
 const recentEvents = computed(() => {
   return [...studyCompanion.persisted.studyEvents]
@@ -61,6 +111,20 @@ const recentEvents = computed(() => {
       detail: formatEventDetail(event.detail),
     }))
 })
+
+watch(
+  () => studyCompanion.focusMinutes,
+  (minutes) => {
+    focusMinutesInput.value = minutes
+  },
+)
+
+watch(
+  () => studyCompanion.breakMinutes,
+  (minutes) => {
+    breakMinutesInput.value = minutes
+  },
+)
 
 function formatMode(mode: string) {
   if (mode === 'focus')
@@ -132,6 +196,8 @@ function formatEventType(type: StudyEventLogEntry['type']) {
     return '跨日重置'
   if (type === 'study_log_exported')
     return '导出日志'
+  if (type === 'study_markdown_report_exported')
+    return '导出 Markdown 报告'
   if (type === 'study_events_cleared')
     return '清空日志'
   if (type === 'study_stats_cleared')
@@ -172,6 +238,23 @@ function handleExportJson() {
   download()
 }
 
+function handleExportMarkdown() {
+  const report = studyCompanion.exportStudyMarkdownReport()
+  const reportBlob = new Blob([report.markdown], { type: 'text/markdown;charset=utf-8' })
+  const { download } = useDownload(reportBlob, report.filename)
+  download()
+}
+
+function handleApplyFocusMinutes() {
+  studyCompanion.setFocusMinutes(focusMinutesInput.value)
+  focusMinutesInput.value = studyCompanion.focusMinutes
+}
+
+function handleApplyBreakMinutes() {
+  studyCompanion.setBreakMinutes(breakMinutesInput.value)
+  breakMinutesInput.value = studyCompanion.breakMinutes
+}
+
 function handleClearActivityLog() {
   studyCompanion.clearStudyEvents()
 }
@@ -188,8 +271,94 @@ function handleClearTodayStats() {
       label="学习陪伴统计"
       theme="primary"
     >
-      查看今日专注统计、最近活动日志，并导出 JSON 快照用于分享或备份。
+      查看今日专注统计、最近活动日志，并导出 JSON / Markdown 报告用于展示或复盘。
     </Callout>
+
+    <section
+      :class="[
+        'rounded-xl border border-neutral-200/60 bg-white/80 p-4',
+        'dark:border-neutral-700/60 dark:bg-neutral-900/70',
+      ]"
+    >
+      <h3 :class="['mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200']">
+        学习节奏设置
+      </h3>
+      <div :class="['grid grid-cols-1 gap-3 sm:grid-cols-2']">
+        <label :class="['flex flex-col gap-1 text-xs text-neutral-600 dark:text-neutral-300']">
+          <span>专注时长（分钟）</span>
+          <input
+            v-model.number="focusMinutesInput"
+            type="number"
+            :min="MIN_FOCUS_MINUTES"
+            :max="MAX_FOCUS_MINUTES"
+            :class="[
+              'rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800',
+              'outline-none transition-colors focus:border-primary-500',
+              'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
+            ]"
+            @change="handleApplyFocusMinutes"
+            @blur="handleApplyFocusMinutes"
+          >
+          <span :class="['text-[11px] text-neutral-500 dark:text-neutral-400']">
+            范围：{{ MIN_FOCUS_MINUTES }} - {{ MAX_FOCUS_MINUTES }} 分钟
+          </span>
+        </label>
+
+        <label :class="['flex flex-col gap-1 text-xs text-neutral-600 dark:text-neutral-300']">
+          <span>休息时长（分钟）</span>
+          <input
+            v-model.number="breakMinutesInput"
+            type="number"
+            :min="MIN_BREAK_MINUTES"
+            :max="MAX_BREAK_MINUTES"
+            :class="[
+              'rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800',
+              'outline-none transition-colors focus:border-primary-500',
+              'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
+            ]"
+            @change="handleApplyBreakMinutes"
+            @blur="handleApplyBreakMinutes"
+          >
+          <span :class="['text-[11px] text-neutral-500 dark:text-neutral-400']">
+            范围：{{ MIN_BREAK_MINUTES }} - {{ MAX_BREAK_MINUTES }} 分钟
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <section
+      :class="[
+        'rounded-xl border border-neutral-200/60 bg-white/80 p-4',
+        'dark:border-neutral-700/60 dark:bg-neutral-900/70',
+      ]"
+    >
+      <h3 :class="['mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200']">
+        历史统计
+      </h3>
+      <div :class="['grid grid-cols-1 gap-2 sm:grid-cols-3']">
+        <div
+          v-for="row in historySummaryRows"
+          :key="row.label"
+          :class="[
+            'rounded-lg border border-neutral-200/70 bg-neutral-50/90 px-3 py-2',
+            'dark:border-neutral-700/70 dark:bg-neutral-800/70',
+          ]"
+        >
+          <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+            {{ row.label }}
+          </div>
+          <div :class="['mt-1 text-[12px] font-medium text-neutral-800 dark:text-neutral-100']">
+            {{ row.value }}
+          </div>
+        </div>
+      </div>
+      <div :class="['mt-3']">
+        <StudyHistoryChart :entries="last7DaysStats" />
+      </div>
+      <div :class="['mt-3']">
+        <StudyHeatmap :entries="last30DaysStats" />
+      </div>
+    </section>
 
     <section
       :class="[
@@ -328,6 +497,14 @@ function handleClearTodayStats() {
           导出 JSON
         </Button>
 
+        <Button
+          icon="i-solar:document-add-bold-duotone"
+          variant="secondary"
+          @click="handleExportMarkdown"
+        >
+          导出 Markdown 报告
+        </Button>
+
         <DoubleCheckButton variant="caution" cancel-variant="secondary" @confirm="handleClearActivityLog">
           清空活动日志
           <template #confirm>
@@ -348,14 +525,14 @@ function handleClearTodayStats() {
 
 <route lang="yaml">
 meta:
-  layout: settings
-  title: 学习统计
-  subtitleKey: settings.title
-  description: 学习陪伴统计面板、活动日志与 JSON 导出
-  icon: i-solar:chart-2-bold-duotone
+  layout: "settings"
+  title: "学习统计"
+  subtitleKey: "settings.title"
+  description: "学习陪伴统计面板、活动日志与 JSON 导出"
+  icon: "i-solar:chart-2-bold-duotone"
   settingsEntry: true
   order: 8
   stageTransition:
-    name: slide
+    name: "slide"
     pageSpecificAvailable: true
 </route>

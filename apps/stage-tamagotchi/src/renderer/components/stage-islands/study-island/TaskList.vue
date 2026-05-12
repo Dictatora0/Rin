@@ -3,13 +3,30 @@ import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 
+import {
+  formatStudyTaskDueText,
+  formatStudyTaskPriorityLabel,
+  formatStudyTaskSortModeLabel,
+  resolveStudyTaskDueClass,
+  resolveStudyTaskPriorityClass,
+} from '../../../utils/study-status-labels'
+
 const emit = defineEmits<{
   interactionLockChange: [locked: boolean]
 }>()
 const studyStore = useStudyCompanionStore()
-const { persisted, taskTotal, taskCompleted, taskPending } = storeToRefs(studyStore)
-const { addTask, toggleTaskDone, deleteTask } = studyStore
+const { taskSortMode, sortedTasks, taskTotal, taskCompleted, taskPending } = storeToRefs(studyStore)
+const {
+  addTask,
+  toggleTaskDone,
+  deleteTask,
+  setTaskPriority,
+  setTaskDueDate,
+  setTaskSortMode,
+} = studyStore
 const draftTitle = ref('')
+const draftPriority = ref<'high' | 'medium' | 'low'>('medium')
+const draftDueDate = ref('')
 const taskInputRef = ref<HTMLInputElement>()
 const isTaskInputFocused = ref(false)
 const isComposing = ref(false)
@@ -17,16 +34,36 @@ const taskCompletionFeedbackVisible = ref(false)
 const taskCompletionFeedbackText = ref('已完成，做得不错')
 let completionFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
-const tasks = computed(() => persisted.value.tasks)
+const tasks = computed(() => sortedTasks.value)
 const showTaskOverloadHint = computed(() => taskPending.value >= 5)
+const taskSortModeModel = computed({
+  get() {
+    return taskSortMode.value
+  },
+  set(mode: 'smart' | 'createdAt' | 'priority' | 'dueDate') {
+    setTaskSortMode(mode)
+  },
+})
+const taskSortModeOptions = [
+  'smart',
+  'createdAt',
+  'priority',
+  'dueDate',
+] as const
 
 function submitTask() {
   const normalizedTitle = draftTitle.value.trim()
   if (!normalizedTitle)
     return
 
-  addTask(normalizedTitle)
+  addTask({
+    title: normalizedTitle,
+    priority: draftPriority.value,
+    dueDate: draftDueDate.value || undefined,
+  })
   draftTitle.value = ''
+  draftPriority.value = 'medium'
+  draftDueDate.value = ''
 }
 
 function clearTaskCompletionFeedbackTimer() {
@@ -93,6 +130,15 @@ function handleToggleTaskDone(taskId: string) {
     showTaskCompletionFeedback()
 }
 
+function handleTaskPriorityChange(taskId: string, priority: string) {
+  const normalizedPriority = priority === 'high' || priority === 'low' ? priority : 'medium'
+  setTaskPriority(taskId, normalizedPriority)
+}
+
+function handleTaskDueDateChange(taskId: string, dueDate: string) {
+  setTaskDueDate(taskId, dueDate || null)
+}
+
 onBeforeUnmount(() => {
   clearTaskCompletionFeedbackTimer()
 })
@@ -101,28 +147,50 @@ onBeforeUnmount(() => {
 <template>
   <section
     :class="[
-      'mt-1 border-t border-neutral-200/70 pt-2 pb-4',
+      'mt-2 border-t border-neutral-200/80 pt-3 pb-3',
       'dark:border-neutral-700/70',
     ]"
   >
-    <div :class="['flex items-center justify-between gap-2 text-xs']">
-      <span :class="['font-medium text-neutral-700 dark:text-neutral-200']">今日任务</span>
-      <span :class="['text-neutral-500 dark:text-neutral-400']">
-        任务：已完成 {{ taskCompleted }} / 共 {{ taskTotal }}
-      </span>
+    <div :class="['flex items-start justify-between gap-2 text-[12px]']">
+      <div :class="['flex flex-col gap-1']">
+        <span :class="['font-semibold text-neutral-700 dark:text-neutral-200']">今日任务</span>
+        <span :class="['text-neutral-500 dark:text-neutral-400']">
+          任务：已完成 {{ taskCompleted }} / 共 {{ taskTotal }}
+        </span>
+      </div>
+      <label :class="['flex items-center gap-1 text-[11px] text-neutral-500 dark:text-neutral-400']">
+        <span>排序</span>
+        <select
+          v-model="taskSortModeModel"
+          data-testid="task-sort-mode-select"
+          :class="[
+            'rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700',
+            'outline-none transition-colors focus:border-primary-500',
+            'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200',
+          ]"
+        >
+          <option
+            v-for="option in taskSortModeOptions"
+            :key="option"
+            :value="option"
+          >
+            {{ formatStudyTaskSortModeLabel(option) }}
+          </option>
+        </select>
+      </label>
     </div>
 
     <p
       v-if="showTaskOverloadHint"
       :class="[
-        'mt-1 rounded-md border border-amber-200/80 bg-amber-50/90 px-2 py-1 text-xs',
-        'text-amber-700 dark:border-amber-800/80 dark:bg-amber-950/40 dark:text-amber-200',
+        'mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px]',
+        'text-amber-700 dark:border-amber-800/70 dark:bg-amber-900/30 dark:text-amber-200',
       ]"
     >
       任务较多，建议先选 1 项开始。
     </p>
 
-    <div :class="['mt-2 flex items-center gap-1.5']">
+    <div :class="['mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-12']">
       <input
         ref="taskInputRef"
         v-model="draftTitle"
@@ -130,11 +198,12 @@ onBeforeUnmount(() => {
         maxlength="120"
         placeholder="添加今日任务"
         :class="[
-          'min-w-0 flex-1 rounded-lg border border-neutral-200/80 px-2.5 py-1.5 text-xs',
+          'min-w-0 rounded-xl border border-neutral-200/80 px-3 py-2 text-[12px]',
+          'sm:col-span-6',
           'scroll-mt-4 scroll-mb-28',
-          'bg-white/90 text-neutral-800 placeholder:text-neutral-400',
+          'bg-white text-neutral-800 placeholder:text-neutral-400',
           'outline-none transition-colors focus:border-primary-500',
-          'dark:border-neutral-700/70 dark:bg-neutral-800/80 dark:text-neutral-100 dark:placeholder:text-neutral-500',
+          'dark:border-neutral-700/70 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-500',
         ]"
         @focus="handleTaskInputFocus"
         @blur="handleTaskInputBlur"
@@ -142,10 +211,42 @@ onBeforeUnmount(() => {
         @compositionstart="handleCompositionStart"
         @compositionend="handleCompositionEnd"
       >
+      <select
+        v-model="draftPriority"
+        data-testid="task-priority-select"
+        :class="[
+          'rounded-xl border border-neutral-200/80 bg-white px-2 py-2 text-[12px] text-neutral-700',
+          'sm:col-span-2',
+          'outline-none transition-colors focus:border-primary-500',
+          'dark:border-neutral-700/70 dark:bg-neutral-900 dark:text-neutral-100',
+        ]"
+      >
+        <option value="high">
+          高优先级
+        </option>
+        <option value="medium">
+          中优先级
+        </option>
+        <option value="low">
+          低优先级
+        </option>
+      </select>
+      <input
+        v-model="draftDueDate"
+        data-testid="task-due-date-input"
+        type="date"
+        :class="[
+          'rounded-xl border border-neutral-200/80 bg-white px-2 py-2 text-[12px] text-neutral-700',
+          'sm:col-span-3',
+          'outline-none transition-colors focus:border-primary-500',
+          'dark:border-neutral-700/70 dark:bg-neutral-900 dark:text-neutral-100',
+        ]"
+      >
       <button
         type="button"
         :class="[
-          'shrink-0 rounded-lg bg-primary-600 px-2.5 py-1.5 text-xs font-medium text-white',
+          'shrink-0 rounded-xl bg-primary-600 px-3 py-2 text-[12px] font-medium text-white',
+          'sm:col-span-1',
           'transition-colors hover:bg-primary-500',
         ]"
         @click="submitTask"
@@ -158,8 +259,8 @@ onBeforeUnmount(() => {
       v-if="taskCompletionFeedbackVisible"
       data-testid="task-completion-feedback"
       :class="[
-        'mt-2 flex items-center gap-1.5 rounded-md border border-emerald-200/85 bg-emerald-50/85 px-2 py-1 text-xs',
-        'text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-900/30 dark:text-emerald-200',
+        'mt-2.5 flex items-center gap-1.5 rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs',
+        'text-primary-700 dark:border-primary-700/60 dark:bg-primary-900/20 dark:text-primary-200',
       ]"
     >
       <span :class="['i-solar:check-circle-bold text-sm animate-pulse']" />
@@ -168,52 +269,108 @@ onBeforeUnmount(() => {
 
     <ul
       v-if="tasks.length > 0"
-      :class="['mt-2 space-y-1 pb-4']"
+      :class="['mt-2.5 space-y-1.5 pb-3']"
     >
       <li
         v-for="task in tasks"
         :key="task.id"
         :class="[
-          'flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs',
-          'bg-neutral-100/80 dark:bg-neutral-800/70',
+          'rounded-xl px-2.5 py-2 text-[12px]',
+          'bg-neutral-100 dark:bg-neutral-800',
         ]"
       >
-        <button
-          type="button"
-          :class="[
-            'min-w-0 flex-1 truncate text-left',
-            task.done ? 'text-neutral-400 line-through dark:text-neutral-500' : 'text-neutral-700 dark:text-neutral-100',
-          ]"
-          :title="task.title"
-          @click="handleToggleTaskDone(task.id)"
-        >
-          {{ task.title }}
-        </button>
+        <div :class="['flex items-start justify-between gap-2']">
+          <button
+            type="button"
+            :class="[
+              'min-w-0 flex-1 truncate text-left',
+              task.done ? 'text-neutral-400 line-through dark:text-neutral-500' : 'text-neutral-700 dark:text-neutral-100',
+            ]"
+            :title="task.title"
+            @click="handleToggleTaskDone(task.id)"
+          >
+            {{ task.title }}
+          </button>
+          <span
+            :class="[
+              'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+              resolveStudyTaskPriorityClass(task.priority),
+            ]"
+          >
+            {{ formatStudyTaskPriorityLabel(task.priority) }}
+          </span>
+        </div>
 
-        <button
-          type="button"
-          :class="[
-            'shrink-0 rounded px-1.5 py-1 text-[11px] transition-colors',
-            task.done
-              ? 'bg-neutral-200 text-neutral-600 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600'
-              : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60',
-          ]"
-          @click="handleToggleTaskDone(task.id)"
-        >
-          {{ task.done ? '取消完成' : '完成' }}
-        </button>
+        <div :class="['mt-1 flex items-center justify-between gap-2']">
+          <span
+            :class="[
+              'text-[11px]',
+              resolveStudyTaskDueClass(task),
+            ]"
+          >
+            {{ formatStudyTaskDueText(task) || '未设置截止日期' }}
+          </span>
+          <div :class="['flex items-center gap-1.5']">
+            <button
+              type="button"
+              :class="[
+                'shrink-0 rounded-md px-1.5 py-1 text-[11px] transition-colors',
+                task.done
+                  ? 'bg-neutral-200 text-neutral-600 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600'
+                  : 'bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-200 dark:hover:bg-primary-900/50',
+              ]"
+              @click="handleToggleTaskDone(task.id)"
+            >
+              {{ task.done ? '取消完成' : '完成' }}
+            </button>
 
-        <button
-          type="button"
-          :class="[
-            'shrink-0 rounded px-1.5 py-1 text-[11px] transition-colors',
-            'bg-red-100 text-red-700 hover:bg-red-200',
-            'dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50',
-          ]"
-          @click="deleteTask(task.id)"
-        >
-          删除
-        </button>
+            <button
+              type="button"
+              :class="[
+                'shrink-0 rounded-md px-1.5 py-1 text-[11px] transition-colors',
+                'bg-red-100 text-red-700 hover:bg-red-200',
+                'dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50',
+              ]"
+              @click="deleteTask(task.id)"
+            >
+              删除
+            </button>
+          </div>
+        </div>
+
+        <div :class="['mt-1.5 grid grid-cols-2 gap-1.5']">
+          <select
+            :value="task.priority"
+            data-testid="task-item-priority-select"
+            :class="[
+              'rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700',
+              'outline-none transition-colors focus:border-primary-500',
+              'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
+            ]"
+            @change="event => handleTaskPriorityChange(task.id, (event.target as HTMLSelectElement).value)"
+          >
+            <option value="high">
+              高优先级
+            </option>
+            <option value="medium">
+              中优先级
+            </option>
+            <option value="low">
+              低优先级
+            </option>
+          </select>
+          <input
+            :value="task.dueDate ?? ''"
+            data-testid="task-item-due-date-input"
+            type="date"
+            :class="[
+              'rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700',
+              'outline-none transition-colors focus:border-primary-500',
+              'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
+            ]"
+            @change="event => handleTaskDueDateChange(task.id, (event.target as HTMLInputElement).value)"
+          >
+        </div>
       </li>
     </ul>
 
@@ -221,14 +378,14 @@ onBeforeUnmount(() => {
       v-else
       data-testid="task-list-empty-state"
       :class="[
-        'mt-2 rounded-lg border border-dashed border-neutral-300/70 px-2.5 py-2',
+        'mt-2.5 rounded-xl border border-dashed border-neutral-300/70 px-3 py-2.5',
         'text-xs text-neutral-600 dark:border-neutral-700/70 dark:text-neutral-300',
       ]"
     >
-      <p :class="['font-medium text-neutral-700 dark:text-neutral-100']">
+      <p :class="['text-sm font-medium text-neutral-700 dark:text-neutral-100']">
         还没有今日任务
       </p>
-      <p :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+      <p :class="['mt-1.5 text-neutral-500 dark:text-neutral-400']">
         添加一个任务，让 Rin 陪你完成它
       </p>
     </div>
