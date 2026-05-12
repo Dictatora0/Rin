@@ -81,7 +81,7 @@ export interface StudyEventLogEntry {
  * Persisted snapshot: timer + daily stats + collaboration fields (tasks, reminders, log).
  */
 export interface StudyCompanionPersisted {
-  /** Calendar day (UTC `YYYY-MM-DD`) for `today*` counters. */
+  /** Local calendar day key (`YYYY-MM-DD`) for `today*` counters. */
   statsDate: string
   /** Completed focus sessions today (a session completes when the focus timer reaches zero). */
   todayFocusSessions: number
@@ -155,29 +155,44 @@ export interface StudyMarkdownReportExport {
   statsDate: string
 }
 
-function utcCalendarDay(d = new Date()): string {
-  return d.toISOString().slice(0, 10)
+export function getLocalDayKey(d = new Date()): string {
+  const localYear = d.getFullYear()
+  const localMonth = `${d.getMonth() + 1}`.padStart(2, '0')
+  const localDate = `${d.getDate()}`.padStart(2, '0')
+  return `${localYear}-${localMonth}-${localDate}`
 }
 
-function utcCalendarDayFromTimestamp(timestamp: number): string {
+function getLocalDayKeyFromTimestamp(timestamp: number): string {
   if (!Number.isFinite(timestamp))
     return ''
-  return utcCalendarDay(new Date(timestamp))
+  return getLocalDayKey(new Date(timestamp))
 }
 
 function dayKeyToDate(dayKey: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey))
     return null
-  const date = new Date(`${dayKey}T00:00:00.000Z`)
-  if (Number.isNaN(date.getTime()))
+  const [yearText, monthText, dayText] = dayKey.split('-')
+  const year = Number.parseInt(yearText, 10)
+  const month = Number.parseInt(monthText, 10)
+  const day = Number.parseInt(dayText, 10)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day))
     return null
+  const date = new Date(year, month - 1, day)
+  if (
+    Number.isNaN(date.getTime())
+    || date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+  ) {
+    return null
+  }
   return date
 }
 
 function buildDayKeyOffset(baseDayKey: string, offsetDays: number): string {
-  const baseDate = dayKeyToDate(baseDayKey) ?? new Date(`${utcCalendarDay()}T00:00:00.000Z`)
+  const baseDate = dayKeyToDate(baseDayKey) ?? dayKeyToDate(getLocalDayKey()) ?? new Date()
   const shiftedDate = new Date(baseDate.getTime() + offsetDays * 24 * 60 * 60 * 1000)
-  return utcCalendarDay(shiftedDate)
+  return getLocalDayKey(shiftedDate)
 }
 
 function normalizeTaskSortMode(value: unknown): StudyTaskSortMode {
@@ -205,7 +220,7 @@ function normalizeTaskDueDate(value: unknown): string | undefined {
   const parsed = new Date(normalized)
   if (Number.isNaN(parsed.getTime()))
     return undefined
-  return utcCalendarDay(parsed)
+  return getLocalDayKey(parsed)
 }
 
 function normalizeTaskDateTime(value: unknown, fallbackISO?: string): string {
@@ -257,7 +272,7 @@ function countEventByType(events: StudyEventLogEntry[], statsDate: string, type:
   return events.filter((event) => {
     if (event.type !== type)
       return false
-    return utcCalendarDayFromTimestamp(event.at) === statsDate
+    return getLocalDayKeyFromTimestamp(event.at) === statsDate
   }).length
 }
 
@@ -267,7 +282,7 @@ function collectFocusTaskIds(events: StudyEventLogEntry[], dayKey: string) {
   for (const event of events) {
     if (event.type !== 'focus_started')
       continue
-    if (utcCalendarDayFromTimestamp(event.at) !== dayKey)
+    if (getLocalDayKeyFromTimestamp(event.at) !== dayKey)
       continue
     const taskId = event.detail?.taskId
     if (typeof taskId !== 'string' || taskId.trim().length === 0)
@@ -393,13 +408,13 @@ export function sortStudyTasks(tasks: StudyTask[], mode: StudyTaskSortMode = DEF
 export function isStudyTaskDueToday(task: StudyTask, now = new Date()): boolean {
   if (!task.dueDate || task.done)
     return false
-  return task.dueDate === utcCalendarDay(now)
+  return task.dueDate === getLocalDayKey(now)
 }
 
 export function isStudyTaskOverdue(task: StudyTask, now = new Date()): boolean {
   if (!task.dueDate || task.done)
     return false
-  return task.dueDate < utcCalendarDay(now)
+  return task.dueDate < getLocalDayKey(now)
 }
 
 function clampMinutes(value: number, minimum: number, maximum: number): number | null {
@@ -417,7 +432,7 @@ function countInterruptEvents(events: StudyEventLogEntry[], statsDate: string): 
   return events.filter((event) => {
     if (!INTERRUPT_EVENT_TYPES.has(event.type))
       return false
-    return utcCalendarDayFromTimestamp(event.at) === statsDate
+    return getLocalDayKeyFromTimestamp(event.at) === statsDate
   }).length
 }
 
@@ -614,7 +629,7 @@ function cloneStudyEvents(events: StudyEventLogEntry[]): StudyEventLogEntry[] {
  */
 export function createDefaultStudyCompanionPersisted(): StudyCompanionPersisted {
   return {
-    statsDate: utcCalendarDay(),
+    statsDate: getLocalDayKey(),
     todayFocusSessions: 0,
     todayFocusMinutes: 0,
     cycleCount: 0,
@@ -825,10 +840,10 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
   }
 
   /**
-   * Rolls daily counters when `statsDate` is not today (UTC). Idempotent.
+   * Rolls daily counters when `statsDate` is not today (local day key). Idempotent.
    */
   function rolloverIfNeeded() {
-    const today = utcCalendarDay()
+    const today = getLocalDayKey()
     const p = persisted.value
     if (p.statsDate === today)
       return

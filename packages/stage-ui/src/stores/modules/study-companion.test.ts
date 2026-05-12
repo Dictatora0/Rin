@@ -6,6 +6,7 @@ import {
   DEFAULT_FOCUS_DURATION_MS,
   DEMO_BREAK_DURATION_MS,
   DEMO_FOCUS_DURATION_MS,
+  getLocalDayKey,
   isStudyTaskDueToday,
   isStudyTaskOverdue,
   MAX_BREAK_MINUTES,
@@ -60,6 +61,13 @@ describe('useStudyCompanionStore', () => {
     vi.useRealTimers()
   })
 
+  it('formats local day key as YYYY-MM-DD', () => {
+    const date = new Date(2026, 4, 6, 1, 2, 3)
+    const dayKey = getLocalDayKey(date)
+    expect(dayKey).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(dayKey).toBe('2026-05-06')
+  })
+
   it('starts focus, completes into break, then returns idle after break', () => {
     const store = useStudyCompanionStore()
     store.persisted.focusDurationMs = 2_000
@@ -103,7 +111,7 @@ describe('useStudyCompanionStore', () => {
     expect(store.persisted.studyEvents.at(-1)?.type).toBe('session_resumed')
   })
 
-  it('rolls daily counters when statsDate is behind UTC calendar day', () => {
+  it('rolls daily counters when statsDate is behind local calendar day', () => {
     const store = useStudyCompanionStore()
     store.persisted.statsDate = '2026-01-01'
     store.persisted.todayFocusSessions = 3
@@ -560,6 +568,18 @@ describe('useStudyCompanionStore', () => {
     expect(range.find(entry => entry.dayKey === '2026-05-06')?.focusMinutes).toBe(60)
   })
 
+  it('uses continuous local day keys for history range generation', () => {
+    const store = useStudyCompanionStore()
+    vi.setSystemTime(new Date(2026, 4, 7, 0, 10, 0))
+
+    const expectedTodayDayKey = getLocalDayKey(new Date())
+    store.persisted.statsDate = expectedTodayDayKey
+    const range = store.getHistoryRange(3)
+
+    const expectedDays = [2, 1, 0].map(offset => getLocalDayKey(new Date(2026, 4, 7 - offset, 0, 10, 0)))
+    expect(range.map(entry => entry.dayKey)).toEqual(expectedDays)
+  })
+
   it('preserves previous-day history when rolling over to a new day', () => {
     const store = useStudyCompanionStore()
     store.persisted.statsDate = '2026-05-06'
@@ -579,6 +599,44 @@ describe('useStudyCompanionStore', () => {
     expect(dayEntry?.focusSessions).toBe(2)
     expect(dayEntry?.completedTasks).toBe(1)
     expect(dayEntry?.interruptCount).toBe(1)
+  })
+
+  it('uses local day key when rolling over across local midnight', () => {
+    vi.setSystemTime(new Date(2026, 4, 6, 23, 59, 0))
+    const store = useStudyCompanionStore()
+    store.persisted.statsDate = getLocalDayKey(new Date(2026, 4, 6, 23, 59, 0))
+    store.persisted.todayFocusMinutes = 20
+    store.persisted.todayFocusSessions = 1
+
+    vi.setSystemTime(new Date(2026, 4, 7, 0, 1, 0))
+    store.rolloverIfNeeded()
+
+    expect(store.persisted.statsDate).toBe(getLocalDayKey(new Date(2026, 4, 7, 0, 1, 0)))
+    expect(store.persisted.historyEntries.some(entry => entry.dayKey === '2026-05-06')).toBe(true)
+  })
+
+  it('keeps existing history entries when adding new local-day rollup entries', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.historyEntries = [
+      {
+        dayKey: '2026-05-01',
+        focusMinutes: 30,
+        focusSessions: 1,
+        completedTasks: 1,
+        interruptCount: 0,
+        createdTasks: 1,
+        focusTaskIds: ['legacy-task'],
+      },
+    ]
+    store.persisted.statsDate = '2026-05-06'
+    store.persisted.todayFocusMinutes = 40
+    store.persisted.todayFocusSessions = 2
+
+    vi.setSystemTime(new Date('2026-05-07T08:00:00.000Z'))
+    store.rolloverIfNeeded()
+
+    expect(store.persisted.historyEntries.some(entry => entry.dayKey === '2026-05-01')).toBe(true)
+    expect(store.persisted.historyEntries.some(entry => entry.dayKey === '2026-05-06')).toBe(true)
   })
 
   it('records selected task id when starting focus and can complete selected task in one action', () => {
@@ -604,12 +662,13 @@ describe('useStudyCompanionStore', () => {
 
   it('counts today interrupts by focus_reset only', () => {
     const store = useStudyCompanionStore()
-    store.persisted.statsDate = '2026-05-06'
+    const baseDay = new Date(2026, 4, 6, 12, 0, 0)
+    store.persisted.statsDate = getLocalDayKey(baseDay)
     store.persisted.studyEvents = [
-      { id: 'evt-1', at: Date.parse('2026-05-06T01:00:00.000Z'), type: 'focus_reset' },
-      { id: 'evt-2', at: Date.parse('2026-05-06T02:00:00.000Z'), type: 'focus_reset' },
-      { id: 'evt-3', at: Date.parse('2026-05-06T03:00:00.000Z'), type: 'session_paused' },
-      { id: 'evt-4', at: Date.parse('2026-05-05T23:59:59.000Z'), type: 'focus_reset' },
+      { id: 'evt-1', at: new Date(2026, 4, 6, 1, 0, 0).getTime(), type: 'focus_reset' },
+      { id: 'evt-2', at: new Date(2026, 4, 6, 2, 0, 0).getTime(), type: 'focus_reset' },
+      { id: 'evt-3', at: new Date(2026, 4, 6, 3, 0, 0).getTime(), type: 'session_paused' },
+      { id: 'evt-4', at: new Date(2026, 4, 5, 23, 59, 59).getTime(), type: 'focus_reset' },
     ]
 
     expect(store.todayInterruptCount).toBe(2)
@@ -652,5 +711,17 @@ describe('useStudyCompanionStore', () => {
     expect(report.filename).toBe('rin-study-report-2026-05-06.md')
     expect(report.markdown).toContain('# Rin 学习陪伴报告')
     expect(store.persisted.studyEvents.at(-1)?.type).toBe('study_markdown_report_exported')
+  })
+
+  it('uses local day key as markdown report date', () => {
+    vi.setSystemTime(new Date(2026, 4, 6, 10, 0, 0))
+    const store = useStudyCompanionStore()
+    const expectedDayKey = getLocalDayKey(new Date())
+    store.persisted.statsDate = expectedDayKey
+
+    const report = store.exportStudyMarkdownReport()
+    expect(report.statsDate).toBe(expectedDayKey)
+    expect(report.filename).toBe(`rin-study-report-${expectedDayKey}.md`)
+    expect(report.markdown).toContain(`- 日期：${expectedDayKey}`)
   })
 })
