@@ -139,6 +139,19 @@ function handleTaskDueDateChange(taskId: string, dueDate: string) {
   setTaskDueDate(taskId, dueDate || null)
 }
 
+function handleTaskFieldFocus(event: FocusEvent) {
+  const target = event.target
+  if (!(target instanceof HTMLElement))
+    return
+
+  nextTick(() => {
+    target.scrollIntoView({
+      block: 'center',
+      behavior: 'smooth',
+    })
+  })
+}
+
 onBeforeUnmount(() => {
   clearTaskCompletionFeedbackTimer()
 })
@@ -147,7 +160,7 @@ onBeforeUnmount(() => {
 <template>
   <section
     :class="[
-      'mt-2 border-t border-neutral-200/80 pt-3 pb-3',
+      'mt-2 border-t border-neutral-200/80 pt-3 pb-8 overflow-visible',
       'dark:border-neutral-700/70',
     ]"
   >
@@ -190,16 +203,29 @@ onBeforeUnmount(() => {
       任务较多，建议先选 1 项开始。
     </p>
 
-    <div :class="['mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-12']">
+    <div
+      data-testid="task-create-form"
+      :class="[
+        'mt-2.5 rounded-xl border border-neutral-200/80 bg-white/90 p-2.5 pb-6',
+        'overflow-visible',
+        'dark:border-neutral-700/70 dark:bg-neutral-900/70',
+      ]"
+    >
+      <label
+        for="task-title-input"
+        :class="['text-[11px] font-medium text-neutral-600 dark:text-neutral-300']"
+      >
+        任务名称
+      </label>
       <input
+        id="task-title-input"
         ref="taskInputRef"
         v-model="draftTitle"
         type="text"
         maxlength="120"
-        placeholder="添加今日任务"
+        placeholder="例如：整理课程提纲"
         :class="[
-          'min-w-0 rounded-xl border border-neutral-200/80 px-3 py-2 text-[12px]',
-          'sm:col-span-6',
+          'mt-1 min-w-0 w-full rounded-xl border border-neutral-200/80 px-3 py-2 text-[12px]',
           'scroll-mt-4 scroll-mb-28',
           'bg-white text-neutral-800 placeholder:text-neutral-400',
           'outline-none transition-colors focus:border-primary-500',
@@ -211,48 +237,84 @@ onBeforeUnmount(() => {
         @compositionstart="handleCompositionStart"
         @compositionend="handleCompositionEnd"
       >
-      <select
-        v-model="draftPriority"
-        data-testid="task-priority-select"
-        :class="[
-          'rounded-xl border border-neutral-200/80 bg-white px-2 py-2 text-[12px] text-neutral-700',
-          'sm:col-span-2',
-          'outline-none transition-colors focus:border-primary-500',
-          'dark:border-neutral-700/70 dark:bg-neutral-900 dark:text-neutral-100',
-        ]"
+
+      <div
+        data-testid="task-create-meta-grid"
+        :class="['mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2 overflow-visible']"
       >
-        <option value="high">
-          高优先级
-        </option>
-        <option value="medium">
-          中优先级
-        </option>
-        <option value="low">
-          低优先级
-        </option>
-      </select>
-      <input
-        v-model="draftDueDate"
-        data-testid="task-due-date-input"
-        type="date"
-        :class="[
-          'rounded-xl border border-neutral-200/80 bg-white px-2 py-2 text-[12px] text-neutral-700',
-          'sm:col-span-3',
-          'outline-none transition-colors focus:border-primary-500',
-          'dark:border-neutral-700/70 dark:bg-neutral-900 dark:text-neutral-100',
-        ]"
-      >
-      <button
-        type="button"
-        :class="[
-          'shrink-0 rounded-xl bg-primary-600 px-3 py-2 text-[12px] font-medium text-white',
-          'sm:col-span-1',
-          'transition-colors hover:bg-primary-500',
-        ]"
-        @click="submitTask"
-      >
-        添加
-      </button>
+        <label
+          for="task-priority-input"
+          :class="['flex flex-col gap-1 text-[11px] text-neutral-600 dark:text-neutral-300']"
+        >
+          <span>优先级</span>
+          <select
+            id="task-priority-input"
+            v-model="draftPriority"
+            data-testid="task-priority-select"
+            aria-label="优先级"
+            title="优先级"
+            :class="[
+              'rounded-xl border border-neutral-200/80 bg-white px-2 py-2 text-[12px] text-neutral-700',
+              'w-full min-w-[136px]',
+              'outline-none transition-colors focus:border-primary-500',
+              'dark:border-neutral-700/70 dark:bg-neutral-900 dark:text-neutral-100',
+            ]"
+          >
+            <option value="high">
+              高优先级
+            </option>
+            <option value="medium">
+              中优先级
+            </option>
+            <option value="low">
+              低优先级
+            </option>
+          </select>
+        </label>
+
+        <label
+          for="task-due-date-input"
+          :class="['flex flex-col gap-1 text-[11px] text-neutral-600 dark:text-neutral-300']"
+        >
+          <div :class="['flex items-center justify-between']">
+            <span>截止日期</span>
+            <span :class="['text-[10px] text-neutral-500 dark:text-neutral-400']">可选</span>
+          </div>
+          <input
+            id="task-due-date-input"
+            v-model="draftDueDate"
+            data-testid="task-due-date-input"
+            type="date"
+            aria-label="截止日期"
+            title="截止日期"
+            :class="[
+              'rounded-xl border border-neutral-200/80 bg-white px-2 py-2 text-[12px] text-neutral-700',
+              'w-full min-w-[148px]',
+              'scroll-mb-36',
+              'outline-none transition-colors focus:border-primary-500',
+              'dark:border-neutral-700/70 dark:bg-neutral-900 dark:text-neutral-100',
+            ]"
+            @focus="handleTaskFieldFocus"
+          >
+          <span :class="['text-[10px] text-neutral-500 dark:text-neutral-400']">
+            用于排序和逾期提示
+          </span>
+        </label>
+      </div>
+
+      <div :class="['mt-2.5 flex justify-end']">
+        <button
+          type="button"
+          :class="[
+            'w-full rounded-xl bg-primary-600 px-3 py-2 text-[12px] font-medium text-white',
+            'sm:w-auto sm:min-w-[108px]',
+            'transition-colors hover:bg-primary-500',
+          ]"
+          @click="submitTask"
+        >
+          添加任务
+        </button>
+      </div>
     </div>
 
     <div
@@ -301,7 +363,7 @@ onBeforeUnmount(() => {
           </span>
         </div>
 
-        <div :class="['mt-1 flex items-center justify-between gap-2']">
+        <div :class="['mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between']">
           <span
             :class="[
               'text-[11px]',
@@ -310,7 +372,7 @@ onBeforeUnmount(() => {
           >
             {{ formatStudyTaskDueText(task) || '未设置截止日期' }}
           </span>
-          <div :class="['flex items-center gap-1.5']">
+          <div :class="['flex flex-wrap items-center gap-1.5']">
             <button
               type="button"
               :class="[
@@ -338,38 +400,67 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div :class="['mt-1.5 grid grid-cols-2 gap-1.5']">
-          <select
-            :value="task.priority"
-            data-testid="task-item-priority-select"
-            :class="[
-              'rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700',
-              'outline-none transition-colors focus:border-primary-500',
-              'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-            @change="event => handleTaskPriorityChange(task.id, (event.target as HTMLSelectElement).value)"
+        <div
+          data-testid="task-item-edit-grid"
+          :class="['mt-1.5 grid grid-cols-1 gap-1.5 overflow-visible sm:grid-cols-2']"
+        >
+          <label
+            :for="`task-item-priority-${task.id}`"
+            :class="['flex flex-col gap-1 text-[11px] text-neutral-600 dark:text-neutral-300']"
           >
-            <option value="high">
-              高优先级
-            </option>
-            <option value="medium">
-              中优先级
-            </option>
-            <option value="low">
-              低优先级
-            </option>
-          </select>
-          <input
-            :value="task.dueDate ?? ''"
-            data-testid="task-item-due-date-input"
-            type="date"
-            :class="[
-              'rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700',
-              'outline-none transition-colors focus:border-primary-500',
-              'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
-            ]"
-            @change="event => handleTaskDueDateChange(task.id, (event.target as HTMLInputElement).value)"
+            <span>优先级</span>
+            <select
+              :id="`task-item-priority-${task.id}`"
+              :value="task.priority"
+              data-testid="task-item-priority-select"
+              aria-label="任务优先级"
+              title="任务优先级"
+              :class="[
+                'rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700',
+                'w-full min-w-[128px]',
+                'outline-none transition-colors focus:border-primary-500',
+                'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
+              ]"
+              @change="event => handleTaskPriorityChange(task.id, (event.target as HTMLSelectElement).value)"
+            >
+              <option value="high">
+                高优先级
+              </option>
+              <option value="medium">
+                中优先级
+              </option>
+              <option value="low">
+                低优先级
+              </option>
+            </select>
+          </label>
+
+          <label
+            :for="`task-item-due-date-${task.id}`"
+            :class="['flex flex-col gap-1 text-[11px] text-neutral-600 dark:text-neutral-300']"
           >
+            <div :class="['flex items-center justify-between']">
+              <span>截止日期</span>
+              <span :class="['text-[10px] text-neutral-500 dark:text-neutral-400']">可选</span>
+            </div>
+            <input
+              :id="`task-item-due-date-${task.id}`"
+              :value="task.dueDate ?? ''"
+              data-testid="task-item-due-date-input"
+              type="date"
+              aria-label="任务截止日期"
+              title="任务截止日期"
+              :class="[
+                'rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700',
+                'w-full min-w-[148px]',
+                'scroll-mb-36',
+                'outline-none transition-colors focus:border-primary-500',
+                'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
+              ]"
+              @focus="handleTaskFieldFocus"
+              @change="event => handleTaskDueDateChange(task.id, (event.target as HTMLInputElement).value)"
+            >
+          </label>
         </div>
       </li>
     </ul>

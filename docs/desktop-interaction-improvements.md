@@ -248,6 +248,7 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - 今日任务扩展字段：
     - 优先级（高/中/低）
     - 截止日期（可选）
+  - 任务录入区补充“优先级 / 截止日期”明确标签，截止日期用于排序和逾期提示，降低录入歧义。
   - 智能排序规则：
     - 未完成优先
     - 高优先级优先
