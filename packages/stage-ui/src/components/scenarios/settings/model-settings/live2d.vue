@@ -35,6 +35,7 @@ const {
   live2dShadowEnabled,
   live2dMaxFps,
   live2dRenderScale,
+  live2dFitPreference,
 } = storeToRefs(settings)
 
 const live2d = useLive2d()
@@ -74,6 +75,20 @@ const fpsOptions = computed(() => [
   { value: 0, label: t('settings.live2d.fps.options.unlimited') },
   { value: 60, label: '60' },
   { value: 30, label: '30' },
+])
+const fitPreferenceOptions = computed(() => [
+  {
+    value: 'auto',
+    label: t('settings.live2d.display-fit.options.auto'),
+  },
+  {
+    value: 'full-body',
+    label: t('settings.live2d.display-fit.options.full-body'),
+  },
+  {
+    value: 'upper-body',
+    label: t('settings.live2d.display-fit.options.upper-body'),
+  },
 ])
 
 watch(() => live2d.availableMotions, (motions) => {
@@ -315,6 +330,27 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       :step="0.25"
       :label="t('settings.live2d.render-scale.title')"
     />
+
+    <label class="mt-3 flex flex-col gap-2">
+      <div class="text-sm font-medium">
+        {{ t('settings.live2d.display-fit.title') }}
+      </div>
+      <div class="text-xs text-neutral-500 dark:text-neutral-400">
+        {{ t('settings.live2d.display-fit.description') }}
+      </div>
+      <SelectTab
+        v-model="live2dFitPreference"
+        :options="fitPreferenceOptions"
+        size="sm"
+        tab-space="compact"
+        :class="['w-full']"
+      />
+      <div class="text-xs text-neutral-500 space-y-1 dark:text-neutral-400">
+        <div>{{ t('settings.live2d.display-fit.hints.auto') }}</div>
+        <div>{{ t('settings.live2d.display-fit.hints.full-body') }}</div>
+        <div>{{ t('settings.live2d.display-fit.hints.upper-body') }}</div>
+      </div>
+    </label>
 
     <FieldCombobox
       v-model="selectedRuntimeMotion"

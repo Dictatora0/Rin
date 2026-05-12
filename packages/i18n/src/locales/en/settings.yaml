@@ -144,6 +144,17 @@ live2d:
       title: Disable model mouse tracking
   render-scale:
     title: Render scale
+  display-fit:
+    title: Display fit
+    description: This setting only affects Live2D visible range.
+    options:
+      auto: Auto
+      full-body: Full body
+      upper-body: Upper body
+    hints:
+      auto: Auto adjusts the visible range based on window height.
+      full-body: Shows more of the full character when there is enough space.
+      upper-body: Makes the upper body larger for daily companion use.
   fps:
     title: FPS
     description: Limit rendering frame rate

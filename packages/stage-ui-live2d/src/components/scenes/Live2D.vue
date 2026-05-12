@@ -29,6 +29,7 @@ withDefaults(defineProps<{
   live2dShadowEnabled?: boolean
   live2dMaxFps?: number
   live2dRenderScale?: number
+  fitPreference?: 'auto' | 'full-body' | 'upper-body'
 }>(), {
   paused: false,
   focusAt: () => ({ x: 0, y: 0 }),
@@ -43,6 +44,7 @@ withDefaults(defineProps<{
   live2dShadowEnabled: true,
   live2dMaxFps: 0,
   live2dRenderScale: 2,
+  fitPreference: 'auto',
 })
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -103,6 +105,7 @@ defineExpose({
         :live2d-force-auto-blink-enabled="live2dForceAutoBlinkEnabled"
         :live2d-expression-enabled="live2dExpressionEnabled"
         :live2d-shadow-enabled="live2dShadowEnabled"
+        :fit-preference="fitPreference"
       />
     </Live2DCanvas>
   </Screen>

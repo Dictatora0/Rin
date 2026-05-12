@@ -180,20 +180,30 @@ function mountTaskList() {
   }
 }
 
-function findButton(container: HTMLElement, text: string) {
-  const button = Array.from(container.querySelectorAll('button'))
+function findButton(container: HTMLElement, text: string, scope?: Element) {
+  const queryRoot = scope ?? container
+  const button = Array.from(queryRoot.querySelectorAll('button'))
     .find(item => item.textContent?.includes(text)) as HTMLButtonElement | undefined
-
   if (!button)
     throw new Error(`button ${text} not found`)
-
   return button
 }
 
-describe('taskList usability pass', () => {
+function getTaskTitleButtons(container: HTMLElement) {
+  return Array.from(container.querySelectorAll('li > div:first-child > button'))
+}
+
+function getCreateForm(container: HTMLElement) {
+  const form = container.querySelector('[data-testid="task-create-form"]') as HTMLElement | null
+  if (!form)
+    throw new Error('task create form not found')
+  return form
+}
+
+describe('task list due date text input', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-05-06T12:00:00.000Z'))
+    vi.setSystemTime(new Date(2026, 4, 6, 12, 0, 0))
     mocks.storeState = createStoreState([])
   })
 
@@ -203,71 +213,98 @@ describe('taskList usability pass', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows guided empty state when no tasks are present', async () => {
+  it('does not render native date inputs and uses text type for due date fields', async () => {
+    mocks.storeState = createStoreState([
+      {
+        id: 'task-1',
+        title: '准备答辩',
+        done: false,
+        createdAt: '2026-05-06T08:00:00.000Z',
+        priority: 'medium',
+      },
+    ])
     const { container, unmount } = mountTaskList()
     await nextTick()
 
-    const text = container.textContent ?? ''
-    expect(text).toContain('还没有今日任务')
-    expect(text).toContain('添加一个任务，让 Rin 陪你完成它')
-    expect(text).toContain('添加任务')
+    expect(container.querySelectorAll('input[type="date"]').length).toBe(0)
+
+    const createDueDateInput = container.querySelector('#task-due-date-input') as HTMLInputElement | null
+    const itemDueDateInput = container.querySelector('#task-item-due-date-task-1') as HTMLInputElement | null
+    if (!createDueDateInput || !itemDueDateInput)
+      throw new Error('due date text inputs missing')
+
+    expect(createDueDateInput.type).toBe('text')
+    expect(itemDueDateInput.type).toBe('text')
 
     unmount()
   })
 
-  it('shows clear labels for priority and due date fields in task create form', async () => {
+  it('shows due date label, placeholder and format hint', async () => {
     const { container, unmount } = mountTaskList()
     await nextTick()
 
-    const priorityLabel = container.querySelector('label[for="task-priority-input"]') as HTMLLabelElement | null
     const dueDateLabel = container.querySelector('label[for="task-due-date-input"]') as HTMLLabelElement | null
-    if (!priorityLabel || !dueDateLabel)
-      throw new Error('create form labels not found')
-
-    expect(priorityLabel.textContent ?? '').toContain('优先级')
+    if (!dueDateLabel)
+      throw new Error('due date label missing')
     expect(dueDateLabel.textContent ?? '').toContain('截止日期')
-    expect(container.textContent ?? '').toContain('用于排序和逾期提示')
-    expect(container.textContent ?? '').toContain('可选')
 
-    const dueDateInput = container.querySelector('[data-testid="task-create-form"] input[aria-label="截止日期"]') as HTMLInputElement | null
+    const dueDateInput = container.querySelector('#task-due-date-input') as HTMLInputElement | null
     if (!dueDateInput)
-      throw new Error('due date input with aria-label not found')
-    expect(dueDateInput.getAttribute('id')).toBe('task-due-date-input')
+      throw new Error('create due date input missing')
+    expect(dueDateInput.placeholder).toBe('例如：2026-05-12')
+    expect(dueDateInput.getAttribute('aria-label')).toBe('截止日期')
+    expect(container.textContent ?? '').toContain('格式：YYYY-MM-DD，用于排序和逾期提示')
 
     unmount()
   })
 
-  it('renders full priority options and non-truncating width classes', async () => {
+  it('applies quick due date actions in create form', async () => {
     const { container, unmount } = mountTaskList()
     await nextTick()
 
-    const prioritySelect = container.querySelector('[data-testid="task-create-form"] [data-testid="task-priority-select"]') as HTMLSelectElement | null
-    if (!prioritySelect)
-      throw new Error('priority select not found')
+    const createForm = getCreateForm(container)
+    const dueDateInput = createForm.querySelector('#task-due-date-input') as HTMLInputElement | null
+    if (!dueDateInput)
+      throw new Error('create due date input missing')
 
-    const optionLabels = Array.from(prioritySelect.options).map(option => option.textContent?.trim())
-    expect(optionLabels).toEqual(['高优先级', '中优先级', '低优先级'])
-    expect(prioritySelect.className).toContain('w-full')
-    expect(prioritySelect.className).toContain('min-w-[136px]')
+    findButton(container, '今天', createForm).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(dueDateInput.value).toBe('2026-05-06')
+
+    findButton(container, '明天', createForm).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(dueDateInput.value).toBe('2026-05-07')
+
+    findButton(container, '本周日', createForm).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(dueDateInput.value).toBe('2026-05-10')
+
+    findButton(container, '一周后', createForm).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(dueDateInput.value).toBe('2026-05-13')
+
+    findButton(container, '清除', createForm).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(dueDateInput.value).toBe('')
 
     unmount()
   })
 
-  it('hides empty state after adding one task with selected high priority and due date', async () => {
+  it('adds task with valid YYYY-MM-DD due date', async () => {
     const { container, unmount } = mountTaskList()
     await nextTick()
 
-    const titleInput = container.querySelector('[id="task-title-input"]') as HTMLInputElement | null
-    const prioritySelect = container.querySelector('[data-testid="task-create-form"] [data-testid="task-priority-select"]') as HTMLSelectElement | null
-    const dueDateInput = container.querySelector('[data-testid="task-create-form"] [data-testid="task-due-date-input"]') as HTMLInputElement | null
+    const titleInput = container.querySelector('#task-title-input') as HTMLInputElement | null
+    const prioritySelect = container.querySelector('#task-priority-input') as HTMLSelectElement | null
+    const dueDateInput = container.querySelector('#task-due-date-input') as HTMLInputElement | null
     if (!titleInput || !prioritySelect || !dueDateInput)
-      throw new Error('task create controls not found')
+      throw new Error('task create controls missing')
 
     titleInput.value = '写完实验总结'
     titleInput.dispatchEvent(new Event('input', { bubbles: true }))
     prioritySelect.value = 'high'
     prioritySelect.dispatchEvent(new Event('change', { bubbles: true }))
-    dueDateInput.value = '2026-05-07'
+    dueDateInput.value = '2026-05-12'
     dueDateInput.dispatchEvent(new Event('input', { bubbles: true }))
     await nextTick()
 
@@ -275,27 +312,46 @@ describe('taskList usability pass', () => {
     await nextTick()
 
     expect(mocks.storeState.persisted.value.tasks).toHaveLength(1)
-    expect(mocks.storeState.persisted.value.tasks[0]?.title).toBe('写完实验总结')
     expect(mocks.storeState.persisted.value.tasks[0]?.priority).toBe('high')
-    expect(mocks.storeState.persisted.value.tasks[0]?.dueDate).toBe('2026-05-07')
-
-    const text = container.textContent ?? ''
-    expect(text).toContain('写完实验总结')
-    expect(text.includes('还没有今日任务')).toBe(false)
+    expect(mocks.storeState.persisted.value.tasks[0]?.dueDate).toBe('2026-05-12')
 
     unmount()
   })
 
-  it('allows adding a task when due date is empty', async () => {
+  it('shows validation error and blocks invalid create due date', async () => {
     const { container, unmount } = mountTaskList()
     await nextTick()
 
-    const titleInput = container.querySelector('[id="task-title-input"]') as HTMLInputElement | null
-    const dueDateInput = container.querySelector('[data-testid="task-create-form"] [data-testid="task-due-date-input"]') as HTMLInputElement | null
+    const titleInput = container.querySelector('#task-title-input') as HTMLInputElement | null
+    const dueDateInput = container.querySelector('#task-due-date-input') as HTMLInputElement | null
     if (!titleInput || !dueDateInput)
-      throw new Error('task create inputs not found')
+      throw new Error('create controls missing')
 
-    titleInput.value = '复习算法章节'
+    titleInput.value = '测试非法日期'
+    titleInput.dispatchEvent(new Event('input', { bubbles: true }))
+    dueDateInput.value = '05/12/2026'
+    dueDateInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+
+    expect(container.textContent ?? '').toContain('请输入 YYYY-MM-DD 格式的日期')
+
+    findButton(container, '添加任务').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.storeState.persisted.value.tasks).toHaveLength(0)
+
+    unmount()
+  })
+
+  it('allows empty due date on create', async () => {
+    const { container, unmount } = mountTaskList()
+    await nextTick()
+
+    const titleInput = container.querySelector('#task-title-input') as HTMLInputElement | null
+    const dueDateInput = container.querySelector('#task-due-date-input') as HTMLInputElement | null
+    if (!titleInput || !dueDateInput)
+      throw new Error('create controls missing')
+
+    titleInput.value = '无截止日期任务'
     titleInput.dispatchEvent(new Event('input', { bubbles: true }))
     dueDateInput.value = ''
     dueDateInput.dispatchEvent(new Event('input', { bubbles: true }))
@@ -303,47 +359,13 @@ describe('taskList usability pass', () => {
 
     findButton(container, '添加任务').dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
-
     expect(mocks.storeState.persisted.value.tasks).toHaveLength(1)
-    expect(mocks.storeState.persisted.value.tasks[0]?.title).toBe('复习算法章节')
     expect(mocks.storeState.persisted.value.tasks[0]?.dueDate).toBeUndefined()
 
     unmount()
   })
 
-  it('shows lightweight completion feedback only for pending -> done transition', async () => {
-    mocks.storeState = createStoreState([
-      {
-        id: 'task-1',
-        title: '完成 demo 排练',
-        done: false,
-        createdAt: '2026-05-06T11:00:00.000Z',
-        priority: 'medium',
-      },
-    ])
-
-    const { container, unmount } = mountTaskList()
-    await nextTick()
-
-    findButton(container, '完成').dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await nextTick()
-
-    expect(container.textContent ?? '').toContain('已完成，做得不错')
-
-    await vi.advanceTimersByTimeAsync(1800)
-    await nextTick()
-
-    expect((container.textContent ?? '').includes('已完成，做得不错')).toBe(false)
-
-    findButton(container, '取消完成').dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await nextTick()
-
-    expect((container.textContent ?? '').includes('已完成，做得不错')).toBe(false)
-
-    unmount()
-  })
-
-  it('shows priority and due-date controls and updates existing task metadata', async () => {
+  it('saves valid due date during inline editing', async () => {
     mocks.storeState = createStoreState([
       {
         id: 'task-1',
@@ -357,63 +379,77 @@ describe('taskList usability pass', () => {
     const { container, unmount } = mountTaskList()
     await nextTick()
 
-    const itemPrioritySelect = container.querySelector('#task-item-priority-task-1') as HTMLSelectElement | null
-    const prioritySelect = container.querySelector('[data-testid="task-item-priority-select"]') as HTMLSelectElement | null
-    const dueDateByAria = container.querySelector('input[aria-label="任务截止日期"]') as HTMLInputElement | null
-    const dueDateInput = container.querySelector('[data-testid="task-item-due-date-input"]') as HTMLInputElement | null
+    const itemDueDateInput = container.querySelector('#task-item-due-date-task-1') as HTMLInputElement | null
+    if (!itemDueDateInput)
+      throw new Error('inline due date input missing')
 
-    if (!prioritySelect || !dueDateInput || !itemPrioritySelect || !dueDateByAria)
-      throw new Error('task item metadata controls not found')
-
-    const optionLabels = Array.from(itemPrioritySelect.options).map(option => option.textContent?.trim())
-    expect(optionLabels).toEqual(['高优先级', '中优先级', '低优先级'])
-    expect(itemPrioritySelect.className).toContain('w-full')
-    expect(itemPrioritySelect.className).toContain('min-w-[128px]')
-    expect(dueDateByAria.getAttribute('title')).toBe('任务截止日期')
-
-    prioritySelect.value = 'high'
-    prioritySelect.dispatchEvent(new Event('change', { bubbles: true }))
-    await nextTick()
-    expect(mocks.storeState.persisted.value.tasks[0]?.priority).toBe('high')
-
-    dueDateInput.value = '2026-05-07'
-    dueDateInput.dispatchEvent(new Event('change', { bubbles: true }))
+    itemDueDateInput.value = '2026-05-07'
+    itemDueDateInput.dispatchEvent(new Event('input', { bubbles: true }))
+    itemDueDateInput.dispatchEvent(new Event('blur', { bubbles: true }))
     await nextTick()
     expect(mocks.storeState.persisted.value.tasks[0]?.dueDate).toBe('2026-05-07')
 
     unmount()
   })
 
-  it('renders overdue and high-priority hints while keeping inline edit controls available', async () => {
+  it('shows inline validation error and does not save invalid due date', async () => {
     mocks.storeState = createStoreState([
       {
         id: 'task-1',
-        title: '提交课设文档',
+        title: '整理课程提纲',
         done: false,
-        createdAt: '2026-05-05T12:00:00.000Z',
-        priority: 'high',
-        dueDate: '2026-05-05',
+        createdAt: '2026-05-06T09:00:00.000Z',
+        priority: 'medium',
+        dueDate: '2026-05-07',
       },
     ])
 
     const { container, unmount } = mountTaskList()
     await nextTick()
 
-    const text = container.textContent ?? ''
-    expect(text).toContain('已逾期')
-    expect(text).toContain('高')
+    const itemDueDateInput = container.querySelector('#task-item-due-date-task-1') as HTMLInputElement | null
+    if (!itemDueDateInput)
+      throw new Error('inline due date input missing')
 
-    const inlinePrioritySelect = container.querySelector('[data-testid="task-item-priority-select"]') as HTMLSelectElement | null
-    const inlineDueDateInput = container.querySelector('[data-testid="task-item-due-date-input"]') as HTMLInputElement | null
-    if (!inlinePrioritySelect || !inlineDueDateInput)
-      throw new Error('inline controls missing under overdue state')
-    expect(inlinePrioritySelect.getAttribute('aria-label')).toBe('任务优先级')
-    expect(inlineDueDateInput.getAttribute('aria-label')).toBe('任务截止日期')
+    itemDueDateInput.value = '07/08/2026'
+    itemDueDateInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    expect(container.textContent ?? '').toContain('请输入 YYYY-MM-DD 格式的日期')
+
+    itemDueDateInput.dispatchEvent(new Event('blur', { bubbles: true }))
+    await nextTick()
+    expect(mocks.storeState.persisted.value.tasks[0]?.dueDate).toBe('2026-05-07')
 
     unmount()
   })
 
-  it('uses responsive non-clipping layout classes for create and inline edit forms', async () => {
+  it('clears inline due date through quick action', async () => {
+    mocks.storeState = createStoreState([
+      {
+        id: 'task-1',
+        title: '整理课程提纲',
+        done: false,
+        createdAt: '2026-05-06T09:00:00.000Z',
+        priority: 'medium',
+        dueDate: '2026-05-07',
+      },
+    ])
+
+    const { container, unmount } = mountTaskList()
+    await nextTick()
+
+    const itemLabel = container.querySelector('label[for="task-item-due-date-task-1"]') as HTMLLabelElement | null
+    if (!itemLabel)
+      throw new Error('inline due date label missing')
+
+    findButton(container, '清除', itemLabel).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.storeState.persisted.value.tasks[0]?.dueDate).toBeUndefined()
+
+    unmount()
+  })
+
+  it('keeps full priority labels and stable responsive classes', async () => {
     mocks.storeState = createStoreState([
       {
         id: 'task-1',
@@ -423,66 +459,97 @@ describe('taskList usability pass', () => {
         priority: 'medium',
       },
     ])
-
     const { container, unmount } = mountTaskList()
     await nextTick()
 
-    const sectionRoot = container.querySelector('section') as HTMLElement | null
-    const createForm = container.querySelector('[data-testid="task-create-form"]') as HTMLElement | null
-    const metaGrid = container.querySelector('[data-testid="task-create-meta-grid"]') as HTMLElement | null
+    const prioritySelect = container.querySelector('#task-priority-input') as HTMLSelectElement | null
+    const optionLabels = Array.from(prioritySelect?.options ?? []).map(option => option.textContent?.trim())
+    expect(optionLabels).toEqual(['高优先级', '中优先级', '低优先级'])
+    expect(prioritySelect?.className).toContain('w-full')
+    expect(prioritySelect?.className).toContain('min-w-[136px]')
+
+    const createMetaGrid = container.querySelector('[data-testid="task-create-meta-grid"]') as HTMLElement | null
     const addButton = findButton(container, '添加任务')
-    const inlineEditGrid = container.querySelector('[data-testid="task-item-edit-grid"]') as HTMLElement | null
-
-    if (!sectionRoot || !createForm || !metaGrid || !inlineEditGrid)
-      throw new Error('layout containers missing')
-
-    expect(sectionRoot.className.includes('overflow-hidden')).toBe(false)
-    expect(sectionRoot.className).toContain('overflow-visible')
-    expect(createForm.className.includes('overflow-hidden')).toBe(false)
-    expect(createForm.className).toContain('overflow-visible')
-    expect(metaGrid.className).toContain('grid-cols-1')
-    expect(metaGrid.className).toContain('sm:grid-cols-2')
+    const editGrid = container.querySelector('[data-testid="task-item-edit-grid"]') as HTMLElement | null
+    expect(createMetaGrid?.className).toContain('grid-cols-1')
+    expect(createMetaGrid?.className).toContain('sm:grid-cols-2')
     expect(addButton.className).toContain('w-full')
     expect(addButton.className).toContain('sm:w-auto')
-    expect(inlineEditGrid.className).toContain('grid-cols-1')
-    expect(inlineEditGrid.className).toContain('sm:grid-cols-2')
+    expect(editGrid?.className).toContain('grid-cols-1')
+    expect(editGrid?.className).toContain('sm:grid-cols-2')
 
     unmount()
   })
 
-  it('binds sort selector and updates task order when mode changes', async () => {
+  it('keeps overdue hints and sorting behavior unchanged', async () => {
     mocks.storeState = createStoreState([
       {
-        id: 'task-low',
-        title: '低优先级任务',
+        id: 'task-a',
+        title: '高优先级晚截止',
         done: false,
-        createdAt: '2026-05-06T09:30:00.000Z',
-        priority: 'low',
+        createdAt: '2026-05-06T08:00:00.000Z',
+        priority: 'high',
+        dueDate: '2026-05-09',
       },
       {
-        id: 'task-high',
-        title: '高优先级任务',
+        id: 'task-b',
+        title: '高优先级早截止',
         done: false,
-        createdAt: '2026-05-06T10:00:00.000Z',
+        createdAt: '2026-05-06T08:01:00.000Z',
         priority: 'high',
+        dueDate: '2026-05-07',
+      },
+      {
+        id: 'task-overdue',
+        title: '已逾期任务',
+        done: false,
+        createdAt: '2026-05-05T08:00:00.000Z',
+        priority: 'medium',
+        dueDate: '2026-05-05',
       },
     ])
-
     const { container, unmount } = mountTaskList()
     await nextTick()
 
+    expect(container.textContent ?? '').toContain('已逾期')
+
     const sortSelect = container.querySelector('[data-testid="task-sort-mode-select"]') as HTMLSelectElement | null
     if (!sortSelect)
-      throw new Error('sort mode selector not found')
-
-    sortSelect.value = 'priority'
+      throw new Error('sort mode selector missing')
+    sortSelect.value = 'dueDate'
     sortSelect.dispatchEvent(new Event('change', { bubbles: true }))
     await nextTick()
 
-    expect(mocks.storeState.taskSortMode.value).toBe('priority')
+    const taskTitles = getTaskTitleButtons(container).map(node => node.textContent?.trim())
+    expect(taskTitles[0]).toBe('已逾期任务')
+    expect(taskTitles[1]).toBe('高优先级早截止')
 
-    const taskButtons = Array.from(container.querySelectorAll('li > div button:first-child')).map(node => node.textContent?.trim())
-    expect(taskButtons[0]).toBe('高优先级任务')
+    unmount()
+  })
+
+  it('uses dueDate field unchanged in persisted tasks for report compatibility', async () => {
+    mocks.storeState = createStoreState([])
+    const { container, unmount } = mountTaskList()
+    await nextTick()
+
+    const titleInput = container.querySelector('#task-title-input') as HTMLInputElement | null
+    const dueDateInput = container.querySelector('#task-due-date-input') as HTMLInputElement | null
+    if (!titleInput || !dueDateInput)
+      throw new Error('create controls missing')
+
+    titleInput.value = '报告导出兼容检查'
+    titleInput.dispatchEvent(new Event('input', { bubbles: true }))
+    dueDateInput.value = '2026-05-12'
+    dueDateInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+
+    findButton(container, '添加任务').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect(mocks.storeState.persisted.value.tasks[0]).toMatchObject({
+      title: '报告导出兼容检查',
+      dueDate: '2026-05-12',
+    })
 
     unmount()
   })

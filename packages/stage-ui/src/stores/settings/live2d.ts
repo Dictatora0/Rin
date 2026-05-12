@@ -1,6 +1,14 @@
 import { useLocalStorageManualReset, useVersionedLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { defineStore } from 'pinia'
 
+export type Live2DFitPreference = 'auto' | 'full-body' | 'upper-body'
+
+function normalizeLive2DFitPreference(value: string): Live2DFitPreference {
+  if (value === 'full-body' || value === 'upper-body')
+    return value
+  return 'auto'
+}
+
 export const useSettingsLive2d = defineStore('settings-live2d', () => {
   const live2dDisableFocus = useLocalStorageManualReset<boolean>('settings/live2d/disable-focus', false)
   const live2dIdleAnimationEnabled = useLocalStorageManualReset<boolean>('settings/live2d/idle-animation-enabled', true)
@@ -28,6 +36,11 @@ export const useSettingsLive2d = defineStore('settings-live2d', () => {
   const live2dShadowEnabled = useLocalStorageManualReset<boolean>('settings/live2d/shadow-enabled', true)
   const live2dMaxFps = useLocalStorageManualReset<number>('settings/live2d/max-fps', 0)
   const live2dRenderScale = useLocalStorageManualReset<number>('settings/live2d/render-scale', 2)
+  const live2dFitPreferenceState = useLocalStorageManualReset<Live2DFitPreference>('settings/live2d/fit-preference', 'auto')
+
+  function setLive2dFitPreference(value: Live2DFitPreference | string) {
+    live2dFitPreferenceState.value = normalizeLive2DFitPreference(String(value))
+  }
 
   function resetState() {
     live2dDisableFocus.reset()
@@ -38,6 +51,7 @@ export const useSettingsLive2d = defineStore('settings-live2d', () => {
     live2dShadowEnabled.reset()
     live2dMaxFps.reset()
     live2dRenderScale.reset()
+    live2dFitPreferenceState.reset()
   }
 
   return {
@@ -49,6 +63,8 @@ export const useSettingsLive2d = defineStore('settings-live2d', () => {
     live2dShadowEnabled,
     live2dMaxFps,
     live2dRenderScale,
+    live2dFitPreference: live2dFitPreferenceState,
+    setLive2dFitPreference,
     resetState,
   }
 })

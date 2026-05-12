@@ -5,7 +5,7 @@ import type { PixiLive2DInternalModel } from '../../../composables/live2d'
 
 import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { useTheme } from '@proj-airi/ui'
-import { breakpointsTailwind, until, useBreakpoints } from '@vueuse/core'
+import { until } from '@vueuse/core'
 import { animate } from 'animejs'
 import { formatHex } from 'culori'
 import { Mutex } from 'es-toolkit'
@@ -27,6 +27,7 @@ import {
 } from '../../../composables/live2d'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { useLive2d } from '../../../stores/live2d'
+import { computeLive2DFitLayout } from '../../../utils/live2d-fit-layout'
 
 const props = withDefaults(defineProps<{
   modelSrc?: string
@@ -49,6 +50,7 @@ const props = withDefaults(defineProps<{
   live2dForceAutoBlinkEnabled?: boolean
   live2dExpressionEnabled?: boolean
   live2dShadowEnabled?: boolean
+  fitPreference?: 'auto' | 'full-body' | 'upper-body'
 }>(), {
   mouthOpenSize: 0,
   paused: false,
@@ -62,6 +64,7 @@ const props = withDefaults(defineProps<{
   live2dForceAutoBlinkEnabled: false,
   live2dExpressionEnabled: true,
   live2dShadowEnabled: true,
+  fitPreference: 'auto',
 })
 
 const emits = defineEmits<{
@@ -70,6 +73,7 @@ const emits = defineEmits<{
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
+const fitModeAttr = ref<'tall' | 'normal' | 'small' | 'full-body' | 'upper-body'>('normal')
 
 function parsePropsOffset() {
   let xOffset = Number.parseFloat(String(props.xOffset)) || 0
@@ -108,8 +112,6 @@ const mouthOpenSize = computed(() => Math.max(0, Math.min(100, props.mouthOpenSi
 const lastUpdateTime = ref(0)
 
 const { isDark: dark } = useTheme()
-const breakpoints = useBreakpoints(breakpointsTailwind)
-const isMobile = computed(() => breakpoints.between('sm', 'md').value || breakpoints.smaller('sm').value)
 const dropShadowFilter = shallowRef(new DropShadowFilter({
   alpha: 0.2,
   blur: 0,
@@ -124,24 +126,18 @@ function getCoreModel() {
 let resizeAnimation: ReturnType<typeof animate> | undefined
 
 function computeScaleAndPosition() {
-  let offsetFactor = 2.2
-  if (isMobile.value) {
-    offsetFactor = 2.2
-  }
-
-  const heightScale = (props.height * 0.95 / initialModelHeight.value * offsetFactor)
-  const widthScale = (props.width * 0.95 / initialModelWidth.value * offsetFactor)
-  let scale = Math.min(heightScale, widthScale)
-
-  if (Number.isNaN(scale) || scale <= 0) {
-    scale = 1e-6
-  }
-
-  return {
-    scale: scale * props.scale,
-    x: (props.width / 2) + offset.value.xOffset,
-    y: props.height + offset.value.yOffset,
-  }
+  const fitLayout = computeLive2DFitLayout({
+    viewportWidth: props.width,
+    viewportHeight: props.height,
+    modelWidth: initialModelWidth.value,
+    modelHeight: initialModelHeight.value,
+    userScale: props.scale,
+    xOffsetPx: offset.value.xOffset,
+    yOffsetPx: offset.value.yOffset,
+    fitPreference: props.fitPreference,
+  })
+  fitModeAttr.value = fitLayout.resolvedFitMode
+  return fitLayout
 }
 
 function setScaleAndPosition(animated = false) {
@@ -551,6 +547,7 @@ watch([model, themeColorsHue], updateDropShadowFilter)
 watch(live2dShadowEnabled, updateDropShadowFilter)
 watch(offset, () => setScaleAndPosition())
 watch(() => props.scale, () => setScaleAndPosition())
+watch(() => props.fitPreference, () => setScaleAndPosition())
 
 // TODO: This is hacky!
 function updateDropShadowFilterLoop() {
@@ -797,6 +794,16 @@ import.meta.hot?.dispose(() => {
 </script>
 
 <template>
+  <div
+    data-testid="live2d-fit-mode"
+    :data-fit-mode="fitModeAttr"
+    hidden
+  />
+  <div
+    data-testid="live2d-fit-preference"
+    :data-fit-preference="props.fitPreference"
+    hidden
+  />
   <div ref="dropShadowColorComputer" hidden bg="primary-400 dark:primary-500" />
   <slot />
 </template>

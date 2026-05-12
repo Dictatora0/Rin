@@ -44,6 +44,7 @@ const {
   live2dShadowEnabled,
   live2dMaxFps,
   live2dRenderScale,
+  live2dFitPreference,
 } = storeToRefs(settingsStore)
 const { scale: live2dScale } = storeToRefs(live2dStore)
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
@@ -150,6 +151,7 @@ defineExpose({
         :live2d-shadow-enabled="live2dShadowEnabled"
         :live2d-max-fps="live2dMaxFps"
         :live2d-render-scale="live2dRenderScale"
+        :fit-preference="live2dFitPreference"
       />
     </div>
   </template>

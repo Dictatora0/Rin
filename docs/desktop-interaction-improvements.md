@@ -218,6 +218,18 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - 文件名：`rin-study-report-YYYY-MM-DD.md`。
   - 报告包含：
     - 今日核心指标（专注分钟、轮数、完成任务数、中断次数、当前时长设置）
+
+## Live2D 展示方式可选（Round 5）
+
+- Live2D 展示方式新增用户可选项：
+  - 自动适配
+  - 完整身体
+  - 上半身优先
+- 自动适配保持原有高度分流策略（tall / normal / small）。
+- 完整身体模式在高窗口下更偏向展示完整角色（包含更多下半身）。
+- 上半身优先模式让角色主体更大，更适合陪伴和对话场景。
+- 小窗口下仍保证主体可见，避免头部跑出视口。
+- 该设置仅影响 Live2D 展示范围与布局，不改变模型资源和业务逻辑。
     - 今日任务表格
     - 最近学习事件摘要（最多 10 条）
 
@@ -249,6 +261,7 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
     - 优先级（高/中/低）
     - 截止日期（可选）
   - 任务录入区补充“优先级 / 截止日期”明确标签，截止日期用于排序和逾期提示，降低录入歧义。
+  - 截止日期输入从系统原生日历弹层改为稳定内联文本输入（`YYYY-MM-DD`）+ 快捷日期按钮（今天/明天/本周日/下周/清除），避免 Electron/Floating Panel 场景下弹层遮挡。
   - 智能排序规则：
     - 未完成优先
     - 高优先级优先

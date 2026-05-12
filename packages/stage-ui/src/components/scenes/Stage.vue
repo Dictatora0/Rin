@@ -71,6 +71,7 @@ const {
   live2dShadowEnabled,
   live2dMaxFps,
   live2dRenderScale,
+  live2dFitPreference,
 } = storeToRefs(settingsStore)
 const { mouthOpenSize } = storeToRefs(useSpeakingStore())
 const { audioContext } = useAudioContext()
@@ -665,6 +666,7 @@ defineExpose({
         :live2d-shadow-enabled="live2dShadowEnabled"
         :live2d-max-fps="live2dMaxFps"
         :live2d-render-scale="live2dRenderScale"
+        :fit-preference="live2dFitPreference"
       />
       <ThreeScene
         v-if="stageModelRenderer === 'vrm' && showStage"

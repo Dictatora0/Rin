@@ -4,6 +4,11 @@ import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 
 import {
+  getStudyQuickDueDate,
+  isValidStudyDueDate,
+  normalizeStudyDueDate,
+} from '../../../utils/study-due-date'
+import {
   formatStudyTaskDueText,
   formatStudyTaskPriorityLabel,
   formatStudyTaskSortModeLabel,
@@ -27,6 +32,9 @@ const {
 const draftTitle = ref('')
 const draftPriority = ref<'high' | 'medium' | 'low'>('medium')
 const draftDueDate = ref('')
+const draftDueDateError = ref('')
+const taskDueDateDraftMap = ref<Record<string, string>>({})
+const taskDueDateErrorMap = ref<Record<string, string>>({})
 const taskInputRef = ref<HTMLInputElement>()
 const isTaskInputFocused = ref(false)
 const isComposing = ref(false)
@@ -56,14 +64,22 @@ function submitTask() {
   if (!normalizedTitle)
     return
 
+  const normalizedDueDate = normalizeStudyDueDate(draftDueDate.value)
+  if (normalizedDueDate == null) {
+    draftDueDateError.value = '请输入 YYYY-MM-DD 格式的日期'
+    return
+  }
+
+  draftDueDateError.value = ''
   addTask({
     title: normalizedTitle,
     priority: draftPriority.value,
-    dueDate: draftDueDate.value || undefined,
+    dueDate: normalizedDueDate || undefined,
   })
   draftTitle.value = ''
   draftPriority.value = 'medium'
   draftDueDate.value = ''
+  draftDueDateError.value = ''
 }
 
 function clearTaskCompletionFeedbackTimer() {
@@ -136,20 +152,60 @@ function handleTaskPriorityChange(taskId: string, priority: string) {
 }
 
 function handleTaskDueDateChange(taskId: string, dueDate: string) {
-  setTaskDueDate(taskId, dueDate || null)
+  const normalizedDueDate = normalizeStudyDueDate(dueDate)
+  if (normalizedDueDate == null) {
+    taskDueDateDraftMap.value[taskId] = dueDate
+    taskDueDateErrorMap.value[taskId] = '请输入 YYYY-MM-DD 格式的日期'
+    return
+  }
+
+  taskDueDateErrorMap.value[taskId] = ''
+  taskDueDateDraftMap.value[taskId] = normalizedDueDate
+  setTaskDueDate(taskId, normalizedDueDate || null)
 }
 
-function handleTaskFieldFocus(event: FocusEvent) {
-  const target = event.target
-  if (!(target instanceof HTMLElement))
-    return
+function handleDraftDueDateInput(value: string) {
+  draftDueDate.value = value
+  draftDueDateError.value = isValidStudyDueDate(value) ? '' : '请输入 YYYY-MM-DD 格式的日期'
+}
 
-  nextTick(() => {
-    target.scrollIntoView({
-      block: 'center',
-      behavior: 'smooth',
-    })
-  })
+function applyDraftQuickDueDate(type: 'today' | 'tomorrow' | 'weekEnd' | 'nextWeek') {
+  draftDueDate.value = getStudyQuickDueDate(type)
+  draftDueDateError.value = ''
+}
+
+function clearDraftDueDate() {
+  draftDueDate.value = ''
+  draftDueDateError.value = ''
+}
+
+function getTaskDueDateInputValue(taskId: string, dueDate?: string) {
+  const draftValue = taskDueDateDraftMap.value[taskId]
+  if (draftValue != null)
+    return draftValue
+  return dueDate ?? ''
+}
+
+function getTaskDueDateError(taskId: string) {
+  return taskDueDateErrorMap.value[taskId] ?? ''
+}
+
+function handleTaskDueDateInput(taskId: string, value: string) {
+  taskDueDateDraftMap.value[taskId] = value
+  taskDueDateErrorMap.value[taskId] = isValidStudyDueDate(value) ? '' : '请输入 YYYY-MM-DD 格式的日期'
+}
+
+function applyTaskQuickDueDate(taskId: string, type: 'today' | 'tomorrow' | 'weekEnd' | 'nextWeek') {
+  const nextDueDate = getStudyQuickDueDate(type)
+  taskDueDateDraftMap.value[taskId] = nextDueDate
+  taskDueDateErrorMap.value[taskId] = ''
+  setTaskDueDate(taskId, nextDueDate)
+}
+
+function clearTaskDueDate(taskId: string) {
+  taskDueDateDraftMap.value[taskId] = ''
+  taskDueDateErrorMap.value[taskId] = ''
+  setTaskDueDate(taskId, null)
 }
 
 onBeforeUnmount(() => {
@@ -160,7 +216,7 @@ onBeforeUnmount(() => {
 <template>
   <section
     :class="[
-      'mt-2 border-t border-neutral-200/80 pt-3 pb-8 overflow-visible',
+      'mt-2 border-t border-neutral-200/80 pt-3 pb-6',
       'dark:border-neutral-700/70',
     ]"
   >
@@ -207,7 +263,6 @@ onBeforeUnmount(() => {
       data-testid="task-create-form"
       :class="[
         'mt-2.5 rounded-xl border border-neutral-200/80 bg-white/90 p-2.5 pb-6',
-        'overflow-visible',
         'dark:border-neutral-700/70 dark:bg-neutral-900/70',
       ]"
     >
@@ -240,7 +295,7 @@ onBeforeUnmount(() => {
 
       <div
         data-testid="task-create-meta-grid"
-        :class="['mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2 overflow-visible']"
+        :class="['mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2']"
       >
         <label
           for="task-priority-input"
@@ -284,22 +339,72 @@ onBeforeUnmount(() => {
             id="task-due-date-input"
             v-model="draftDueDate"
             data-testid="task-due-date-input"
-            type="date"
+            type="text"
             aria-label="截止日期"
             title="截止日期"
+            placeholder="例如：2026-05-12"
             :class="[
               'rounded-xl border border-neutral-200/80 bg-white px-2 py-2 text-[12px] text-neutral-700',
               'w-full min-w-[148px]',
-              'scroll-mb-36',
               'outline-none transition-colors focus:border-primary-500',
               'dark:border-neutral-700/70 dark:bg-neutral-900 dark:text-neutral-100',
+              draftDueDateError ? 'border-rose-400 dark:border-rose-500' : '',
             ]"
-            @focus="handleTaskFieldFocus"
+            @input="event => handleDraftDueDateInput((event.target as HTMLInputElement).value)"
+            @blur="event => handleDraftDueDateInput((event.target as HTMLInputElement).value)"
           >
           <span :class="['text-[10px] text-neutral-500 dark:text-neutral-400']">
-            用于排序和逾期提示
+            格式：YYYY-MM-DD，用于排序和逾期提示
+          </span>
+          <span
+            v-if="draftDueDateError"
+            data-testid="task-due-date-error"
+            :class="['text-[10px] text-rose-600 dark:text-rose-300']"
+          >
+            {{ draftDueDateError }}
           </span>
         </label>
+      </div>
+
+      <div
+        data-testid="task-due-date-quick-actions"
+        :class="['mt-2 flex flex-wrap gap-1.5']"
+      >
+        <button
+          type="button"
+          :class="['rounded-full border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+          @click="applyDraftQuickDueDate('today')"
+        >
+          今天
+        </button>
+        <button
+          type="button"
+          :class="['rounded-full border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+          @click="applyDraftQuickDueDate('tomorrow')"
+        >
+          明天
+        </button>
+        <button
+          type="button"
+          :class="['rounded-full border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+          @click="applyDraftQuickDueDate('weekEnd')"
+        >
+          本周日
+        </button>
+        <button
+          type="button"
+          :class="['rounded-full border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+          @click="applyDraftQuickDueDate('nextWeek')"
+        >
+          一周后
+        </button>
+        <button
+          type="button"
+          :class="['rounded-full border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+          @click="clearDraftDueDate"
+        >
+          清除
+        </button>
       </div>
 
       <div :class="['mt-2.5 flex justify-end']">
@@ -402,7 +507,7 @@ onBeforeUnmount(() => {
 
         <div
           data-testid="task-item-edit-grid"
-          :class="['mt-1.5 grid grid-cols-1 gap-1.5 overflow-visible sm:grid-cols-2']"
+          :class="['mt-1.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2']"
         >
           <label
             :for="`task-item-priority-${task.id}`"
@@ -445,21 +550,69 @@ onBeforeUnmount(() => {
             </div>
             <input
               :id="`task-item-due-date-${task.id}`"
-              :value="task.dueDate ?? ''"
+              :value="getTaskDueDateInputValue(task.id, task.dueDate)"
               data-testid="task-item-due-date-input"
-              type="date"
+              type="text"
               aria-label="任务截止日期"
               title="任务截止日期"
+              placeholder="例如：2026-05-12"
               :class="[
                 'rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700',
                 'w-full min-w-[148px]',
-                'scroll-mb-36',
                 'outline-none transition-colors focus:border-primary-500',
                 'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100',
+                getTaskDueDateError(task.id) ? 'border-rose-400 dark:border-rose-500' : '',
               ]"
-              @focus="handleTaskFieldFocus"
-              @change="event => handleTaskDueDateChange(task.id, (event.target as HTMLInputElement).value)"
+              @input="event => handleTaskDueDateInput(task.id, (event.target as HTMLInputElement).value)"
+              @blur="event => handleTaskDueDateChange(task.id, (event.target as HTMLInputElement).value)"
             >
+            <span :class="['text-[10px] text-neutral-500 dark:text-neutral-400']">
+              格式：YYYY-MM-DD
+            </span>
+            <span
+              v-if="getTaskDueDateError(task.id)"
+              data-testid="task-item-due-date-error"
+              :class="['text-[10px] text-rose-600 dark:text-rose-300']"
+            >
+              {{ getTaskDueDateError(task.id) }}
+            </span>
+            <div :class="['mt-1 flex flex-wrap gap-1']">
+              <button
+                type="button"
+                :class="['rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+                @click="applyTaskQuickDueDate(task.id, 'today')"
+              >
+                今天
+              </button>
+              <button
+                type="button"
+                :class="['rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+                @click="applyTaskQuickDueDate(task.id, 'tomorrow')"
+              >
+                明天
+              </button>
+              <button
+                type="button"
+                :class="['rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+                @click="applyTaskQuickDueDate(task.id, 'weekEnd')"
+              >
+                本周日
+              </button>
+              <button
+                type="button"
+                :class="['rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+                @click="applyTaskQuickDueDate(task.id, 'nextWeek')"
+              >
+                一周后
+              </button>
+              <button
+                type="button"
+                :class="['rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+                @click="clearTaskDueDate(task.id)"
+              >
+                清除
+              </button>
+            </div>
           </label>
         </div>
       </li>

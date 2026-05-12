@@ -135,6 +135,17 @@ live2d:
       title: 禁用 Live2D 模型的鼠标追踪
   render-scale:
     title: 渲染精度
+  display-fit:
+    title: 展示方式
+    description: 该设置只影响 Live2D 展示范围。
+    options:
+      auto: 自动适配
+      full-body: 完整身体
+      upper-body: 上半身优先
+    hints:
+      auto: 自动适配：根据窗口高度自动调整显示范围。
+      full-body: 完整身体：高度足够时尽量显示完整角色。
+      upper-body: 上半身优先：角色更大，更适合日常陪伴和对话。
   fps:
     title: 帧率
     description: 限制渲染帧率

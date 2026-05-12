@@ -80,6 +80,7 @@ export const useSettings = defineStore('settings', () => {
     live2dShadowEnabled: live2dRefs.live2dShadowEnabled,
     live2dMaxFps: live2dRefs.live2dMaxFps,
     live2dRenderScale: live2dRefs.live2dRenderScale,
+    live2dFitPreference: live2dRefs.live2dFitPreference,
 
     // Theme settings
     themeColorsHue: themeRefs.themeColorsHue,
@@ -99,6 +100,7 @@ export const useSettings = defineStore('settings', () => {
     restoreBuiltInStageModelRenderer: stageModel.restoreBuiltInStageModelRenderer,
     setStageModelRenderer: stageModel.setStageModelRenderer,
     updateStageModel: stageModel.updateStageModel,
+    setLive2dFitPreference: live2d.setLive2dFitPreference,
     resetState,
   }
 })

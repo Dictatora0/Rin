@@ -332,6 +332,7 @@ describe('controls island layout regression locks', () => {
   it('keeps controls island in floating controls layer outside faded stage container', () => {
     const pageSource = readFileSync(resolve(process.cwd(), 'src/renderer/pages/index.vue'), 'utf8')
     const controlsSource = readFileSync(resolve(process.cwd(), 'src/renderer/components/stage-islands/controls-island/index.vue'), 'utf8')
+    const live2dModelSource = readFileSync(resolve(process.cwd(), '../../packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue'), 'utf8')
     expect(pageSource).toContain('data-control-layer="floating-controls-layer"')
     expect(pageSource).toContain('pointer-events-none fixed inset-0 z-[170]')
     expect(pageSource).toContain('data-control-layer="floating-content-panels-layer"')
@@ -358,6 +359,13 @@ describe('controls island layout regression locks', () => {
     expect(controlsSource).not.toContain('<StudyIsland')
     expect(controlsSource).not.toContain('<VisionIsland')
     expect(controlsSource.includes('max-h-[52vh]')).toBe(false)
+    expect(live2dModelSource).toContain('computeLive2DFitLayout({')
+    expect(live2dModelSource).toContain('fitPreference: props.fitPreference')
+    expect(live2dModelSource).toContain('data-testid="live2d-fit-mode"')
+    expect(live2dModelSource).toContain(':data-fit-mode="fitModeAttr"')
+    expect(live2dModelSource).toContain('data-testid="live2d-fit-preference"')
+    expect(live2dModelSource).toContain(':data-fit-preference="props.fitPreference"')
+    expect(live2dModelSource).toContain('watch(() => props.fitPreference, () => setScaleAndPosition())')
 
     const fadedStart = pageSource.indexOf('shouldFadeOnCursorWithin ? \'op-0\' : \'op-100\'')
     const loadingSection = pageSource.indexOf('<!-- Loading overlay sits on top, does not hide the stage -->')
