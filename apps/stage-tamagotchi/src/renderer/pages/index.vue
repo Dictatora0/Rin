@@ -16,6 +16,7 @@ import {
   useElectronMouseAroundWindowBorder,
   useElectronMouseInElement,
   useElectronRelativeMouse,
+  useElectronWindowBounds,
 } from '@proj-airi/electron-vueuse'
 import { useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
 import { HoloCoupon } from '@proj-airi/stage-ui/components'
@@ -101,6 +102,13 @@ const isOutsideStudyPanelFor16Ms = refDebounced(isOutsideStudyPanel, 16)
 const isOutsideVisionPanelFor16Ms = refDebounced(isOutsideVisionPanel, 16)
 const isOutsideShortcutGuidePanelFor16Ms = refDebounced(isOutsideShortcutGuidePanel, 16)
 const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
+const { width: windowBoundsWidth, height: windowBoundsHeight } = useElectronWindowBounds()
+const controlsAnchorProximityThreshold = 20
+const controlsAnchorPressProtectionDurationMs = 120
+const controlsAnchorFallbackWidthPx = 112
+const controlsAnchorFallbackHeightPx = 176
+const controlsAnchorFallbackRightInsetPx = 20
+const controlsAnchorFallbackBottomInsetPx = 20
 // NOTICE: In real-world use cases of Fade on Hover feature, the cursor may move around the edge of the
 // model rapidly, causing flickering effects when checking pixel transparency strictly.
 // Here we use render-target pixel sampling to keep detection aligned with the actual render output.
@@ -149,6 +157,8 @@ const studyPanelOpenedAt = ref<number>(0)
 const visionPanelOpenedAt = ref<number>(0)
 const isPointerDown = ref(false)
 const isDraggingWindow = ref(false)
+const controlsAnchorPressProtectionActive = ref(false)
+let controlsAnchorPressProtectionTimer: ReturnType<typeof setTimeout> | undefined
 const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
 const { data: modelSettingsRuntimeChannelEvent, post: postModelSettingsRuntimeChannelEvent } = useBroadcastChannel<ModelSettingsRuntimeChannelEvent, ModelSettingsRuntimeChannelEvent>({ name: modelSettingsRuntimeSnapshotChannelName })
 const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransparency({
@@ -248,25 +258,49 @@ const isStudyPanelHovering = computed(() => studyPanelOpen.value && !isOutsideSt
 const isVisionPanelHovering = computed(() => visionPanelOpen.value && !isOutsideVisionPanelFor16Ms.value)
 const isShortcutGuidePanelHovering = computed(() => shortcutGuidePanelOpen.value && !isOutsideShortcutGuidePanelFor16Ms.value)
 const isControlsPanelHovering = computed(() => !isOutsideFor16Ms.value || !isOutsideStatusIslandFor16Ms.value)
-const isInsideControlAnchor = computed(() => {
-  const controlsRoot = document.querySelector('[data-testid="controls-island-root"]')
-  if (!controlsRoot)
+const isInsideControlAnchorFallback = computed(() => {
+  const pointerX = Number(relativeMouseX.value)
+  const pointerY = Number(relativeMouseY.value)
+  if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY))
     return false
 
-  const anchor = controlsRoot.querySelector('[data-testid="controls-anchor"]') as HTMLElement | null
-  if (!anchor)
+  const viewportWidth = Number(windowBoundsWidth.value) > 0 ? Number(windowBoundsWidth.value) : window.innerWidth
+  const viewportHeight = Number(windowBoundsHeight.value) > 0 ? Number(windowBoundsHeight.value) : window.innerHeight
+  if (viewportWidth <= 0 || viewportHeight <= 0)
     return false
+
+  const left = viewportWidth - controlsAnchorFallbackRightInsetPx - controlsAnchorFallbackWidthPx
+  const right = viewportWidth - controlsAnchorFallbackRightInsetPx
+  const top = viewportHeight - controlsAnchorFallbackBottomInsetPx - controlsAnchorFallbackHeightPx
+  const bottom = viewportHeight - controlsAnchorFallbackBottomInsetPx
+
+  return pointerX >= left
+    && pointerX <= right
+    && pointerY >= top
+    && pointerY <= bottom
+})
+const isInsideControlAnchor = computed(() => {
+  const controlsRoot = document.querySelector('[data-testid="controls-island-root"]')
+  const anchor = controlsRoot?.querySelector('[data-testid="controls-anchor"]') as HTMLElement | null
 
   const pointerX = Number(relativeMouseX.value)
   const pointerY = Number(relativeMouseY.value)
   if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY))
     return false
 
+  if (!anchor)
+    return isInsideControlAnchorFallback.value
+
   const anchorRect = anchor.getBoundingClientRect()
-  return pointerX >= anchorRect.left
-    && pointerX <= anchorRect.right
-    && pointerY >= anchorRect.top
-    && pointerY <= anchorRect.bottom
+  const expandedLeft = anchorRect.left - controlsAnchorProximityThreshold
+  const expandedTop = anchorRect.top - controlsAnchorProximityThreshold
+  const expandedRight = anchorRect.right + controlsAnchorProximityThreshold
+  const expandedBottom = anchorRect.bottom + controlsAnchorProximityThreshold
+  const anchorHit = pointerX >= expandedLeft
+    && pointerX <= expandedRight
+    && pointerY >= expandedTop
+    && pointerY <= expandedBottom
+  return anchorHit || isInsideControlAnchorFallback.value
 })
 const isInsideMoveHitArea = computed(() => {
   if (!moveModeEnabled.value || isLoading.value)
@@ -450,6 +484,7 @@ watch([
   live2dCharacterHit,
   isPointerDown,
   isDraggingWindow,
+  controlsAnchorPressProtectionActive,
   hasRecentStudyPanelOpenProtection,
   hasRecentVisionPanelOpenProtection,
 ], () => {
@@ -468,6 +503,7 @@ watch([
     isDraggingWindow: isDraggingWindow.value,
     isResizingWindow: nearBorder,
     isPointerDown: isPointerDown.value,
+    controlsAnchorPressProtectionActive: controlsAnchorPressProtectionActive.value,
     recentlyOpenedStudyPanel: hasRecentStudyPanelOpenProtection.value,
     recentlyOpenedVisionPanel: hasRecentVisionPanelOpenProtection.value,
     blockingStates: {
@@ -701,8 +737,18 @@ watch(enabled, async (val) => {
   }
 }, { immediate: true })
 
-function handlePointerDown() {
+function handlePointerDown(event: PointerEvent) {
   isPointerDown.value = true
+  const eventTarget = event.target
+  if (eventTarget instanceof Element && eventTarget.closest('[data-testid="controls-anchor"]')) {
+    controlsAnchorPressProtectionActive.value = true
+    if (controlsAnchorPressProtectionTimer)
+      clearTimeout(controlsAnchorPressProtectionTimer)
+    controlsAnchorPressProtectionTimer = setTimeout(() => {
+      controlsAnchorPressProtectionActive.value = false
+      controlsAnchorPressProtectionTimer = undefined
+    }, controlsAnchorPressProtectionDurationMs)
+  }
 }
 
 function handlePointerUp() {
@@ -738,6 +784,8 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', handlePointerDown, true)
   window.removeEventListener('pointerup', handlePointerUp, true)
   window.removeEventListener('pointercancel', handlePointerUp, true)
+  if (controlsAnchorPressProtectionTimer)
+    clearTimeout(controlsAnchorPressProtectionTimer)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   tryCatch(() => {
     postModelSettingsRuntimeChannelEvent({

@@ -24,6 +24,7 @@ export interface ComputeWindowMouseIgnorePolicyInput {
   isDraggingWindow: boolean
   isResizingWindow: boolean
   isPointerDown: boolean
+  controlsAnchorPressProtectionActive: boolean
 
   recentlyOpenedStudyPanel: boolean
   recentlyOpenedVisionPanel: boolean
@@ -39,6 +40,7 @@ export interface WindowMouseIgnorePolicyResult {
     | 'dragging'
     | 'resizing'
     | 'pointer-down'
+    | 'controls-anchor-press-protection'
     | 'focused-form'
     | 'controls-hover'
     | 'anchor-hover'
@@ -137,6 +139,15 @@ export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePo
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
       reason: 'pointer-down',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.controlsAnchorPressProtectionActive) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'controls-anchor-press-protection',
       blockingStates: { ...input.blockingStates },
     }
   }

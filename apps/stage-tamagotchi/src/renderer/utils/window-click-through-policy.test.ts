@@ -22,6 +22,7 @@ describe('window click-through policy', () => {
       isDraggingWindow: false,
       isResizingWindow: false,
       isPointerDown: false,
+      controlsAnchorPressProtectionActive: false,
       recentlyOpenedStudyPanel: false,
       recentlyOpenedVisionPanel: false,
       blockingStates: {
@@ -171,6 +172,18 @@ describe('window click-through policy', () => {
     expect(result.reason).toBe('anchor-hover')
   })
 
+  /** @example near-anchor fallback should keep interaction to avoid first-click loss around anchor edge */
+  it('keeps mouse events when pointer is treated as controls anchor proximity', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideControlAnchor: true,
+      isPointerInsideControls: false,
+      isPointerInsideLive2DHitArea: false,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('anchor-hover')
+  })
+
   /** @example move mode alone should not claim whole transparent window */
   it('keeps pass-through when moveModeEnabled=true but pointer is outside move hit area', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
@@ -239,6 +252,17 @@ describe('window click-through policy', () => {
 
     expect(result.shouldIgnoreMouseEvents).toBe(false)
     expect(result.reason).toBe('pointer-down')
+  })
+
+  /** @example controls anchor press protection should keep interaction for first-click reliability */
+  it('keeps mouse events while controls anchor press protection is active', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      controlsAnchorPressProtectionActive: true,
+      isPointerDown: false,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('controls-anchor-press-protection')
   })
 
   /** @example transient panel-open protection avoids accidental immediate pass-through */
