@@ -1,5 +1,9 @@
 # Vision Interaction Experiment
 
+## 产品命名说明
+- 当前产品展示名统一为 `Rin`。
+- 本项目基于 AIRI 开源桌宠框架进行二次开发，内部工程命名（如 `@proj-airi`、`airi` 路径/键）保留不变。
+
 ## 模块定位
 - 本模块属于 `feature/vision-interaction-experiment` 视觉实验分支。
 - 目标是探索 Rin 在桌宠场景下的自然视觉交互能力。

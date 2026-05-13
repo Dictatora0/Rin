@@ -3,7 +3,7 @@ chat:
     retry: Retry
   message:
     character-name:
-      airi: AIRI
+      airi: Rin
       core-system: Core System
       you: You
   reasoning: Reasoning

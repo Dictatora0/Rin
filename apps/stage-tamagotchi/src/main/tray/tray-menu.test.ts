@@ -50,6 +50,7 @@ describe('buildTamagotchiTrayMenuTemplate', () => {
     expect(labels).toContain('展示方式')
     expect(labels).toContain('关于 Rin')
     expect(labels).toContain('退出 Rin')
+    expect(labels.join(' | ')).not.toContain('AIRI')
   })
 
   it('updates visibility label based on current window visibility', () => {
