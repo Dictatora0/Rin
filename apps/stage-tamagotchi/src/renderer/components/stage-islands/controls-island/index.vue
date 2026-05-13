@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Live2DFitPreference } from '@proj-airi/stage-ui/stores/settings/live2d'
+
 import type { StageWindowSizeAction } from './window-size'
 
 import { defineInvoke } from '@moeru/eventa'
@@ -36,7 +38,12 @@ const settingsStore = useSettings()
 const controlsIslandStore = useControlsIslandStore()
 const context = useElectronEventaContext()
 const { enabled } = storeToRefs(settingsAudioDeviceStore)
-const { alwaysOnTop, controlsIslandIconSize } = storeToRefs(settingsStore)
+const {
+  alwaysOnTop,
+  controlsIslandIconSize,
+  stageModelRenderer,
+  live2dFitPreference,
+} = storeToRefs(settingsStore)
 const {
   moveModeEnabled,
   controlsPanelExpanded,
@@ -90,6 +97,18 @@ const visionButtonLabel = computed(() => {
   if (visionCameraRunning.value)
     return `${t('tamagotchi.stage.controls-island.vision-panel.expand')}（摄像头运行中）`
   return visionPanelToggleLabel.value
+})
+const live2dFitPreferenceOptions: Live2DFitPreference[] = ['auto', 'full-body', 'upper-body']
+const live2dFitPreferenceLabel = computed(() => {
+  return t(`settings.live2d.display-fit.options.${live2dFitPreference.value}`)
+})
+const live2dFitCycleAriaLabel = computed(() => {
+  if (stageModelRenderer.value !== 'live2d')
+    return t('tamagotchi.stage.controls-island.live2d-fit.cycle-unavailable')
+
+  return t('tamagotchi.stage.controls-island.live2d-fit.cycle-label', {
+    mode: live2dFitPreferenceLabel.value,
+  })
 })
 
 function setOverlay(key: string, active: boolean) {
@@ -177,6 +196,17 @@ function toggleControlsUIMode() {
 
 function toggleShortcutsCard() {
   shortcutsCardExpanded.value = !shortcutsCardExpanded.value
+}
+
+function cycleLive2DFitPreference() {
+  if (stageModelRenderer.value !== 'live2d')
+    return
+
+  const currentIndex = live2dFitPreferenceOptions.findIndex(mode => mode === live2dFitPreference.value)
+  const safeIndex = currentIndex >= 0 ? currentIndex : 0
+  const nextIndex = (safeIndex + 1) % live2dFitPreferenceOptions.length
+  const nextMode = live2dFitPreferenceOptions[nextIndex]
+  settingsStore.setLive2dFitPreference(nextMode)
 }
 
 function collapseControlsPanelFromEmergencyAnchor() {
@@ -686,6 +716,39 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                   </ControlButton>
                   <template #tooltip>
                     {{ t('tamagotchi.stage.controls-island.drag-to-move-window') }}
+                  </template>
+                </ControlButtonTooltip>
+
+                <ControlButtonTooltip disable-hoverable-content trigger-class="controls-button-cell">
+                  <ControlButton
+                    data-testid="controls-live2d-fit-toggle"
+                    class="controls-button"
+                    :button-style="adjustStyleClasses.button"
+                    :show-label="isNoviceMode"
+                    :label="t('tamagotchi.stage.controls-island.labels.live2d-fit')"
+                    :aria-label="live2dFitCycleAriaLabel"
+                    :title="live2dFitCycleAriaLabel"
+                    :disabled="stageModelRenderer !== 'live2d'"
+                    :class="[
+                      stageModelRenderer === 'live2d'
+                        ? 'text-neutral-800 dark:text-neutral-300'
+                        : 'op-55 cursor-not-allowed text-neutral-500 dark:text-neutral-500',
+                    ]"
+                    @click="cycleLive2DFitPreference"
+                  >
+                    <div i-ph:user-focus :class="adjustStyleClasses.icon" />
+                    <span
+                      data-testid="controls-live2d-fit-badge"
+                      :class="[
+                        'absolute right-1.5 top-1.5 rounded px-1 text-[9px] leading-none',
+                        'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200',
+                      ]"
+                    >
+                      {{ t(`tamagotchi.stage.controls-island.live2d-fit.short.${live2dFitPreference}`) }}
+                    </span>
+                  </ControlButton>
+                  <template #tooltip>
+                    {{ live2dFitCycleAriaLabel }}
                   </template>
                 </ControlButtonTooltip>
 

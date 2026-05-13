@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => {
     studyPanelOpen: { value: false } as { value: boolean },
     visionPanelOpen: { value: false } as { value: boolean },
     visionCameraRunning: { value: false } as { value: boolean },
+    stageModelRenderer: { value: 'live2d' } as { value: 'live2d' | 'vrm' | 'godot' | 'disabled' },
+    live2dFitPreference: { value: 'auto' } as { value: 'auto' | 'full-body' | 'upper-body' },
+    setLive2dFitPreference: vi.fn((value: 'auto' | 'full-body' | 'upper-body') => {
+      mocks.live2dFitPreference.value = value
+    }),
     toggleControlsPanel: vi.fn(() => {
       mocks.controlsPanelExpanded.value = !mocks.controlsPanelExpanded.value
     }),
@@ -70,6 +75,9 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
   useSettings: () => ({
     alwaysOnTop: ref(false),
     controlsIslandIconSize: ref<'auto' | 'small' | 'large'>('auto'),
+    stageModelRenderer: mocks.stageModelRenderer,
+    live2dFitPreference: mocks.live2dFitPreference,
+    setLive2dFitPreference: mocks.setLive2dFitPreference,
   }),
   useSettingsAudioDevice: () => ({
     enabled: ref(false),
@@ -247,6 +255,8 @@ describe('controls island anchor behavior', () => {
     mocks.studyPanelOpen = ref(false)
     mocks.visionPanelOpen = ref(false)
     mocks.visionCameraRunning = ref(false)
+    mocks.stageModelRenderer = ref<'live2d' | 'vrm' | 'godot' | 'disabled'>('live2d')
+    mocks.live2dFitPreference = ref<'auto' | 'full-body' | 'upper-body'>('auto')
     mocks.toggleControlsPanel.mockClear()
     mocks.setControlsPanelExpanded.mockClear()
     mocks.toggleControlsUIMode.mockClear()
@@ -256,6 +266,7 @@ describe('controls island anchor behavior', () => {
     mocks.setStudyPanelOpen.mockClear()
     mocks.setVisionPanelOpen.mockClear()
     mocks.setVisionCameraRunning.mockClear()
+    mocks.setLive2dFitPreference.mockClear()
     mocks.startDraggingWindow.mockClear()
   })
 

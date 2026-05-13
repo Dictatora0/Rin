@@ -29,6 +29,13 @@ docs:
   'vision-panel':
     expand: Open vision interaction
     collapse: Hide vision interaction
+  'live2d-fit':
+    cycle-label: 'Switch display fit (current: {mode})'
+    cycle-unavailable: Display fit switch is unavailable for current renderer
+    short:
+      auto: Auto
+      full-body: Full
+      upper-body: Upper
   'ui-mode':
     novice: Novice mode
     expert: Expert mode
@@ -55,6 +62,7 @@ docs:
     vision: Vision
     mode: Mode
     keys: Keys
+    live2d-fit: Fit
     move: Move
     zoom-in: Zoom+
     zoom-out: Zoom-

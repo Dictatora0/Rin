@@ -6,7 +6,7 @@ interface Live2DResolvedFitProfile {
   scaleMultiplier: number
   topPaddingRatio: number
   bottomPaddingRatio: number
-  preferFullBody: boolean
+  verticalAnchor: 'full-body-safe' | 'legacy-bottom'
 }
 
 export interface Live2DFitLayoutInput {
@@ -28,6 +28,23 @@ export interface Live2DFitLayoutResult {
   y: number
 }
 
+/**
+ * Legacy upper-body framing scale from `integration/final-hci-demo`.
+ *
+ * Use when:
+ * - We need the historic companion framing with stronger face/upper-body focus
+ *
+ * Expects:
+ * - Base scale already uses `min(heightScale, widthScale)` and viewport 95% fit
+ *
+ * Returns:
+ * - A multiplier that recreates the legacy upper-body framing behavior
+ */
+const LEGACY_UPPER_BODY_SCALE_MULTIPLIER = 2.2
+const AUTO_NORMAL_UPPER_BODY_SCALE_MULTIPLIER = 2.0
+const AUTO_TALL_MIN_VIEWPORT_HEIGHT = 700
+const AUTO_NORMAL_MIN_VIEWPORT_HEIGHT = 520
+
 function toPositiveOrFallback(value: number, fallback: number) {
   if (!Number.isFinite(value) || value <= 0)
     return fallback
@@ -41,17 +58,21 @@ function resolveFitProfile(mode: Live2DResolvedFitMode): Live2DResolvedFitProfil
       scaleMultiplier: 1.0,
       topPaddingRatio: 0.06,
       bottomPaddingRatio: 0.01,
-      preferFullBody: true,
+      verticalAnchor: 'full-body-safe',
     }
   }
 
   if (mode === 'upper-body') {
     return {
       mode,
-      scaleMultiplier: 1.36,
-      topPaddingRatio: 0.02,
-      bottomPaddingRatio: 0.004,
-      preferFullBody: false,
+      // NOTICE:
+      // `2.2` matches the original legacy `Model.vue` framing from `integration/final-hci-demo`,
+      // where scale used `min(heightScale, widthScale) * 2.2` and Y was pinned to viewport bottom.
+      // This intentionally keeps a companion-style upper-body dominant crop.
+      scaleMultiplier: LEGACY_UPPER_BODY_SCALE_MULTIPLIER,
+      topPaddingRatio: 0.015,
+      bottomPaddingRatio: 0,
+      verticalAnchor: 'legacy-bottom',
     }
   }
 
@@ -61,26 +82,26 @@ function resolveFitProfile(mode: Live2DResolvedFitMode): Live2DResolvedFitProfil
       scaleMultiplier: 1.06,
       topPaddingRatio: 0.065,
       bottomPaddingRatio: 0.012,
-      preferFullBody: true,
+      verticalAnchor: 'full-body-safe',
     }
   }
 
   if (mode === 'small') {
     return {
       mode,
-      scaleMultiplier: 1.32,
-      topPaddingRatio: 0.03,
-      bottomPaddingRatio: 0.005,
-      preferFullBody: false,
+      scaleMultiplier: LEGACY_UPPER_BODY_SCALE_MULTIPLIER,
+      topPaddingRatio: 0.015,
+      bottomPaddingRatio: 0,
+      verticalAnchor: 'legacy-bottom',
     }
   }
 
   return {
     mode: 'normal',
-    scaleMultiplier: 1.18,
-    topPaddingRatio: 0.05,
-    bottomPaddingRatio: 0.01,
-    preferFullBody: false,
+    scaleMultiplier: AUTO_NORMAL_UPPER_BODY_SCALE_MULTIPLIER,
+    topPaddingRatio: 0.02,
+    bottomPaddingRatio: 0,
+    verticalAnchor: 'legacy-bottom',
   }
 }
 
@@ -98,9 +119,9 @@ function resolveFitProfile(mode: Live2DResolvedFitMode): Live2DResolvedFitProfil
  * - `tall`, `normal`, or `small`
  */
 export function resolveLive2DAutoFitMode(viewportHeight: number): Live2DResolvedFitMode {
-  if (viewportHeight >= 700)
+  if (viewportHeight >= AUTO_TALL_MIN_VIEWPORT_HEIGHT)
     return 'tall'
-  if (viewportHeight >= 520)
+  if (viewportHeight >= AUTO_NORMAL_MIN_VIEWPORT_HEIGHT)
     return 'normal'
   return 'small'
 }
@@ -141,7 +162,7 @@ export function computeLive2DFitLayout(input: Live2DFitLayoutInput): Live2DFitLa
   const baseWidthScale = viewportWidth * 0.95 / modelWidth
   let scale = Math.min(baseHeightScale, baseWidthScale) * profile.scaleMultiplier * userScale
 
-  if (profile.preferFullBody) {
+  if (profile.verticalAnchor === 'full-body-safe') {
     const maxScaleForFullBody = ((viewportHeight - topPadding - bottomPadding) / modelHeight) * userScale
     if (Number.isFinite(maxScaleForFullBody) && maxScaleForFullBody > 0)
       scale = Math.min(scale, maxScaleForFullBody)
@@ -152,10 +173,9 @@ export function computeLive2DFitLayout(input: Live2DFitLayoutInput): Live2DFitLa
 
   const halfHeight = modelHeight * scale * 0.5
   const preferredFullBodyY = viewportHeight - bottomPadding - halfHeight
-  const preferredHeadSafeY = topPadding + halfHeight
-  const baseY = profile.preferFullBody
-    ? preferredFullBodyY
-    : Math.max(preferredFullBodyY, preferredHeadSafeY)
+  const baseY = profile.verticalAnchor === 'legacy-bottom'
+    ? viewportHeight - bottomPadding
+    : preferredFullBodyY
 
   return {
     mode: resolvedMode,

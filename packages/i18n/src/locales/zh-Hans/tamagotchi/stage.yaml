@@ -29,6 +29,13 @@ docs:
   'vision-panel':
     expand: 打开视觉交互
     collapse: 收起视觉交互
+  'live2d-fit':
+    cycle-label: 切换展示方式（当前：{mode}）
+    cycle-unavailable: 当前渲染器不支持展示方式切换
+    short:
+      auto: 自动
+      full-body: 全身
+      upper-body: 上半身
   'ui-mode':
     novice: 新手模式
     expert: 专家模式
@@ -55,6 +62,7 @@ docs:
     vision: 视觉
     mode: 模式
     keys: 快捷键
+    live2d-fit: 展示
     move: 移动
     zoom-in: 放大
     zoom-out: 缩小

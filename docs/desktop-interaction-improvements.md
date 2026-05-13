@@ -230,6 +230,12 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
 - 上半身优先模式让角色主体更大，更适合陪伴和对话场景。
 - 小窗口下仍保证主体可见，避免头部跑出视口。
 - 该设置仅影响 Live2D 展示范围与布局，不改变模型资源和业务逻辑。
+- `upper-body` 已对照 `integration/final-hci-demo` 的历史上半身 framing 修正：
+  - 采用更接近 legacy 的底部锚定与放大系数，明显偏向脸部/上半身视角。
+- `auto` 模式在不同窗口高度下策略为：
+  - 高窗口：保持 `tall`，展示更多身体；
+  - 中/小窗口：使用更接近 legacy 上半身视角的布局参数，减少大面积下半身暴露。
+- `full-body` 仍保持完整身体展示能力，不会被上半身参数覆盖。
     - 今日任务表格
     - 最近学习事件摘要（最多 10 条）
 

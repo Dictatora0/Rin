@@ -16,6 +16,11 @@ const mocks = vi.hoisted(() => {
     studyPanelOpen: { value: false } as { value: boolean },
     visionPanelOpen: { value: false } as { value: boolean },
     visionCameraRunning: { value: false } as { value: boolean },
+    stageModelRenderer: { value: 'live2d' } as { value: 'live2d' | 'vrm' | 'godot' | 'disabled' },
+    live2dFitPreference: { value: 'auto' } as { value: 'auto' | 'full-body' | 'upper-body' },
+    setLive2dFitPreference: vi.fn((value: 'auto' | 'full-body' | 'upper-body') => {
+      mocks.live2dFitPreference.value = value
+    }),
     isOutside: { value: false } as { value: boolean },
     openSettings: vi.fn(),
     openChat: vi.fn(),
@@ -81,6 +86,9 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
   useSettings: () => ({
     alwaysOnTop: ref(false),
     controlsIslandIconSize: ref<'auto' | 'small' | 'large'>('auto'),
+    stageModelRenderer: mocks.stageModelRenderer,
+    live2dFitPreference: mocks.live2dFitPreference,
+    setLive2dFitPreference: mocks.setLive2dFitPreference,
   }),
   useSettingsAudioDevice: () => ({
     enabled: ref(false),
@@ -303,6 +311,8 @@ describe('controls island move mode and size controls', () => {
     mocks.studyPanelOpen = ref(false)
     mocks.visionPanelOpen = ref(false)
     mocks.visionCameraRunning = ref(false)
+    mocks.stageModelRenderer = ref<'live2d' | 'vrm' | 'godot' | 'disabled'>('live2d')
+    mocks.live2dFitPreference = ref<'auto' | 'full-body' | 'upper-body'>('auto')
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
     mocks.closeWindow.mockReset()
@@ -320,6 +330,7 @@ describe('controls island move mode and size controls', () => {
     mocks.setStudyPanelOpen.mockClear()
     mocks.setVisionPanelOpen.mockClear()
     mocks.setVisionCameraRunning.mockClear()
+    mocks.setLive2dFitPreference.mockClear()
     mocks.unknownEvents.length = 0
   })
 
@@ -444,7 +455,7 @@ describe('controls island move mode and size controls', () => {
     expect(closeButton?.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.close')
 
     const clickableButtons = Array.from(windowGrid?.querySelectorAll('button') ?? [])
-    expect(clickableButtons.length).toBe(6)
+    expect(clickableButtons.length).toBe(7)
     for (const button of clickableButtons) {
       const ariaLabel = button.getAttribute('aria-label')
       expect(ariaLabel).toBeTruthy()
@@ -474,6 +485,7 @@ describe('controls island move mode and size controls', () => {
       '[data-testid="controls-ui-mode-toggle"]',
       '[data-testid="controls-shortcuts-toggle"]',
       '[data-testid="controls-move-mode-toggle"]',
+      '[data-testid="controls-live2d-fit-toggle"]',
       '[data-testid="controls-zoom-in"]',
       '[data-testid="controls-zoom-out"]',
       '[data-testid="controls-reset-size"]',
@@ -585,6 +597,47 @@ describe('controls island move mode and size controls', () => {
     await vi.advanceTimersByTimeAsync(250)
     await nextTick()
     expect(container.querySelector('[data-testid="controls-shortcuts-card"]')).toBeNull()
+
+    unmount()
+  })
+
+  it('cycles live2d fit preference from window section shortcut', async () => {
+    const { container, unmount } = mountControlsIsland()
+    clickExpand(container)
+    await nextTick()
+
+    const fitButton = container.querySelector('[data-testid="controls-live2d-fit-toggle"]') as HTMLButtonElement | null
+    const fitBadge = container.querySelector('[data-testid="controls-live2d-fit-badge"]') as HTMLSpanElement | null
+    if (!fitButton || !fitBadge)
+      throw new Error('live2d fit controls missing')
+
+    expect(fitButton.getAttribute('aria-label')).toContain('tamagotchi.stage.controls-island.live2d-fit.cycle-label')
+    expect(fitBadge.textContent).toContain('tamagotchi.stage.controls-island.live2d-fit.short.auto')
+
+    fitButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.setLive2dFitPreference).toHaveBeenCalledWith('full-body')
+    expect(mocks.live2dFitPreference.value).toBe('full-body')
+
+    fitButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.setLive2dFitPreference).toHaveBeenCalledWith('upper-body')
+    expect(mocks.live2dFitPreference.value).toBe('upper-body')
+
+    fitButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.setLive2dFitPreference).toHaveBeenCalledWith('auto')
+    expect(mocks.live2dFitPreference.value).toBe('auto')
+
+    mocks.stageModelRenderer.value = 'vrm'
+    await nextTick()
+
+    expect(fitButton.disabled).toBe(true)
+    expect(fitButton.getAttribute('aria-label')).toBe('tamagotchi.stage.controls-island.live2d-fit.cycle-unavailable')
+
+    fitButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.setLive2dFitPreference).toHaveBeenCalledTimes(3)
 
     unmount()
   })

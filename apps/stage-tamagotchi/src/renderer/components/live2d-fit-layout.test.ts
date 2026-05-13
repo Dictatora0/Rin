@@ -32,9 +32,10 @@ describe('live2d fit mode', () => {
     expect(layout.resolvedFitMode).toBe('tall')
     expect(layout.y).toBeGreaterThan(0)
     expect(layout.y).toBeLessThan(820)
+    expect(Number.isFinite(layout.scale)).toBe(true)
   })
 
-  it('keeps model y inside viewport in small mode', () => {
+  it('uses legacy upper-body framing for auto small', () => {
     const layout = computeLive2DFitLayout({
       viewportWidth: 360,
       viewportHeight: 460,
@@ -46,8 +47,33 @@ describe('live2d fit mode', () => {
 
     expect(layout.mode).toBe('small')
     expect(layout.resolvedFitMode).toBe('small')
-    expect(layout.y).toBeGreaterThan(0)
-    expect(layout.y).toBeLessThan(460)
+    expect(layout.y).toBe(460)
+    expect(Number.isFinite(layout.scale)).toBe(true)
+  })
+
+  it('keeps auto normal as upper-body leaning framing', () => {
+    const autoNormal = computeLive2DFitLayout({
+      viewportWidth: 450,
+      viewportHeight: 600,
+      modelWidth: 1000,
+      modelHeight: 2000,
+      fitPreference: 'auto',
+      userScale: 1,
+    })
+    const fullBody = computeLive2DFitLayout({
+      viewportWidth: 450,
+      viewportHeight: 600,
+      modelWidth: 1000,
+      modelHeight: 2000,
+      fitPreference: 'full-body',
+      userScale: 1,
+    })
+
+    expect(autoNormal.mode).toBe('normal')
+    expect(autoNormal.resolvedFitMode).toBe('normal')
+    expect(autoNormal.y).toBe(600)
+    expect(autoNormal.scale).toBeGreaterThan(fullBody.scale)
+    expect(autoNormal.y).toBeGreaterThan(fullBody.y)
   })
 
   it('returns full-body resolved mode for explicit full-body preference', () => {
@@ -62,10 +88,12 @@ describe('live2d fit mode', () => {
 
     expect(layout.mode).toBe('full-body')
     expect(layout.resolvedFitMode).toBe('full-body')
+    expect(layout.y).toBeLessThan(820)
+    expect(Number.isFinite(layout.scale)).toBe(true)
   })
 
-  it('returns upper-body resolved mode for explicit upper-body preference', () => {
-    const layout = computeLive2DFitLayout({
+  it('returns explicit upper-body preference with stronger upper-body framing', () => {
+    const upperBody = computeLive2DFitLayout({
       viewportWidth: 450,
       viewportHeight: 820,
       modelWidth: 1000,
@@ -73,8 +101,19 @@ describe('live2d fit mode', () => {
       fitPreference: 'upper-body',
       userScale: 1,
     })
+    const fullBody = computeLive2DFitLayout({
+      viewportWidth: 450,
+      viewportHeight: 820,
+      modelWidth: 1000,
+      modelHeight: 2000,
+      fitPreference: 'full-body',
+      userScale: 1,
+    })
 
-    expect(layout.mode).toBe('upper-body')
-    expect(layout.resolvedFitMode).toBe('upper-body')
+    expect(upperBody.mode).toBe('upper-body')
+    expect(upperBody.resolvedFitMode).toBe('upper-body')
+    expect(upperBody.y).toBe(820)
+    expect(upperBody.scale).toBeGreaterThan(fullBody.scale)
+    expect(upperBody.y).toBeGreaterThan(fullBody.y)
   })
 })

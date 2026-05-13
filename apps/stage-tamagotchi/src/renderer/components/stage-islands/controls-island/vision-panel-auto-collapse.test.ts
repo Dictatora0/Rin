@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => {
     studyPanelOpen: { value: false } as { value: boolean },
     visionPanelOpen: { value: false } as { value: boolean },
     visionCameraRunning: { value: false } as { value: boolean },
+    stageModelRenderer: { value: 'live2d' } as { value: 'live2d' | 'vrm' | 'godot' | 'disabled' },
+    live2dFitPreference: { value: 'auto' } as { value: 'auto' | 'full-body' | 'upper-body' },
+    setLive2dFitPreference: vi.fn((value: 'auto' | 'full-body' | 'upper-body') => {
+      mocks.live2dFitPreference.value = value
+    }),
     visionUnmountStop: vi.fn(),
     openSettings: vi.fn(),
     openChat: vi.fn(),
@@ -75,6 +80,9 @@ vi.mock('@proj-airi/stage-ui/stores/settings', () => ({
   useSettings: () => ({
     alwaysOnTop: ref(false),
     controlsIslandIconSize: ref<'auto' | 'small' | 'large'>('auto'),
+    stageModelRenderer: mocks.stageModelRenderer,
+    live2dFitPreference: mocks.live2dFitPreference,
+    setLive2dFitPreference: mocks.setLive2dFitPreference,
   }),
   useSettingsAudioDevice: () => ({
     enabled: ref(false),
@@ -304,6 +312,8 @@ describe('controls island vision panel interaction flow', () => {
     mocks.studyPanelOpen = ref(false)
     mocks.visionPanelOpen = ref(false)
     mocks.visionCameraRunning = ref(false)
+    mocks.stageModelRenderer = ref<'live2d' | 'vrm' | 'godot' | 'disabled'>('live2d')
+    mocks.live2dFitPreference = ref<'auto' | 'full-body' | 'upper-body'>('auto')
     mocks.visionUnmountStop.mockReset()
     mocks.openSettings.mockReset()
     mocks.openChat.mockReset()
@@ -319,6 +329,7 @@ describe('controls island vision panel interaction flow', () => {
     mocks.setStudyPanelOpen.mockReset()
     mocks.setVisionPanelOpen.mockReset()
     mocks.setVisionCameraRunning.mockReset()
+    mocks.setLive2dFitPreference.mockReset()
   })
 
   afterEach(() => {

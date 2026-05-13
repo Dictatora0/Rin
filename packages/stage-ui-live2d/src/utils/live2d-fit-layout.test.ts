@@ -5,6 +5,12 @@ import {
   resolveLive2DAutoFitMode,
 } from './live2d-fit-layout'
 
+function assertFiniteLayout(layout: ReturnType<typeof computeLive2DFitLayout>) {
+  expect(Number.isFinite(layout.scale)).toBe(true)
+  expect(Number.isFinite(layout.x)).toBe(true)
+  expect(Number.isFinite(layout.y)).toBe(true)
+}
+
 describe('resolveLive2DAutoFitMode', () => {
   it('returns tall mode for high viewport', () => {
     expect(resolveLive2DAutoFitMode(720)).toBe('tall')
@@ -20,7 +26,7 @@ describe('resolveLive2DAutoFitMode', () => {
 })
 
 describe('computeLive2DFitLayout', () => {
-  it('uses full-body friendly placement in tall viewport', () => {
+  it('keeps auto tall as full-body-friendly framing', () => {
     const layout = computeLive2DFitLayout({
       viewportWidth: 480,
       viewportHeight: 820,
@@ -32,12 +38,12 @@ describe('computeLive2DFitLayout', () => {
 
     expect(layout.mode).toBe('tall')
     expect(layout.resolvedFitMode).toBe('tall')
-    expect(layout.y).toBeGreaterThan(0)
     expect(layout.y).toBeLessThan(820)
-    expect(Number.isFinite(layout.scale)).toBe(true)
+    expect(layout.y).toBeGreaterThan(0)
+    assertFiniteLayout(layout)
   })
 
-  it('keeps a head-safe placement in small viewport', () => {
+  it('maps auto small to legacy-style upper-body framing intent', () => {
     const layout = computeLive2DFitLayout({
       viewportWidth: 380,
       viewportHeight: 460,
@@ -49,9 +55,40 @@ describe('computeLive2DFitLayout', () => {
 
     expect(layout.mode).toBe('small')
     expect(layout.resolvedFitMode).toBe('small')
-    expect(layout.y).toBeGreaterThan(0)
-    expect(layout.y).toBeLessThan(460)
-    expect(Number.isFinite(layout.scale)).toBe(true)
+    // ROOT CAUSE:
+    //
+    // The previous strategy anchored non-full-body modes to "head-safe" Y.
+    // That made small mode expose too much lower body.
+    // Legacy framing used bottom anchoring (`y ~= viewportHeight`) with larger scale.
+    // We keep this behavior in small mode for strong upper-body emphasis.
+    expect(layout.y).toBe(460)
+    assertFiniteLayout(layout)
+  })
+
+  it('keeps auto normal closer to upper-body framing than full-body framing', () => {
+    const autoNormal = computeLive2DFitLayout({
+      viewportWidth: 420,
+      viewportHeight: 560,
+      modelWidth: 1000,
+      modelHeight: 2000,
+      fitPreference: 'auto',
+      userScale: 1,
+    })
+    const fullBody = computeLive2DFitLayout({
+      viewportWidth: 420,
+      viewportHeight: 560,
+      modelWidth: 1000,
+      modelHeight: 2000,
+      fitPreference: 'full-body',
+      userScale: 1,
+    })
+
+    expect(autoNormal.mode).toBe('normal')
+    expect(autoNormal.resolvedFitMode).toBe('normal')
+    expect(autoNormal.y).toBe(560)
+    expect(autoNormal.scale).toBeGreaterThan(fullBody.scale)
+    expect(autoNormal.y).toBeGreaterThan(fullBody.y)
+    assertFiniteLayout(autoNormal)
   })
 
   it('uses explicit full-body fit preference when selected', () => {
@@ -66,13 +103,12 @@ describe('computeLive2DFitLayout', () => {
 
     expect(layout.mode).toBe('full-body')
     expect(layout.resolvedFitMode).toBe('full-body')
-    expect(Number.isFinite(layout.scale)).toBe(true)
-    expect(Number.isFinite(layout.x)).toBe(true)
-    expect(Number.isFinite(layout.y)).toBe(true)
+    expect(layout.y).toBeLessThan(560)
+    assertFiniteLayout(layout)
   })
 
-  it('uses explicit upper-body fit preference when selected', () => {
-    const layout = computeLive2DFitLayout({
+  it('aligns explicit upper-body preference with legacy upper-body framing', () => {
+    const upperBody = computeLive2DFitLayout({
       viewportWidth: 420,
       viewportHeight: 560,
       modelWidth: 1000,
@@ -80,12 +116,21 @@ describe('computeLive2DFitLayout', () => {
       fitPreference: 'upper-body',
       userScale: 1,
     })
+    const fullBody = computeLive2DFitLayout({
+      viewportWidth: 420,
+      viewportHeight: 560,
+      modelWidth: 1000,
+      modelHeight: 2000,
+      fitPreference: 'full-body',
+      userScale: 1,
+    })
 
-    expect(layout.mode).toBe('upper-body')
-    expect(layout.resolvedFitMode).toBe('upper-body')
-    expect(Number.isFinite(layout.scale)).toBe(true)
-    expect(Number.isFinite(layout.x)).toBe(true)
-    expect(Number.isFinite(layout.y)).toBe(true)
+    expect(upperBody.mode).toBe('upper-body')
+    expect(upperBody.resolvedFitMode).toBe('upper-body')
+    expect(upperBody.y).toBe(560)
+    expect(upperBody.scale).toBeGreaterThan(fullBody.scale)
+    expect(upperBody.y).toBeGreaterThan(fullBody.y)
+    assertFiniteLayout(upperBody)
   })
 
   it('keeps full-body preference safe in small viewport', () => {
@@ -102,6 +147,22 @@ describe('computeLive2DFitLayout', () => {
     expect(layout.resolvedFitMode).toBe('full-body')
     expect(layout.y).toBeGreaterThan(0)
     expect(layout.y).toBeLessThan(380)
-    expect(Number.isFinite(layout.scale)).toBe(true)
+    assertFiniteLayout(layout)
+  })
+
+  it('keeps all modes as finite values in extremely small viewport', () => {
+    const modes = ['auto', 'full-body', 'upper-body'] as const
+
+    for (const fitPreference of modes) {
+      const layout = computeLive2DFitLayout({
+        viewportWidth: 220,
+        viewportHeight: 240,
+        modelWidth: 1000,
+        modelHeight: 2000,
+        fitPreference,
+        userScale: 1,
+      })
+      assertFiniteLayout(layout)
+    }
   })
 })
