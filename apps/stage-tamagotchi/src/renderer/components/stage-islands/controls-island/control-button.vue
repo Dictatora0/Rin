@@ -3,12 +3,16 @@ const props = defineProps<{
   buttonStyle?: string
   label?: string
   showLabel?: boolean
+  clickThroughProtected?: boolean
+  controlButton?: boolean
 }>()
 </script>
 
 <template>
   <button
     type="button"
+    :data-click-through-protected="props.clickThroughProtected !== false ? 'true' : undefined"
+    :data-control-button="props.controlButton !== false ? 'true' : undefined"
     :class="[
       'border-2 border-solid border-neutral-200/60 dark:border-neutral-800/10',
       'bg-neutral-50/80 dark:bg-neutral-800/70',

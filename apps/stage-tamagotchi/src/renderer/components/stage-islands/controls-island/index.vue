@@ -239,6 +239,7 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
   <div
     data-testid="controls-island-root"
     data-control-layer="controls-island"
+    data-click-through-protected="true"
     class="controls-island-root [-webkit-app-region:no-drag] pointer-events-auto z-120"
     fixed inset-y-2 right-2
   >
@@ -757,7 +758,12 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
         </div>
       </Transition>
 
-      <div data-testid="controls-anchor" class="flex flex-col items-end gap-1.5">
+      <div
+        data-testid="controls-anchor"
+        data-control-layer="controls-anchor"
+        data-click-through-protected="true"
+        class="flex flex-col items-end gap-1.5"
+      >
         <ControlButtonTooltip side="left">
           <ControlButton
             data-testid="controls-toggle-button"
@@ -783,6 +789,8 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
             data-testid="controls-emergency-anchor"
             class="controls-emergency-anchor [-webkit-app-region:no-drag] pointer-events-auto"
             :button-style="adjustStyleClasses.button"
+            data-control-layer="controls-anchor"
+            data-click-through-protected="true"
             aria-label="紧急收起"
             title="紧急收起"
             @click="collapseControlsPanelFromEmergencyAnchor"

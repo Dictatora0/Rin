@@ -28,6 +28,10 @@ const {
   setTaskPriority,
   setTaskDueDate,
   setTaskSortMode,
+  ensureTaskReminderRules,
+  addTaskReminder,
+  updateTaskReminder,
+  removeTaskReminder,
 } = studyStore
 const draftTitle = ref('')
 const draftPriority = ref<'high' | 'medium' | 'low'>('medium')
@@ -35,6 +39,13 @@ const draftDueDate = ref(getStudyQuickDueDate('tomorrow'))
 const draftDueDateError = ref('')
 const taskDueDateDraftMap = ref<Record<string, string>>({})
 const taskDueDateErrorMap = ref<Record<string, string>>({})
+const taskReminderPanelOpenMap = ref<Record<string, boolean>>({})
+const taskReminderDraftAmountMap = ref<Record<string, string>>({})
+const taskReminderDraftUnitMap = ref<Record<string, 'minute' | 'hour' | 'day'>>({})
+const taskReminderErrorMap = ref<Record<string, string>>({})
+const taskReminderEditAmountMap = ref<Record<string, string>>({})
+const taskReminderEditUnitMap = ref<Record<string, 'minute' | 'hour' | 'day'>>({})
+const taskReminderEditErrorMap = ref<Record<string, string>>({})
 const taskInputRef = ref<HTMLInputElement>()
 const isTaskInputFocused = ref(false)
 const isComposing = ref(false)
@@ -162,6 +173,162 @@ function handleTaskDueDateChange(taskId: string, dueDate: string) {
   taskDueDateErrorMap.value[taskId] = ''
   taskDueDateDraftMap.value[taskId] = normalizedDueDate
   setTaskDueDate(taskId, normalizedDueDate || null)
+}
+
+function getReminderUnitLabel(unit: 'minute' | 'hour' | 'day') {
+  if (unit === 'day')
+    return '天'
+  if (unit === 'hour')
+    return '小时'
+  return '分钟'
+}
+
+function getReminderSourceLabel(source: 'rin-recommended' | 'user-custom') {
+  return source === 'rin-recommended' ? 'Rin 推荐' : '自定义'
+}
+
+function getTaskReminderRules(task: {
+  reminders?: Array<{
+    id: string
+    amount: number
+    unit: 'minute' | 'hour' | 'day'
+    enabled: boolean
+    source: 'rin-recommended' | 'user-custom'
+    label?: string
+  }>
+}) {
+  return task.reminders ?? []
+}
+
+function getReminderDeliveredCount(task: { reminderDeliveries?: Array<{ reminderId: string }> }, reminderId: string) {
+  return (task.reminderDeliveries ?? []).filter(delivery => delivery.reminderId === reminderId).length
+}
+
+function getReminderPanelOpen(taskId: string) {
+  return taskReminderPanelOpenMap.value[taskId] ?? false
+}
+
+function toggleTaskReminderPanel(taskId: string, dueDate?: string) {
+  const currentOpen = getReminderPanelOpen(taskId)
+  const nextOpen = !currentOpen
+  taskReminderPanelOpenMap.value[taskId] = nextOpen
+  taskReminderErrorMap.value[taskId] = ''
+  if (nextOpen && dueDate)
+    ensureTaskReminderRules(taskId, { forceRecommend: true })
+}
+
+function getReminderDraftAmount(taskId: string) {
+  return taskReminderDraftAmountMap.value[taskId] ?? '1'
+}
+
+function getReminderDraftUnit(taskId: string) {
+  return taskReminderDraftUnitMap.value[taskId] ?? 'hour'
+}
+
+function setReminderDraftAmount(taskId: string, amountText: string) {
+  taskReminderDraftAmountMap.value[taskId] = amountText
+}
+
+function setReminderDraftUnit(taskId: string, unit: string) {
+  taskReminderDraftUnitMap.value[taskId] = unit === 'day' || unit === 'minute' ? unit : 'hour'
+}
+
+function validateReminderAmount(amountText: string, unit: 'minute' | 'hour' | 'day') {
+  const rawAmount = Number(amountText)
+  if (!Number.isFinite(rawAmount))
+    return { ok: false as const, error: '请输入有效的提醒数值' }
+  const roundedAmount = Math.round(rawAmount)
+  const limits = unit === 'minute'
+    ? { min: 1, max: 1440 }
+    : unit === 'hour'
+      ? { min: 1, max: 168 }
+      : { min: 1, max: 30 }
+
+  if (roundedAmount < limits.min || roundedAmount > limits.max) {
+    return { ok: false as const, error: `提醒范围：${limits.min}-${limits.max} ${getReminderUnitLabel(unit)}` }
+  }
+  return { ok: true as const, amount: roundedAmount }
+}
+
+function handleAddTaskReminder(taskId: string, dueDate?: string) {
+  if (!dueDate) {
+    taskReminderErrorMap.value[taskId] = '设置截止日期后可添加提醒'
+    return
+  }
+  const unit = getReminderDraftUnit(taskId)
+  const amountValidation = validateReminderAmount(getReminderDraftAmount(taskId), unit)
+  if (!amountValidation.ok) {
+    taskReminderErrorMap.value[taskId] = amountValidation.error
+    return
+  }
+
+  const result = addTaskReminder(taskId, {
+    amount: amountValidation.amount,
+    unit,
+    source: 'user-custom',
+  })
+  if (!result.ok) {
+    taskReminderErrorMap.value[taskId] = result.reason === 'limit' ? '最多添加 5 条提醒' : '添加提醒失败'
+    return
+  }
+
+  taskReminderErrorMap.value[taskId] = ''
+  taskReminderDraftAmountMap.value[taskId] = '1'
+  taskReminderDraftUnitMap.value[taskId] = 'hour'
+}
+
+function getReminderEditAmount(taskId: string, reminderId: string, currentAmount: number) {
+  const mapKey = `${taskId}:${reminderId}`
+  return taskReminderEditAmountMap.value[mapKey] ?? `${currentAmount}`
+}
+
+function getReminderEditUnit(taskId: string, reminderId: string, currentUnit: 'minute' | 'hour' | 'day') {
+  const mapKey = `${taskId}:${reminderId}`
+  return taskReminderEditUnitMap.value[mapKey] ?? currentUnit
+}
+
+function setReminderEditAmount(taskId: string, reminderId: string, amountText: string) {
+  const mapKey = `${taskId}:${reminderId}`
+  taskReminderEditAmountMap.value[mapKey] = amountText
+}
+
+function setReminderEditUnit(taskId: string, reminderId: string, unit: string) {
+  const mapKey = `${taskId}:${reminderId}`
+  taskReminderEditUnitMap.value[mapKey] = unit === 'day' || unit === 'minute' ? unit : 'hour'
+}
+
+function getReminderEditError(taskId: string, reminderId: string) {
+  const mapKey = `${taskId}:${reminderId}`
+  return taskReminderEditErrorMap.value[mapKey] ?? ''
+}
+
+function applyReminderEdit(taskId: string, reminderId: string, fallbackAmount: number, fallbackUnit: 'minute' | 'hour' | 'day') {
+  const amountText = getReminderEditAmount(taskId, reminderId, fallbackAmount)
+  const unit = getReminderEditUnit(taskId, reminderId, fallbackUnit)
+  const validation = validateReminderAmount(amountText, unit)
+  const mapKey = `${taskId}:${reminderId}`
+  if (!validation.ok) {
+    taskReminderEditErrorMap.value[mapKey] = validation.error
+    return
+  }
+
+  const result = updateTaskReminder(taskId, reminderId, {
+    amount: validation.amount,
+    unit,
+  })
+  if (!result.ok) {
+    taskReminderEditErrorMap.value[mapKey] = '修改提醒失败'
+    return
+  }
+  taskReminderEditErrorMap.value[mapKey] = ''
+}
+
+function handleToggleReminderEnabled(taskId: string, reminderId: string, enabled: boolean) {
+  updateTaskReminder(taskId, reminderId, { enabled })
+}
+
+function handleRemoveReminder(taskId: string, reminderId: string) {
+  removeTaskReminder(taskId, reminderId)
 }
 
 function handleDraftDueDateInput(value: string) {
@@ -615,6 +782,187 @@ onBeforeUnmount(() => {
             </div>
           </label>
         </div>
+
+        <section
+          data-testid="task-reminder-section"
+          :class="[
+            'mt-2 rounded-lg border border-neutral-200/70 bg-white/80 p-2',
+            'dark:border-neutral-700/70 dark:bg-neutral-900/70',
+          ]"
+        >
+          <div :class="['flex items-center justify-between gap-2']">
+            <span :class="['text-[11px] font-semibold text-neutral-700 dark:text-neutral-200']">截止提醒</span>
+            <button
+              type="button"
+              data-testid="task-reminder-panel-toggle"
+              :class="['rounded-md border border-neutral-200 bg-white px-2 py-1 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+              @click="toggleTaskReminderPanel(task.id, task.dueDate)"
+            >
+              {{ getReminderPanelOpen(task.id) ? '收起提醒' : '编辑提醒' }}
+            </button>
+          </div>
+
+          <p
+            v-if="task.done"
+            :class="['mt-1 text-[11px] text-neutral-500 dark:text-neutral-400']"
+          >
+            任务已完成，不再提醒
+          </p>
+          <p
+            v-else-if="!task.dueDate"
+            :class="['mt-1 text-[11px] text-neutral-500 dark:text-neutral-400']"
+          >
+            设置截止日期后可添加提醒
+          </p>
+
+          <div
+            v-if="getReminderPanelOpen(task.id) && task.dueDate && !task.done"
+            :class="['mt-1.5 flex flex-col gap-2']"
+          >
+            <ul
+              v-if="getTaskReminderRules(task).length > 0"
+              :class="['space-y-1.5']"
+            >
+              <li
+                v-for="rule in getTaskReminderRules(task)"
+                :key="rule.id"
+                data-testid="task-reminder-row"
+                :class="['rounded-md border border-neutral-200/80 bg-neutral-50/90 p-2 dark:border-neutral-700/70 dark:bg-neutral-800/70']"
+              >
+                <div :class="['flex flex-wrap items-center gap-1.5']">
+                  <span
+                    data-testid="task-reminder-source"
+                    :class="[
+                      'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                      rule.source === 'rin-recommended'
+                        ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
+                        : 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200',
+                    ]"
+                  >
+                    {{ getReminderSourceLabel(rule.source) }}
+                  </span>
+                  <label :class="['flex items-center gap-1 text-[10px] text-neutral-600 dark:text-neutral-300']">
+                    <span>提前</span>
+                    <input
+                      :value="getReminderEditAmount(task.id, rule.id, rule.amount)"
+                      data-testid="task-reminder-edit-amount"
+                      type="number"
+                      min="1"
+                      :class="['w-16 rounded border border-neutral-200 bg-white px-1 py-0.5 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+                      @input="event => setReminderEditAmount(task.id, rule.id, (event.target as HTMLInputElement).value)"
+                      @blur="applyReminderEdit(task.id, rule.id, rule.amount, rule.unit)"
+                    >
+                    <select
+                      :value="getReminderEditUnit(task.id, rule.id, rule.unit)"
+                      data-testid="task-reminder-edit-unit"
+                      :class="['rounded border border-neutral-200 bg-white px-1 py-0.5 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+                      @change="event => setReminderEditUnit(task.id, rule.id, (event.target as HTMLSelectElement).value)"
+                      @blur="applyReminderEdit(task.id, rule.id, rule.amount, rule.unit)"
+                    >
+                      <option value="minute">
+                        分钟
+                      </option>
+                      <option value="hour">
+                        小时
+                      </option>
+                      <option value="day">
+                        天
+                      </option>
+                    </select>
+                  </label>
+                  <label :class="['flex items-center gap-1 text-[10px] text-neutral-600 dark:text-neutral-300']">
+                    <input
+                      :checked="rule.enabled"
+                      data-testid="task-reminder-enabled-toggle"
+                      type="checkbox"
+                      @change="event => handleToggleReminderEnabled(task.id, rule.id, (event.target as HTMLInputElement).checked)"
+                    >
+                    <span>{{ rule.enabled ? '启用' : '停用' }}</span>
+                  </label>
+                  <button
+                    type="button"
+                    data-testid="task-reminder-remove"
+                    :class="['rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700 dark:border-rose-700/60 dark:bg-rose-900/30 dark:text-rose-200']"
+                    @click="handleRemoveReminder(task.id, rule.id)"
+                  >
+                    删除
+                  </button>
+                </div>
+                <p :class="['mt-1 text-[10px] text-neutral-500 dark:text-neutral-400']">
+                  {{ rule.label || `提前 ${rule.amount} ${getReminderUnitLabel(rule.unit)}` }}
+                </p>
+                <p :class="['text-[10px] text-neutral-500 dark:text-neutral-400']">
+                  已提醒次数：{{ getReminderDeliveredCount(task, rule.id) }}
+                </p>
+                <p
+                  v-if="getReminderEditError(task.id, rule.id)"
+                  data-testid="task-reminder-edit-error"
+                  :class="['mt-0.5 text-[10px] text-rose-600 dark:text-rose-300']"
+                >
+                  {{ getReminderEditError(task.id, rule.id) }}
+                </p>
+              </li>
+            </ul>
+            <p
+              v-else
+              data-testid="task-reminder-empty-state"
+              :class="['text-[11px] text-neutral-500 dark:text-neutral-400']"
+            >
+              还没有提醒规则，Rin 会根据截止时间推荐提醒。
+            </p>
+
+            <div
+              data-testid="task-reminder-add-row"
+              :class="['flex flex-wrap items-end gap-1.5']"
+            >
+              <label :class="['flex flex-col gap-0.5 text-[10px] text-neutral-600 dark:text-neutral-300']">
+                <span>新增提醒</span>
+                <input
+                  :value="getReminderDraftAmount(task.id)"
+                  data-testid="task-reminder-add-amount"
+                  type="number"
+                  min="1"
+                  :class="['w-18 rounded border border-neutral-200 bg-white px-1.5 py-1 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+                  @input="event => setReminderDraftAmount(task.id, (event.target as HTMLInputElement).value)"
+                >
+              </label>
+              <label :class="['flex flex-col gap-0.5 text-[10px] text-neutral-600 dark:text-neutral-300']">
+                <span>单位</span>
+                <select
+                  :value="getReminderDraftUnit(task.id)"
+                  data-testid="task-reminder-add-unit"
+                  :class="['rounded border border-neutral-200 bg-white px-1.5 py-1 text-[10px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200']"
+                  @change="event => setReminderDraftUnit(task.id, (event.target as HTMLSelectElement).value)"
+                >
+                  <option value="minute">
+                    分钟
+                  </option>
+                  <option value="hour">
+                    小时
+                  </option>
+                  <option value="day">
+                    天
+                  </option>
+                </select>
+              </label>
+              <button
+                type="button"
+                data-testid="task-reminder-add-button"
+                :class="['rounded-md bg-primary-600 px-2 py-1 text-[10px] text-white hover:bg-primary-500']"
+                @click="handleAddTaskReminder(task.id, task.dueDate)"
+              >
+                添加提醒
+              </button>
+            </div>
+            <p
+              v-if="taskReminderErrorMap[task.id]"
+              data-testid="task-reminder-error"
+              :class="['text-[10px] text-rose-600 dark:text-rose-300']"
+            >
+              {{ taskReminderErrorMap[task.id] }}
+            </p>
+          </div>
+        </section>
       </li>
     </ul>
 

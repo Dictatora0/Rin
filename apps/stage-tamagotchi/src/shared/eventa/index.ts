@@ -55,6 +55,15 @@ export interface TamagotchiTrayRendererStatePayload {
 export const tamagotchiTrayCommandEvent = defineEventa<TamagotchiTrayCommandPayload>('eventa:event:tamagotchi:tray:command')
 export const tamagotchiTrayRendererStateEvent = defineEventa<TamagotchiTrayRendererStatePayload>('eventa:event:tamagotchi:tray:renderer-state')
 
+export interface ElectronStudyTaskReminderNotificationPayload {
+  title: string
+  body: string
+  taskId: string
+  reminderId: string
+}
+
+export const electronStudyTaskReminderNotify = defineInvokeEventa<boolean, ElectronStudyTaskReminderNotificationPayload>('eventa:invoke:electron:study-task-reminder:notify')
+
 export interface ElectronServerChannelConfig {
   tlsConfig?: ServerOptions['tlsConfig'] | null
   authToken: string

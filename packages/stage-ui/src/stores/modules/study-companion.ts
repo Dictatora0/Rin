@@ -1,7 +1,20 @@
+import type {
+  StudyTaskReminderDelivery,
+  StudyTaskReminderRule,
+  StudyTaskReminderSource,
+  StudyTaskReminderUnit,
+} from './study-task-reminders'
+
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useIntervalFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, watch } from 'vue'
+
+import {
+  buildRecommendedReminderRules,
+  normalizeTaskReminderRules,
+  STUDY_TASK_REMINDER_AMOUNT_LIMITS,
+} from './study-task-reminders'
 
 /** Pomodoro run mode: single source of truth for Study Island & Live2D feedback. */
 export type StudyCompanionMode = 'idle' | 'focus' | 'break' | 'paused'
@@ -48,6 +61,9 @@ export interface StudyTask {
   completedAt?: string
   priority: StudyTaskPriority
   dueDate?: string
+  reminders?: StudyTaskReminderRule[]
+  reminderDeliveries?: StudyTaskReminderDelivery[]
+  reminderRecommendationGeneratedForDueDate?: string
 }
 
 export interface StudyDailyHistoryEntry {
@@ -103,6 +119,7 @@ export interface StudyCompanionPersisted {
   previousBreakDurationMs: number | null
   selectedFocusTaskId: string | null
   taskSortMode: StudyTaskSortMode
+  taskDueReminderEnabled: boolean
   tasks: StudyTask[]
   /** Shown / fired reminders today (member 5). */
   todayReminderCount: number
@@ -258,6 +275,28 @@ function normalizeOptionalTaskDateTime(value: unknown): string | undefined {
   }
 
   return undefined
+}
+
+function normalizeReminderDeliveries(raw: unknown): StudyTaskReminderDelivery[] {
+  if (!Array.isArray(raw))
+    return []
+
+  return raw
+    .map((row): StudyTaskReminderDelivery | null => {
+      if (!row || typeof row !== 'object')
+        return null
+      const delivery = row as Partial<StudyTaskReminderDelivery>
+      if (typeof delivery.reminderId !== 'string' || delivery.reminderId.trim().length === 0)
+        return null
+      const deliveredAt = normalizeOptionalTaskDateTime(delivery.deliveredAt)
+      if (!deliveredAt)
+        return null
+      return {
+        reminderId: delivery.reminderId,
+        deliveredAt,
+      }
+    })
+    .filter((delivery): delivery is StudyTaskReminderDelivery => delivery != null)
 }
 
 function taskDateTimeToTimestamp(value: string | undefined): number {
@@ -705,6 +744,11 @@ function normalizeStudyTask(raw: unknown): StudyTask | null {
     ...(completedAt ? { completedAt } : {}),
     priority: normalizeStudyTaskPriority(task.priority),
     dueDate: normalizeTaskDueDate(task.dueDate),
+    reminders: normalizeTaskReminderRules(task.reminders),
+    reminderDeliveries: normalizeReminderDeliveries(task.reminderDeliveries),
+    reminderRecommendationGeneratedForDueDate: typeof task.reminderRecommendationGeneratedForDueDate === 'string'
+      ? normalizeTaskDueDate(task.reminderRecommendationGeneratedForDueDate)
+      : undefined,
   }
 }
 
@@ -719,6 +763,9 @@ function cloneStudyTasks(tasks: StudyTask[]): StudyTask[] {
       createdAt: normalizeTaskDateTime(task.createdAt),
       priority: normalizeStudyTaskPriority(task.priority),
       dueDate: normalizeTaskDueDate(task.dueDate),
+      reminders: normalizeTaskReminderRules(task.reminders),
+      reminderDeliveries: normalizeReminderDeliveries(task.reminderDeliveries),
+      reminderRecommendationGeneratedForDueDate: normalizeTaskDueDate(task.reminderRecommendationGeneratedForDueDate),
       ...(normalizedCompletedAt == null ? {} : { completedAt: normalizedCompletedAt }),
     }
   })
@@ -753,6 +800,7 @@ export function createDefaultStudyCompanionPersisted(): StudyCompanionPersisted 
     previousBreakDurationMs: null,
     selectedFocusTaskId: null,
     taskSortMode: DEFAULT_TASK_SORT_MODE,
+    taskDueReminderEnabled: true,
     tasks: [],
     todayReminderCount: 0,
     mutedUntil: 0,
@@ -796,6 +844,7 @@ function coercePersisted(raw: unknown): StudyCompanionPersisted {
       ? o.selectedFocusTaskId
       : base.selectedFocusTaskId,
     taskSortMode: normalizeTaskSortMode(o.taskSortMode),
+    taskDueReminderEnabled: typeof o.taskDueReminderEnabled === 'boolean' ? o.taskDueReminderEnabled : base.taskDueReminderEnabled,
     tasks: Array.isArray(o.tasks)
       ? o.tasks
           .map(normalizeStudyTask)
@@ -1039,6 +1088,7 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
   const taskCompleted = computed(() => persisted.value.tasks.filter(task => task.done).length)
   const taskPending = computed(() => taskTotal.value - taskCompleted.value)
   const taskSortMode = computed(() => persisted.value.taskSortMode)
+  const taskDueReminderEnabled = computed(() => persisted.value.taskDueReminderEnabled)
   const sortedTasks = computed(() => sortStudyTasks(persisted.value.tasks, taskSortMode.value))
   const sortedPendingTasks = computed(() => sortedTasks.value.filter(task => !task.done))
   const historyEntries = computed(() => persisted.value.historyEntries)
@@ -1228,6 +1278,198 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     }
   }
 
+  function setTaskDueReminderEnabled(enabled: boolean) {
+    if (persisted.value.taskDueReminderEnabled === enabled)
+      return
+    persisted.value = {
+      ...persisted.value,
+      taskDueReminderEnabled: enabled,
+    }
+  }
+
+  function buildTaskReminderId() {
+    return `reminder-${randomId()}`
+  }
+
+  function clampReminderAmount(amount: number, unit: StudyTaskReminderUnit): number {
+    const limit = STUDY_TASK_REMINDER_AMOUNT_LIMITS[unit]
+    const roundedAmount = Math.round(amount)
+    return Math.min(limit.max, Math.max(limit.min, roundedAmount))
+  }
+
+  function buildReminderLabel(source: StudyTaskReminderSource, amount: number, unit: StudyTaskReminderUnit) {
+    const unitText = unit === 'day' ? '天' : unit === 'hour' ? '小时' : '分钟'
+    const prefix = source === 'rin-recommended' ? 'Rin 推荐' : '自定义'
+    return `${prefix}：提前 ${amount} ${unitText}`
+  }
+
+  function ensureTaskReminderRules(taskId: string, options?: { dueDateChanged?: boolean, forceRecommend?: boolean }) {
+    rolloverIfNeeded()
+    const targetTask = persisted.value.tasks.find(task => task.id === taskId)
+    if (!targetTask || !targetTask.dueDate)
+      return
+
+    const normalizedCurrentRules = normalizeTaskReminderRules(targetTask.reminders ?? [])
+    const needsRecommendByDueDateChange = Boolean(options?.dueDateChanged)
+    const needsRecommendByNoRules = normalizedCurrentRules.length === 0 && Boolean(options?.forceRecommend)
+    if (!needsRecommendByDueDateChange && !needsRecommendByNoRules)
+      return
+    const alreadyGeneratedForCurrentDueDate = targetTask.reminderRecommendationGeneratedForDueDate === targetTask.dueDate
+    if (needsRecommendByNoRules && alreadyGeneratedForCurrentDueDate)
+      return
+
+    const nextRecommendedRules = buildRecommendedReminderRules(Date.now(), targetTask.dueDate)
+    const userCustomRules = normalizedCurrentRules.filter(rule => rule.source === 'user-custom')
+    const nextRules = normalizeTaskReminderRules([
+      ...userCustomRules,
+      ...nextRecommendedRules,
+    ])
+
+    persisted.value = {
+      ...persisted.value,
+      tasks: persisted.value.tasks.map(task => task.id === taskId
+        ? {
+            ...task,
+            reminders: nextRules,
+            reminderRecommendationGeneratedForDueDate: targetTask.dueDate,
+          }
+        : task),
+    }
+  }
+
+  function addTaskReminder(taskId: string, payload: { amount: number, unit: StudyTaskReminderUnit, source?: StudyTaskReminderSource }): { ok: true } | { ok: false, reason: 'limit' | 'invalid-task' | 'invalid-due-date' | 'invalid-amount' } {
+    rolloverIfNeeded()
+    const targetTask = persisted.value.tasks.find(task => task.id === taskId)
+    if (!targetTask)
+      return { ok: false, reason: 'invalid-task' }
+    if (!targetTask.dueDate)
+      return { ok: false, reason: 'invalid-due-date' }
+    const existingRules = normalizeTaskReminderRules(targetTask.reminders ?? [])
+    if (existingRules.length >= 5)
+      return { ok: false, reason: 'limit' }
+    const amount = Number(payload.amount)
+    if (!Number.isFinite(amount))
+      return { ok: false, reason: 'invalid-amount' }
+    const normalizedUnit = payload.unit === 'day' || payload.unit === 'hour' || payload.unit === 'minute'
+      ? payload.unit
+      : 'minute'
+    const normalizedAmount = clampReminderAmount(amount, normalizedUnit)
+    const source: StudyTaskReminderSource = payload.source === 'rin-recommended' ? 'rin-recommended' : 'user-custom'
+    const nextRule: StudyTaskReminderRule = {
+      id: buildTaskReminderId(),
+      amount: normalizedAmount,
+      unit: normalizedUnit,
+      enabled: true,
+      source,
+      label: buildReminderLabel(source, normalizedAmount, normalizedUnit),
+    }
+    persisted.value = {
+      ...persisted.value,
+      tasks: persisted.value.tasks.map(task => task.id === taskId
+        ? {
+            ...task,
+            reminders: normalizeTaskReminderRules([...existingRules, nextRule]),
+          }
+        : task),
+    }
+    return { ok: true }
+  }
+
+  function updateTaskReminder(
+    taskId: string,
+    reminderId: string,
+    patch: Partial<Pick<StudyTaskReminderRule, 'amount' | 'unit' | 'enabled'>>,
+  ): { ok: true } | { ok: false, reason: 'invalid-task' | 'invalid-reminder' | 'invalid-amount' } {
+    rolloverIfNeeded()
+    const targetTask = persisted.value.tasks.find(task => task.id === taskId)
+    if (!targetTask)
+      return { ok: false, reason: 'invalid-task' }
+    const existingRules = normalizeTaskReminderRules(targetTask.reminders ?? [])
+    const targetRule = existingRules.find(rule => rule.id === reminderId)
+    if (!targetRule)
+      return { ok: false, reason: 'invalid-reminder' }
+
+    const nextUnit = patch.unit === 'day' || patch.unit === 'hour' || patch.unit === 'minute'
+      ? patch.unit
+      : targetRule.unit
+    const rawAmount = patch.amount == null ? targetRule.amount : Number(patch.amount)
+    if (!Number.isFinite(rawAmount))
+      return { ok: false, reason: 'invalid-amount' }
+    const nextAmount = clampReminderAmount(rawAmount, nextUnit)
+    const nextEnabled = patch.enabled == null ? targetRule.enabled : Boolean(patch.enabled)
+    const nextSource: StudyTaskReminderSource = targetRule.source === 'rin-recommended' ? 'user-custom' : targetRule.source
+
+    persisted.value = {
+      ...persisted.value,
+      tasks: persisted.value.tasks.map(task => task.id === taskId
+        ? {
+            ...task,
+            reminders: normalizeTaskReminderRules(existingRules.map(rule => rule.id === reminderId
+              ? {
+                  ...rule,
+                  unit: nextUnit,
+                  amount: nextAmount,
+                  enabled: nextEnabled,
+                  source: nextSource,
+                  label: buildReminderLabel(nextSource, nextAmount, nextUnit),
+                }
+              : rule)),
+          }
+        : task),
+    }
+    return { ok: true }
+  }
+
+  function removeTaskReminder(taskId: string, reminderId: string): boolean {
+    rolloverIfNeeded()
+    const targetTask = persisted.value.tasks.find(task => task.id === taskId)
+    if (!targetTask)
+      return false
+    const existingRules = normalizeTaskReminderRules(targetTask.reminders ?? [])
+    const hasTarget = existingRules.some(rule => rule.id === reminderId)
+    if (!hasTarget)
+      return false
+
+    persisted.value = {
+      ...persisted.value,
+      tasks: persisted.value.tasks.map(task => task.id === taskId
+        ? {
+            ...task,
+            reminders: normalizeTaskReminderRules(existingRules.filter(rule => rule.id !== reminderId)),
+          }
+        : task),
+    }
+    return true
+  }
+
+  function markTaskReminderDelivered(taskId: string, reminderId: string, deliveredAt = new Date().toISOString()): boolean {
+    rolloverIfNeeded()
+    const targetTask = persisted.value.tasks.find(task => task.id === taskId)
+    if (!targetTask)
+      return false
+
+    const existingDeliveries = normalizeReminderDeliveries(targetTask.reminderDeliveries ?? [])
+    if (existingDeliveries.some(delivery => delivery.reminderId === reminderId))
+      return false
+
+    persisted.value = {
+      ...persisted.value,
+      tasks: persisted.value.tasks.map(task => task.id === taskId
+        ? {
+            ...task,
+            reminderDeliveries: [
+              ...existingDeliveries,
+              {
+                reminderId,
+                deliveredAt: normalizeTaskDateTime(deliveredAt),
+              },
+            ],
+          }
+        : task),
+    }
+    return true
+  }
+
   function setSelectedFocusTaskId(taskId: string | null) {
     rolloverIfNeeded()
     if (taskId == null) {
@@ -1348,12 +1590,16 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
       createdAt: new Date().toISOString(),
       priority: taskPriority,
       dueDate: taskDueDate,
+      reminders: [],
+      reminderDeliveries: [],
     }
 
     persisted.value = {
       ...persisted.value,
       tasks: [...persisted.value.tasks, nextTask],
     }
+    if (nextTask.dueDate)
+      ensureTaskReminderRules(nextTask.id, { dueDateChanged: true })
     appendEvent('task_added', {
       id: nextTask.id,
       title: nextTask.title,
@@ -1395,9 +1641,13 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
         ? {
             ...task,
             ...(normalizedDueDate ? { dueDate: normalizedDueDate } : { dueDate: undefined }),
+            ...(normalizedDueDate ? {} : { reminders: [], reminderRecommendationGeneratedForDueDate: undefined }),
           }
         : task),
     }
+
+    if (normalizedDueDate)
+      ensureTaskReminderRules(taskId, { dueDateChanged: true })
 
     appendEvent('task_updated', {
       id: taskId,
@@ -1586,6 +1836,7 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     isMuted,
     demoModeEnabled,
     taskSortMode,
+    taskDueReminderEnabled,
     sortedTasks,
     sortedPendingTasks,
     historyEntries,
@@ -1612,9 +1863,15 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
     setFocusMinutes,
     setBreakMinutes,
     setTaskSortMode,
+    setTaskDueReminderEnabled,
     setSelectedFocusTaskId,
     setTaskPriority,
     setTaskDueDate,
+    ensureTaskReminderRules,
+    addTaskReminder,
+    updateTaskReminder,
+    removeTaskReminder,
+    markTaskReminderDelivered,
     getSelectedFocusTask,
     completeSelectedFocusTask,
     getTodayInterruptCount,

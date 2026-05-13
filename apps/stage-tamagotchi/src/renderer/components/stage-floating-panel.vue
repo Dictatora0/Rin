@@ -48,6 +48,7 @@ const panelCardClasses = computed(() => {
   <section
     data-testid="stage-floating-panel"
     :data-panel-kind="panelKind"
+    data-floating-panel="true"
     :class="[
       'stage-floating-panel',
       'fixed right-4 top-16 z-[185] sm:right-20',

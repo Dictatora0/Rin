@@ -10,7 +10,7 @@ import { isMacOS } from 'std-env'
 
 import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
-import { createAppService, createPowerMonitorService, createScreenService, createWindowService } from '../../services/electron'
+import { createAppService, createPowerMonitorService, createScreenService, createStudyTaskReminderNotificationService, createWindowService } from '../../services/electron'
 
 export function toggleWindowShow(window?: BrowserWindow | null): void {
   if (!window) {
@@ -98,6 +98,7 @@ export async function setupBaseWindowElectronInvokes(params: {
 }) {
   createScreenService({ context: params.context, window: params.window })
   createWindowService({ context: params.context, window: params.window })
+  createStudyTaskReminderNotificationService({ context: params.context, window: params.window })
   createAppService({ context: params.context, window: params.window })
   createPowerMonitorService({ context: params.context, window: params.window })
 

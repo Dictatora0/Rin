@@ -194,6 +194,104 @@ describe('useStudyCompanionStore', () => {
     })
   })
 
+  it('generates rin recommended reminders only when dueDate is newly set/changed, not bulk for old tasks', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.tasks = [
+      {
+        id: 'legacy-task',
+        title: '历史任务',
+        done: false,
+        createdAt: '2026-05-06T09:00:00.000Z',
+        priority: 'medium',
+        dueDate: '2026-05-10',
+      } as any,
+    ]
+
+    expect(store.persisted.tasks[0]?.reminders ?? []).toEqual([])
+
+    store.ensureTaskReminderRules('legacy-task', { forceRecommend: true })
+    expect((store.persisted.tasks[0]?.reminders ?? []).length).toBeGreaterThan(0)
+    expect(store.persisted.tasks[0]?.reminders?.every(rule => rule.source === 'rin-recommended')).toBe(true)
+    expect(store.persisted.tasks[0]?.reminders?.every(rule => rule.label?.includes('Rin 推荐') === true)).toBe(true)
+
+    store.persisted.tasks[0]!.reminders = [
+      {
+        id: 'custom-1',
+        amount: 2,
+        unit: 'hour',
+        enabled: true,
+        source: 'user-custom',
+        label: '自定义：提前 2 小时',
+      },
+      {
+        id: 'legacy-rin',
+        amount: 1,
+        unit: 'day',
+        enabled: true,
+        source: 'rin-recommended',
+        label: 'Rin 推荐：提前 1 天',
+      },
+    ]
+    store.setTaskDueDate('legacy-task', '2026-05-12')
+    const reminders = store.persisted.tasks[0]?.reminders ?? []
+    expect(reminders.some(rule => rule.id === 'custom-1')).toBe(true)
+    expect(reminders.some(rule => rule.source === 'rin-recommended')).toBe(true)
+  })
+
+  it('supports custom reminder CRUD, max 5 rules, and recommendation-to-custom mutation on edit', () => {
+    const store = useStudyCompanionStore()
+    store.addTask({
+      title: '准备答辩',
+      priority: 'high',
+      dueDate: '2026-05-10',
+    })
+    const taskId = store.persisted.tasks[0]!.id
+    store.ensureTaskReminderRules(taskId, { forceRecommend: true })
+
+    const firstRecommended = store.persisted.tasks[0]?.reminders?.[0]
+    expect(firstRecommended?.source).toBe('rin-recommended')
+    if (!firstRecommended)
+      throw new Error('first recommended reminder missing')
+
+    const editedResult = store.updateTaskReminder(taskId, firstRecommended.id, { amount: 2, unit: 'hour' })
+    expect(editedResult).toEqual({ ok: true })
+    const editedRule = store.persisted.tasks[0]?.reminders?.find(rule => rule.id === firstRecommended.id)
+    expect(editedRule?.source).toBe('user-custom')
+    expect(editedRule?.label).toContain('自定义')
+
+    store.persisted.tasks[0]!.reminders = []
+    expect(store.addTaskReminder(taskId, { amount: 1, unit: 'hour' })).toEqual({ ok: true })
+    expect(store.addTaskReminder(taskId, { amount: 2, unit: 'hour' })).toEqual({ ok: true })
+    expect(store.addTaskReminder(taskId, { amount: 3, unit: 'hour' })).toEqual({ ok: true })
+    expect(store.addTaskReminder(taskId, { amount: 4, unit: 'hour' })).toEqual({ ok: true })
+    expect(store.addTaskReminder(taskId, { amount: 5, unit: 'hour' })).toEqual({ ok: true })
+    expect(store.addTaskReminder(taskId, { amount: 6, unit: 'hour' })).toEqual({ ok: false, reason: 'limit' })
+
+    const firstRule = store.persisted.tasks[0]?.reminders?.[0]
+    if (!firstRule)
+      throw new Error('first rule missing')
+    expect(store.removeTaskReminder(taskId, firstRule.id)).toBe(true)
+    expect(store.persisted.tasks[0]?.reminders?.some(rule => rule.id === firstRule.id)).toBe(false)
+  })
+
+  it('marks delivery once and never reminds done task through due reminder matcher inputs', () => {
+    const store = useStudyCompanionStore()
+    store.addTask({
+      title: '课程汇报',
+      priority: 'medium',
+      dueDate: '2026-05-08',
+    })
+    const taskId = store.persisted.tasks[0]!.id
+    expect(store.addTaskReminder(taskId, { amount: 1, unit: 'day' })).toEqual({ ok: true })
+    const reminderId = store.persisted.tasks[0]!.reminders![0]!.id
+
+    expect(store.markTaskReminderDelivered(taskId, reminderId)).toBe(true)
+    expect(store.markTaskReminderDelivered(taskId, reminderId)).toBe(false)
+
+    store.toggleTaskDone(taskId)
+    expect(store.persisted.tasks[0]?.done).toBe(true)
+  })
+
   it('clears only completed tasks in the task list', () => {
     const store = useStudyCompanionStore()
     const { taskTotal, taskCompleted, taskPending } = storeToRefs(store)

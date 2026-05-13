@@ -16,6 +16,18 @@ interface MockStudyTask {
   completedAt?: string
   priority: MockTaskPriority
   dueDate?: string
+  reminders?: Array<{
+    id: string
+    amount: number
+    unit: 'minute' | 'hour' | 'day'
+    enabled: boolean
+    source: 'rin-recommended' | 'user-custom'
+    label?: string
+  }>
+  reminderDeliveries?: Array<{
+    reminderId: string
+    deliveredAt: string
+  }>
 }
 
 const mocks = vi.hoisted(() => ({
@@ -90,6 +102,8 @@ function createStoreState(tasks: MockStudyTask[] = []) {
         createdAt: new Date(Date.now()).toISOString(),
         priority: normalizedPayload.priority ?? 'medium',
         dueDate: normalizedPayload.dueDate,
+        reminders: [],
+        reminderDeliveries: [],
       },
     ]
   }
@@ -120,8 +134,113 @@ function createStoreState(tasks: MockStudyTask[] = []) {
       ? {
           ...task,
           dueDate: dueDate || undefined,
+          ...(dueDate ? {} : { reminders: [] }),
         }
       : task)
+  }
+
+  function ensureTaskReminderRules(taskId: string, options?: { forceRecommend?: boolean }) {
+    persisted.value.tasks = persisted.value.tasks.map((task) => {
+      if (task.id !== taskId)
+        return task
+      if (!task.dueDate)
+        return task
+      if ((task.reminders?.length ?? 0) > 0)
+        return task
+      if (!options?.forceRecommend)
+        return task
+      return {
+        ...task,
+        reminders: [
+          {
+            id: `rin-${taskId}-1d`,
+            amount: 1,
+            unit: 'day',
+            enabled: true,
+            source: 'rin-recommended',
+            label: 'Rin 推荐：提前 1 天',
+          },
+          {
+            id: `rin-${taskId}-3h`,
+            amount: 3,
+            unit: 'hour',
+            enabled: true,
+            source: 'rin-recommended',
+            label: 'Rin 推荐：提前 3 小时',
+          },
+        ],
+      }
+    })
+  }
+
+  function addTaskReminder(taskId: string, payload: { amount: number, unit: 'minute' | 'hour' | 'day', source?: 'rin-recommended' | 'user-custom' }) {
+    const task = persisted.value.tasks.find(item => item.id === taskId)
+    if (!task)
+      return { ok: false as const, reason: 'invalid-task' as const }
+    if (!task.dueDate)
+      return { ok: false as const, reason: 'invalid-due-date' as const }
+    const existingRules = task.reminders ?? []
+    if (existingRules.length >= 5)
+      return { ok: false as const, reason: 'limit' as const }
+    const nextRule = {
+      id: `custom-${taskId}-${existingRules.length + 1}`,
+      amount: Math.round(payload.amount),
+      unit: payload.unit,
+      enabled: true,
+      source: payload.source === 'rin-recommended' ? 'rin-recommended' as const : 'user-custom' as const,
+      label: `自定义：提前 ${Math.round(payload.amount)} ${payload.unit === 'day' ? '天' : payload.unit === 'hour' ? '小时' : '分钟'}`,
+    }
+    persisted.value.tasks = persisted.value.tasks.map(item => item.id === taskId
+      ? {
+          ...item,
+          reminders: [...(item.reminders ?? []), nextRule],
+        }
+      : item)
+    return { ok: true as const }
+  }
+
+  function updateTaskReminder(taskId: string, reminderId: string, patch: Partial<{ amount: number, unit: 'minute' | 'hour' | 'day', enabled: boolean }>) {
+    let found = false
+    persisted.value.tasks = persisted.value.tasks.map((task) => {
+      if (task.id !== taskId)
+        return task
+      const currentReminders = task.reminders ?? []
+      const nextReminders = currentReminders.map((rule) => {
+        if (rule.id !== reminderId)
+          return rule
+        found = true
+        const nextUnit = patch.unit ?? rule.unit
+        const nextAmount = patch.amount == null ? rule.amount : Math.round(patch.amount)
+        return {
+          ...rule,
+          amount: nextAmount,
+          unit: nextUnit,
+          enabled: patch.enabled ?? rule.enabled,
+          source: 'user-custom' as const,
+          label: `自定义：提前 ${nextAmount} ${nextUnit === 'day' ? '天' : nextUnit === 'hour' ? '小时' : '分钟'}`,
+        }
+      })
+      return { ...task, reminders: nextReminders }
+    })
+    if (!found)
+      return { ok: false as const, reason: 'invalid-reminder' as const }
+    return { ok: true as const }
+  }
+
+  function removeTaskReminder(taskId: string, reminderId: string) {
+    let removed = false
+    persisted.value.tasks = persisted.value.tasks.map((task) => {
+      if (task.id !== taskId)
+        return task
+      const nextReminders = (task.reminders ?? []).filter((rule) => {
+        const keep = rule.id !== reminderId
+        if (!keep)
+          removed = true
+        return keep
+      })
+      return { ...task, reminders: nextReminders }
+    })
+    return removed
   }
 
   function setTaskSortMode(mode: MockTaskSortMode) {
@@ -140,6 +259,10 @@ function createStoreState(tasks: MockStudyTask[] = []) {
     deleteTask,
     setTaskPriority,
     setTaskDueDate,
+    ensureTaskReminderRules,
+    addTaskReminder,
+    updateTaskReminder,
+    removeTaskReminder,
     setTaskSortMode,
   }
 }
@@ -552,6 +675,116 @@ describe('task list due date text input', () => {
       dueDate: '2026-05-12',
     })
 
+    unmount()
+  })
+
+  it('shows due reminder panel and rin recommended label when dueDate exists', async () => {
+    mocks.storeState = createStoreState([
+      {
+        id: 'task-reminder',
+        title: '准备答辩提纲',
+        done: false,
+        createdAt: '2026-05-06T08:00:00.000Z',
+        priority: 'high',
+        dueDate: '2026-05-08',
+      },
+    ])
+    const { container, unmount } = mountTaskList()
+    await nextTick()
+
+    findButton(container, '编辑提醒').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('截止提醒')
+    expect(text).toContain('Rin 推荐')
+    expect(text).toContain('已提醒次数')
+    expect(text).toContain('Rin 推荐：提前 1 天')
+
+    const rows = container.querySelectorAll('[data-testid="task-reminder-row"]')
+    expect(rows.length).toBeGreaterThan(0)
+    unmount()
+  })
+
+  it('supports adding/removing/disabling custom reminders and enforces max 5 reminders', async () => {
+    mocks.storeState = createStoreState([
+      {
+        id: 'task-reminder',
+        title: '准备答辩提纲',
+        done: false,
+        createdAt: '2026-05-06T08:00:00.000Z',
+        priority: 'high',
+        dueDate: '2026-05-08',
+      },
+    ])
+    const { container, unmount } = mountTaskList()
+    await nextTick()
+
+    findButton(container, '编辑提醒').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    const addButton = container.querySelector('[data-testid="task-reminder-add-button"]') as HTMLButtonElement | null
+    if (!addButton)
+      throw new Error('reminder add button missing')
+    const addAmountInput = container.querySelector('[data-testid="task-reminder-add-amount"]') as HTMLInputElement | null
+    if (!addAmountInput)
+      throw new Error('reminder add amount input missing')
+    addAmountInput.value = '2'
+    addAmountInput.dispatchEvent(new Event('input', { bubbles: true }))
+    addButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(mocks.storeState.persisted.value.tasks[0]?.reminders?.some((rule: any) => rule.source === 'user-custom')).toBe(true)
+
+    for (const amountText of ['3', '4', '5', '6']) {
+      addAmountInput.value = amountText
+      addAmountInput.dispatchEvent(new Event('input', { bubbles: true }))
+      addButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await nextTick()
+    }
+    expect(container.textContent ?? '').toContain('最多添加 5 条提醒')
+
+    const toggle = container.querySelector('[data-testid="task-reminder-enabled-toggle"]') as HTMLInputElement | null
+    if (!toggle)
+      throw new Error('reminder enabled toggle missing')
+    toggle.checked = false
+    toggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+    expect(mocks.storeState.persisted.value.tasks[0]?.reminders?.[0]?.enabled).toBe(false)
+
+    const removeButton = container.querySelector('[data-testid="task-reminder-remove"]') as HTMLButtonElement | null
+    if (!removeButton)
+      throw new Error('reminder remove button missing')
+    removeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect((mocks.storeState.persisted.value.tasks[0]?.reminders?.length ?? 0)).toBeLessThan(5)
+
+    unmount()
+  })
+
+  it('shows reminder hints for no dueDate and done task states', async () => {
+    mocks.storeState = createStoreState([
+      {
+        id: 'task-no-due',
+        title: '无截止任务',
+        done: false,
+        createdAt: '2026-05-06T08:00:00.000Z',
+        priority: 'medium',
+      },
+      {
+        id: 'task-done',
+        title: '已完成任务',
+        done: true,
+        createdAt: '2026-05-06T08:00:00.000Z',
+        priority: 'medium',
+        dueDate: '2026-05-08',
+      },
+    ])
+    const { container, unmount } = mountTaskList()
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('设置截止日期后可添加提醒')
+    expect(text).toContain('任务已完成，不再提醒')
     unmount()
   })
 })

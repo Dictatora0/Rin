@@ -227,6 +227,21 @@ vi.mock('./control-button-tooltip.vue', () => ({
   }),
 }))
 
+vi.mock('./control-button.vue', () => ({
+  default: defineComponent({
+    name: 'ControlButtonStub',
+    setup(_, { attrs, slots }) {
+      return () => h('button', {
+        'type': 'button',
+        ...attrs,
+        'class': [attrs.class, '[-webkit-app-region:no-drag] pointer-events-auto'],
+        'data-control-button': 'true',
+        'data-click-through-protected': 'true',
+      }, slots.default?.())
+    },
+  }),
+}))
+
 vi.mock('./controls-island-auth-button.vue', () => ({
   default: defineComponent({
     name: 'ControlsIslandAuthButtonStub',
@@ -240,7 +255,13 @@ vi.mock('./controls-island-fade-on-hover.vue', () => ({
   default: defineComponent({
     name: 'ControlsIslandFadeOnHoverStub',
     setup(_, { attrs }) {
-      return () => h('button', { type: 'button', ...attrs }, 'fade')
+      return () => h('button', {
+        'type': 'button',
+        ...attrs,
+        'data-control-button': 'true',
+        'data-click-through-protected': 'true',
+        'class': '[-webkit-app-region:no-drag] pointer-events-auto',
+      }, 'fade')
     },
   }),
 }))
@@ -433,6 +454,7 @@ describe('controls island layout regression locks', () => {
     if (!root)
       throw new Error('controls island root missing after expand')
     expect(root.getAttribute('data-control-layer')).toBe('controls-island')
+    expect(root.getAttribute('data-click-through-protected')).toBe('true')
     expect(root.className).toContain('pointer-events-auto')
     expect(root.className).toContain('[-webkit-app-region:no-drag]')
 
@@ -543,6 +565,55 @@ describe('controls island layout regression locks', () => {
     expect(container.querySelector('[data-testid="controls-study-panel"]')).toBeNull()
     expect(container.querySelector('[data-testid="controls-study-panel-scroll"]')).toBeNull()
     expect(container.querySelector('[data-testid="study-island-stub"]')).toBeNull()
+
+    unmount()
+  })
+
+  it('keeps key controls marked as click-through protected buttons', async () => {
+    const { container, unmount } = mountControlsIsland()
+    const expandButton = findToggleButton(container)
+    expandButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    const selectors = [
+      '[data-testid="controls-open-chat"]',
+      '[data-testid="controls-study-toggle"]',
+      '[data-testid="controls-vision-toggle"]',
+      '[data-testid="controls-open-settings"]',
+      '[data-testid="controls-move-mode-toggle"]',
+      '[data-testid="controls-zoom-in"]',
+      '[data-testid="controls-zoom-out"]',
+      '[data-testid="controls-reset-size"]',
+      '[data-testid="controls-shortcuts-toggle"]',
+      '[data-testid="controls-close-button"]',
+      '[data-testid="controls-toggle-button"]',
+    ]
+
+    for (const selector of selectors) {
+      const button = container.querySelector(selector) as HTMLButtonElement | null
+      if (!button)
+        throw new Error(`${selector} button missing`)
+      if (button.getAttribute('data-control-button') !== 'true') {
+        throw new Error(`missing data-control-button on ${selector}`)
+      }
+      expect(button.getAttribute('data-control-button')).toBe('true')
+      expect(button.getAttribute('data-click-through-protected')).toBe('true')
+      expect(button.className).toContain('[-webkit-app-region:no-drag]')
+      expect(button.className).toContain('pointer-events-auto')
+      expect(Boolean(button.getAttribute('aria-label')) || Boolean(button.getAttribute('title'))).toBe(true)
+    }
+
+    const anchor = container.querySelector('[data-testid="controls-anchor"]') as HTMLDivElement | null
+    if (!anchor)
+      throw new Error('controls-anchor missing')
+    expect(anchor.getAttribute('data-control-layer')).toBe('controls-anchor')
+    expect(anchor.getAttribute('data-click-through-protected')).toBe('true')
+
+    const emergencyAnchorButton = container.querySelector('[data-testid="controls-emergency-anchor"]') as HTMLButtonElement | null
+    if (!emergencyAnchorButton)
+      throw new Error('controls-emergency-anchor missing')
+    expect(emergencyAnchorButton.getAttribute('data-click-through-protected')).toBe('true')
+    expect(emergencyAnchorButton.getAttribute('data-control-layer')).toBe('controls-anchor')
 
     unmount()
   })

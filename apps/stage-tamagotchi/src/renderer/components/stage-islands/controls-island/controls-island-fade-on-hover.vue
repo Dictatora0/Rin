@@ -60,6 +60,8 @@ async function handleToggle() {
   <ControlButtonTooltip>
     <ControlButton
       data-testid="controls-fade-on-hover-toggle"
+      data-control-button="true"
+      data-click-through-protected="true"
       :button-style="props.buttonStyle"
       :label="props.label"
       :show-label="props.showLabel"

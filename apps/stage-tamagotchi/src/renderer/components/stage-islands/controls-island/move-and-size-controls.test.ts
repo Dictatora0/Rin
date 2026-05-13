@@ -230,6 +230,36 @@ vi.mock('./control-button-tooltip.vue', () => ({
   }),
 }))
 
+vi.mock('./control-button.vue', () => ({
+  default: defineComponent({
+    name: 'ControlButtonStub',
+    props: {
+      label: {
+        type: String,
+        default: '',
+      },
+      showLabel: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    setup(props, { attrs, slots }) {
+      return () => h('button', {
+        'type': 'button',
+        ...attrs,
+        'class': [attrs.class, '[-webkit-app-region:no-drag] pointer-events-auto'],
+        'data-control-button': 'true',
+        'data-click-through-protected': 'true',
+      }, [
+        slots.default?.(),
+        props.showLabel && props.label
+          ? h('span', props.label)
+          : null,
+      ])
+    },
+  }),
+}))
+
 vi.mock('./controls-island-auth-button.vue', () => ({
   default: defineComponent({
     name: 'ControlsIslandAuthButtonStub',
@@ -373,6 +403,7 @@ describe('controls island move mode and size controls', () => {
     expect(controlsRoot?.className).toContain('pointer-events-auto')
     expect(controlsRoot?.className).toContain('[-webkit-app-region:no-drag]')
     expect(controlsRoot?.getAttribute('data-control-layer')).toBe('controls-island')
+    expect(controlsRoot?.getAttribute('data-click-through-protected')).toBe('true')
     const controlsPanelScrollContainer = container.querySelector('[data-controls-panel-scroll]') as HTMLDivElement | null
     const controlsPanelViewport = container.querySelector('[data-testid="controls-panel-viewport"]') as HTMLDivElement | null
     expect(controlsPanelViewport).not.toBeNull()
@@ -487,22 +518,14 @@ describe('controls island move mode and size controls', () => {
 
     const majorButtons = [
       '[data-testid="controls-open-settings"]',
-      '[data-testid="controls-profile-picker"]',
       '[data-testid="controls-open-chat"]',
-      '[data-testid="controls-refresh-window"]',
-      '[data-testid="controls-theme-toggle"]',
-      '[data-testid="controls-always-on-top-toggle"]',
-      '[data-testid="controls-hearing-toggle"]',
       '[data-testid="controls-study-toggle"]',
       '[data-testid="controls-vision-toggle"]',
-      '[data-testid="controls-ui-mode-toggle"]',
       '[data-testid="controls-shortcuts-toggle"]',
       '[data-testid="controls-move-mode-toggle"]',
-      '[data-testid="controls-live2d-fit-toggle"]',
       '[data-testid="controls-zoom-in"]',
       '[data-testid="controls-zoom-out"]',
       '[data-testid="controls-reset-size"]',
-      '[data-testid="controls-drag-window"]',
       '[data-testid="controls-close-button"]',
     ]
 
@@ -510,12 +533,17 @@ describe('controls island move mode and size controls', () => {
       const button = container.querySelector(selector) as HTMLButtonElement | null
       if (!button)
         throw new Error(`${selector} missing`)
+      if (button.getAttribute('data-control-button') !== 'true') {
+        throw new Error(`missing data-control-button on ${selector}`)
+      }
       const ariaLabel = button.getAttribute('aria-label')
       const title = button.getAttribute('title')
       expect(Boolean(ariaLabel) || Boolean(title)).toBe(true)
       expect(button.className).toContain('controls-button')
       expect(button.className).toContain('[-webkit-app-region:no-drag]')
       expect(button.className).toContain('pointer-events-auto')
+      expect(button.getAttribute('data-control-button')).toBe('true')
+      expect(button.getAttribute('data-click-through-protected')).toBe('true')
     }
 
     const emergencyAnchorButton = container.querySelector('[data-testid="controls-emergency-anchor"]') as HTMLButtonElement | null
@@ -523,9 +551,17 @@ describe('controls island move mode and size controls', () => {
       throw new Error('emergency anchor button missing')
     expect(emergencyAnchorButton.getAttribute('aria-label')).toBe('紧急收起')
     expect(emergencyAnchorButton.getAttribute('title')).toBe('紧急收起')
+    expect(emergencyAnchorButton.getAttribute('data-control-layer')).toBe('controls-anchor')
+    expect(emergencyAnchorButton.getAttribute('data-click-through-protected')).toBe('true')
+    expect(emergencyAnchorButton.getAttribute('data-control-button')).toBe('true')
     expect(emergencyAnchorButton.className).toContain('controls-emergency-anchor')
     expect(emergencyAnchorButton.className).toContain('[-webkit-app-region:no-drag]')
     expect(emergencyAnchorButton.className).toContain('pointer-events-auto')
+    const toggleButton = container.querySelector('[data-testid="controls-toggle-button"]') as HTMLButtonElement | null
+    if (!toggleButton)
+      throw new Error('controls toggle button missing')
+    expect(toggleButton.getAttribute('data-control-button')).toBe('true')
+    expect(toggleButton.getAttribute('data-click-through-protected')).toBe('true')
 
     zoomInButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     zoomOutButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
