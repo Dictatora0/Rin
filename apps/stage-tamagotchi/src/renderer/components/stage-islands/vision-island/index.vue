@@ -8,6 +8,8 @@ import { toast } from 'vue-sonner'
 
 import { useVisionInteraction } from '../../../composables/use-vision-interaction'
 import { useVisionPetFeedback } from '../../../composables/use-vision-pet-feedback'
+import { buildVisionResponseExplanation } from '../../../utils/vision-response-explainer'
+import { buildVisionSelfCheckReport } from '../../../utils/vision-self-check'
 import {
   formatExpressionSignal,
   formatFaceDirection,
@@ -36,6 +38,8 @@ const collapsed = ref(!props.embedded)
 const advancedDiagnosticsExpanded = ref(false)
 const gestureDiagnosticsExpanded = ref(false)
 const expressionSignalDiagnosticsExpanded = ref(false)
+const selfCheckExpanded = ref(false)
+const feedbackHistoryExpanded = ref(false)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const unlockPassphrase = ref('')
 const unlocking = ref(false)
@@ -174,6 +178,9 @@ const {
   celebrationCount: petCelebrationCount,
   cancelQuietVisualMode,
   clearBubble,
+  visionFeedbackHistory,
+  recentVisionFeedbackHistory,
+  clearVisionFeedbackHistory,
   clearPetFeedback,
 } = useVisionPetFeedback()
 
@@ -551,6 +558,58 @@ const recentFeedbackSummary = computed(() => {
     return lastFeedbackMessage.value
   return '暂时没有新的反馈'
 })
+const selfCheckReport = computed(() => {
+  return buildVisionSelfCheckReport({
+    cameraState: cameraState.value,
+    cameraPermissionState: cameraPermissionState.value,
+    mediaPipeStatus: mediaPipeStatus.value,
+    opencvStatus: openCvFaceQuality.status.value,
+    runtimeStatus: runtimeStatus.value,
+    facePresence: facePresence.value,
+    faceProfileStatus: profileStatus.value,
+    faceGateState: localFaceGate.gateState.value,
+    gateProfileStatus: localFaceGate.profileStatus.value,
+    matchedUser: matchedDisplayName.value || null,
+    qualityAccepted: openCvFaceQuality.latestQuality.value?.accepted ?? null,
+    qualityScore: openCvFaceQuality.latestQuality.value?.qualityScore ?? null,
+    faceCenter: faceCenter.value,
+    subjectNeutralCenter: subjectNeutralCenter.value,
+    subjectNeutralCenterUpdatedAt: subjectNeutralCenterUpdatedAt.value,
+    directionDistribution: directionDistribution.value,
+    lastError: visionDiagnosticsLastError.value,
+    visionCameraRunning: isCameraRunning.value,
+    enableExpressionSignals: enableExpressionSignals.value,
+    quietMode: isVisionQuiet.value || isQuietVisualMode.value,
+    feedbackMuted: feedbackSuppressedByQuiet.value,
+  })
+})
+const responseExplanation = computed(() => {
+  return buildVisionResponseExplanation({
+    cameraState: cameraState.value,
+    cameraPermissionState: cameraPermissionState.value,
+    runtimeStatus: runtimeStatus.value,
+    facePresence: facePresence.value,
+    gateEnabled: gateEnabled.value,
+    faceGateState: localFaceGate.gateState.value,
+    gateProfileStatus: localFaceGate.profileStatus.value,
+    faceProfileStatus: profileStatus.value,
+    qualityAccepted: openCvFaceQuality.latestQuality.value?.accepted ?? null,
+    qualityScore: openCvFaceQuality.latestQuality.value?.qualityScore ?? null,
+    hasNeutralCenter: Boolean(subjectNeutralCenter.value),
+    isQuietMode: isVisionQuiet.value || isQuietVisualMode.value,
+    subjectResponseCooldownSeconds: subjectResponseCooldownSeconds.value,
+    canTriggerSubjectPositionResponse: canTriggerSubjectPositionResponse.value,
+    lastStableSubjectPosition: lastStableSubjectPosition.value,
+  })
+})
+const visibleFeedbackHistory = computed(() => {
+  return feedbackHistoryExpanded.value
+    ? [...visionFeedbackHistory.value].reverse()
+    : recentVisionFeedbackHistory.value.slice(0, 5)
+})
+const hasMoreFeedbackHistory = computed(() => {
+  return visionFeedbackHistory.value.length > 5
+})
 
 const canRespondCurrentSubject = computed(() => {
   if (!isEnabled.value || cameraState.value !== 'active')
@@ -565,145 +624,6 @@ const canRespondCurrentSubject = computed(() => {
 })
 const isCameraRunning = computed(() => {
   return isEnabled.value && cameraState.value === 'active'
-})
-
-interface VisionRecoveryAction {
-  id: string
-  label: string
-  handler: () => void
-}
-
-interface VisionRecoveryGuidance {
-  id: string
-  reason: string
-  suggestion: string
-  actions: VisionRecoveryAction[]
-  healthy?: boolean
-}
-
-const visionRecoveryGuidance = computed<VisionRecoveryGuidance>(() => {
-  if (cameraState.value === 'off') {
-    return {
-      id: 'camera-off',
-      reason: '摄像头未开启',
-      suggestion: '点击开启摄像头',
-      actions: [
-        {
-          id: 'turn-on-camera',
-          label: '开启摄像头',
-          handler: toggleCamera,
-        },
-      ],
-    }
-  }
-
-  const hasCameraPermissionIssue = cameraPermissionState.value === 'denied'
-    || cameraPermissionState.value === 'unsupported'
-    || cameraState.value === 'error'
-  if (hasCameraPermissionIssue) {
-    return {
-      id: 'camera-unavailable',
-      reason: '摄像头暂不可用',
-      suggestion: '请先检查系统权限，再点击重试摄像头',
-      actions: [
-        {
-          id: 'retry-camera',
-          label: '重试摄像头',
-          handler: handleRetryCamera,
-        },
-        {
-          id: 'open-settings',
-          label: '打开设置',
-          handler: openSettingsPage,
-        },
-      ],
-    }
-  }
-
-  const hasRuntimeIssue = runtimeStatus.value === 'failed'
-    || runtimeLastError.value.trim().length > 0
-  if (hasRuntimeIssue) {
-    return {
-      id: 'runtime-failed',
-      reason: '视觉模型加载失败',
-      suggestion: '点击重试，或关闭视觉功能继续使用桌宠',
-      actions: [
-        {
-          id: 'retry-runtime',
-          label: '重试视觉运行时',
-          handler: handleRetryRuntime,
-        },
-        {
-          id: 'disable-face-gate',
-          label: '关闭人脸门控',
-          handler: () => setFaceGateEnabled(false),
-        },
-      ],
-    }
-  }
-
-  if (gateEnabled.value && (localFaceGate.gateState.value === 'locked' || (hasEncryptedProfile.value && !isProfileUnlocked.value))) {
-    return {
-      id: 'gate-locked',
-      reason: '本地人脸资料尚未解锁',
-      suggestion: '打开人脸录入页，输入本地口令解锁',
-      actions: [
-        {
-          id: 'open-enrollment',
-          label: '打开人脸录入',
-          handler: openEnrollmentPage,
-        },
-      ],
-    }
-  }
-
-  if (gateEnabled.value && localFaceGate.profileStatus.value === 'multiple_faces') {
-    return {
-      id: 'multiple-faces',
-      reason: '检测到多人入镜',
-      suggestion: '为了避免误触发，请让画面中只保留当前用户',
-      actions: [],
-    }
-  }
-
-  if (gateEnabled.value && localFaceGate.profileStatus.value === 'no_face') {
-    return {
-      id: 'no-face',
-      reason: '没有检测到人脸',
-      suggestion: '请靠近摄像头，确保画面中只有你一人',
-      actions: [],
-    }
-  }
-
-  if (gateEnabled.value && localFaceGate.profileStatus.value === 'unmatched') {
-    return {
-      id: 'unmatched',
-      reason: '当前主体未通过本地人脸门控',
-      suggestion: '请使用已录入用户，或重新录入本地人脸资料',
-      actions: [
-        {
-          id: 'open-enrollment',
-          label: '打开人脸录入',
-          handler: openEnrollmentPage,
-        },
-        {
-          id: 'disable-face-gate',
-          label: '关闭人脸门控',
-          handler: () => setFaceGateEnabled(false),
-        },
-      ],
-    }
-  }
-
-  return {
-    id: 'healthy',
-    reason: 'Rin 可以响应当前主体',
-    suggestion: canRespondCurrentSubject.value
-      ? '当前状态正常，可以继续互动。'
-      : '请保持单人入镜并确保主体在画面中。',
-    actions: [],
-    healthy: true,
-  }
 })
 
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
@@ -816,18 +736,23 @@ function openEnrollmentPage() {
   void router.push('/vision-enrollment')
 }
 
-function openSettingsPage() {
-  void router.push('/settings')
-}
-
-async function handleRetryCamera() {
-  try {
-    await start()
-    toast.success(localizeVisionText('已重新尝试开启摄像头。', 'Retried camera startup.'))
+function triggerSelfCheckAction(action?: string) {
+  if (!action || action === 'none')
+    return
+  if (action === 'start-camera') {
+    void start()
+    return
   }
-  catch {
-    toast.error(localizeVisionText('摄像头重试失败。', 'Camera retry failed.'))
+  if (action === 'calibrate-subject') {
+    handleCalibrateSubjectNeutralCenter()
+    return
   }
+  if (action === 'retry-runtime') {
+    void handleRetryRuntime()
+    return
+  }
+  if (action === 'open-enrollment')
+    openEnrollmentPage()
 }
 
 async function unlockProfile() {
@@ -1311,27 +1236,117 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             为什么 Rin 没响应？
           </div>
           <div :class="['mt-1']">
-            {{ visionRecoveryGuidance.healthy ? 'Rin 可以响应当前主体' : 'Rin 暂时没有响应' }}
+            {{ responseExplanation.responding ? 'Rin 当前状态正常' : 'Rin 暂时没有响应' }}
           </div>
           <div :class="['mt-1']">
-            原因：{{ visionRecoveryGuidance.reason }}
+            {{ responseExplanation.summary }}
           </div>
-          <div :class="['mt-1']">
-            建议：{{ visionRecoveryGuidance.suggestion }}
+          <div :class="['mt-2 flex flex-col gap-1']">
+            <div
+              v-for="reason in responseExplanation.reasons"
+              :key="reason.id"
+              :class="['rounded-lg border border-amber-300/65 bg-amber-100/70 p-1.5 dark:border-amber-500/35 dark:bg-amber-900/25']"
+            >
+              <div>{{ reason.text }}</div>
+              <div v-if="reason.actionLabel && reason.action && reason.action !== 'none'" :class="['mt-1']">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  @click="triggerSelfCheckAction(reason.action)"
+                >
+                  {{ reason.actionLabel }}
+                </Button>
+              </div>
+            </div>
           </div>
-          <div
-            v-if="visionRecoveryGuidance.actions.length > 0"
-            :class="['mt-2 flex flex-wrap gap-1.5']"
-          >
+        </section>
+
+        <section
+          :class="[
+            'rounded-xl border border-sky-300/65 bg-sky-50/85 p-2 text-xs text-sky-900',
+            'dark:border-sky-500/40 dark:bg-sky-950/35 dark:text-sky-200',
+          ]"
+        >
+          <div :class="['flex items-center justify-between gap-2']">
+            <div :class="['font-semibold']">
+              视觉自检
+            </div>
+            <Button size="sm" variant="ghost" @click="selfCheckExpanded = !selfCheckExpanded">
+              {{ selfCheckExpanded ? '收起' : '开始自检' }}
+            </Button>
+          </div>
+          <div v-if="selfCheckExpanded" :class="['mt-2 flex flex-col gap-1.5']">
+            <div>{{ selfCheckReport.summary }}</div>
+            <div
+              v-for="item in selfCheckReport.items"
+              :key="item.id"
+              :class="[
+                'rounded-lg border p-1.5',
+                item.level === 'error'
+                  ? 'border-rose-300/75 bg-rose-100/75 text-rose-900 dark:border-rose-500/45 dark:bg-rose-900/25 dark:text-rose-200'
+                  : item.level === 'warning'
+                    ? 'border-amber-300/75 bg-amber-100/70 text-amber-900 dark:border-amber-500/40 dark:bg-amber-900/25 dark:text-amber-200'
+                    : 'border-emerald-300/70 bg-emerald-100/70 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-900/20 dark:text-emerald-200',
+              ]"
+            >
+              <div :class="['font-600']">
+                {{ item.label }}
+              </div>
+              <div>{{ item.message }}</div>
+              <div v-if="item.actionLabel && item.action && item.action !== 'none'" :class="['mt-1']">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  @click="triggerSelfCheckAction(item.action)"
+                >
+                  {{ item.actionLabel }}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          :class="[
+            'rounded-xl border border-neutral-200/80 bg-neutral-50/85 p-2 text-xs dark:border-neutral-700/70 dark:bg-neutral-900/55',
+          ]"
+        >
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            最近反馈
+          </div>
+          <div v-if="visibleFeedbackHistory.length === 0" :class="['text-neutral-500 dark:text-neutral-400']">
+            暂无反馈记录
+          </div>
+          <div v-else :class="['flex flex-col gap-1']">
+            <div
+              v-for="item in visibleFeedbackHistory"
+              :key="item.id"
+              :class="[
+                'rounded-lg border px-2 py-1',
+                item.level === 'strong'
+                  ? 'border-sky-300/65 bg-sky-100/65 dark:border-sky-500/35 dark:bg-sky-900/25'
+                  : item.level === 'normal'
+                    ? 'border-emerald-300/65 bg-emerald-100/65 dark:border-emerald-500/35 dark:bg-emerald-900/20'
+                    : 'border-neutral-300/70 bg-neutral-100/70 dark:border-neutral-600/60 dark:bg-neutral-800/55',
+              ]"
+            >
+              <div :class="['opacity-75']">
+                {{ new Date(item.at).toLocaleTimeString() }}
+              </div>
+              <div>{{ item.message }}</div>
+            </div>
+          </div>
+          <div :class="['mt-2 flex flex-wrap gap-1.5']">
             <Button
-              v-for="action in visionRecoveryGuidance.actions"
-              :key="action.id"
-              :data-testid="`vision-recovery-action-${action.id}`"
+              v-if="hasMoreFeedbackHistory"
               size="sm"
               variant="ghost"
-              @click="action.handler"
+              @click="feedbackHistoryExpanded = !feedbackHistoryExpanded"
             >
-              {{ action.label }}
+              {{ feedbackHistoryExpanded ? '收起' : '查看更多' }}
+            </Button>
+            <Button size="sm" variant="ghost" @click="clearVisionFeedbackHistory">
+              清空历史
             </Button>
           </div>
         </section>

@@ -50,6 +50,18 @@ function createInteractionState() {
     mediaPipeStatus: ref<'idle' | 'loading' | 'ready' | 'failed'>('idle'),
     facePresence: ref<'present' | 'absent' | 'unknown'>('unknown'),
     faceCenter: ref<{ x: number, y: number } | null>(null),
+    subjectNeutralCenter: ref<{ x: number, y: number } | null>(null),
+    subjectNeutralCenterUpdatedAt: ref<string | null>(null),
+    directionDistribution: ref({
+      windowMs: 60_000,
+      total: 0,
+      center: 0,
+      left: 0,
+      right: 0,
+      up: 0,
+      down: 0,
+      ambiguous: 0,
+    }),
     faceDirection: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
     subjectPosition: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
     lastStableSubjectPosition: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
@@ -115,6 +127,7 @@ function createInteractionState() {
     openCvFaceQuality: {
       status: ref<'loading' | 'ready' | 'failed' | 'fallback'>('ready'),
       errorMessage: ref(''),
+      latestQuality: ref<{ accepted: boolean, qualityScore: number } | null>(null),
     },
     canTriggerInteractiveFeedback: ref(true),
     canTriggerSubjectPositionResponse: ref(true),
@@ -322,7 +335,7 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('neutral', 1.8)
-    expect(container.textContent).toContain('Current pet state: quiet')
+    expect(container.textContent).toContain('Current pet state: 安静模式')
 
     unmount()
   })
@@ -338,7 +351,7 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Tap@Body')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('happy', 3)
-    expect(container.textContent).toContain('Current pet state: celebrating')
+    expect(container.textContent).toContain('Current pet state: 庆祝中')
     expect(container.textContent).toContain('Celebration count: 1')
 
     unmount()
@@ -355,7 +368,7 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Tap')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('smile', 2)
-    expect(container.textContent).toContain('Current pet state: acknowledged')
+    expect(container.textContent).toContain('Current pet state: 已确认')
 
     unmount()
   })
@@ -376,7 +389,7 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
-    expect(container.textContent).toContain('Current pet state: gated')
+    expect(container.textContent).toContain('Current pet state: 门控拦截')
     expect(container.textContent).toContain('Gesture detected but pet feedback gated.')
 
     unmount()
@@ -394,13 +407,13 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Think')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('normal', 1.4)
-    expect(container.textContent).toContain('Rin response state：Following left')
     await openAdvancedDiagnostics(container)
-    expect(container.textContent).toContain('lastFeedbackType: subject_moved_left')
-    expect(container.textContent).toContain('resolvedFeedbackEventType: subject_position_left')
-    expect(container.textContent).toContain('feedbackChannels: ui, toast')
-    expect(container.textContent).toContain('feedbackLevel: normal')
-    const leftTemplateIdMatch = container.textContent?.match(/feedbackTemplateId: (\S+)/)
+    expect(container.textContent).toContain('Rin response state：Following left')
+    expect(container.textContent).toContain('最近反馈类型：subject_moved_left')
+    expect(container.textContent).toContain('解析后事件：subject_position_left')
+    expect(container.textContent).toContain('反馈通道：ui, toast')
+    expect(container.textContent).toContain('反馈等级：normal')
+    const leftTemplateIdMatch = container.textContent?.match(/模板 ID：(\S+)/)
     expect(leftTemplateIdMatch).not.toBeNull()
     expect(leftTemplateIdMatch?.[1]).toMatch(/^left-bal-/)
     const leftMessageMatch = container.textContent?.match(
@@ -450,15 +463,15 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Happy')
     expect(mocks.toggleExpression).toHaveBeenCalledWith('smile', 1.4)
-    expect(container.textContent).toContain('lastFeedbackType: expression_smile_like_detected')
-    expect(container.textContent).toContain('resolvedFeedbackEventType: expression_smile_like')
-    expect(container.textContent).toContain('transitionFeedback: base')
-    expect(container.textContent).toContain('feedbackLevel: normal')
-    expect(container.textContent).toContain('feedbackChannels: ui, toast, bubble')
-    const smileTemplateIdMatch = container.textContent?.match(/feedbackTemplateId: (\S+)/)
+    expect(container.textContent).toContain('最近反馈类型：expression_smile_like_detected')
+    expect(container.textContent).toContain('解析后事件：expression_smile_like')
+    expect(container.textContent).toContain('过渡反馈：base')
+    expect(container.textContent).toContain('反馈等级：normal')
+    expect(container.textContent).toContain('反馈通道：ui, toast, bubble')
+    const smileTemplateIdMatch = container.textContent?.match(/模板 ID：(\S+)/)
     expect(smileTemplateIdMatch).not.toBeNull()
     expect(smileTemplateIdMatch?.[1]).toMatch(/^expr-smile-bal-/)
-    expect(container.textContent).toContain('activeBubbleEventType: expression_smile_like')
+    expect(container.textContent).toContain('气泡事件类型：expression_smile_like')
     const bubble = container.querySelector('[data-testid="vision-feedback-bubble"]')
     expect(bubble).not.toBeNull()
     const smileMessages = new Set(
@@ -494,10 +507,10 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
-    expect(container.textContent).toContain('lastFeedbackType: subject_gated')
-    expect(container.textContent).toContain('resolvedFeedbackEventType: subject_gated')
-    expect(container.textContent).toContain('feedbackChannels: ui, toast')
-    expect(container.textContent).toContain('activeBubbleEventType: 无')
+    expect(container.textContent).toContain('最近反馈类型：subject_gated')
+    expect(container.textContent).toContain('解析后事件：subject_gated')
+    expect(container.textContent).toContain('反馈通道：ui, toast')
+    expect(container.textContent).toContain('气泡事件类型：无')
     expect(container.querySelector('[data-testid="vision-feedback-bubble"]')).toBeNull()
 
     unmount()
@@ -519,10 +532,10 @@ describe('vision Island real-path pet feedback integration', () => {
     await openAdvancedDiagnostics(container)
 
     const bubble = container.querySelector('[data-testid="vision-feedback-bubble"]')
-    expect(container.textContent).toContain('activeBubbleLevel: strong')
-    expect(container.textContent).toContain('activeBubbleEventType: subject_matched')
-    expect(container.textContent).toContain('activeBubbleTemplateId:')
-    expect(container.textContent).not.toContain('activeBubbleTemplateId: none')
+    expect(container.textContent).toContain('气泡等级：strong')
+    expect(container.textContent).toContain('气泡事件类型：subject_matched')
+    expect(container.textContent).toContain('气泡模板 ID：')
+    expect(container.textContent).not.toContain('气泡模板 ID：无')
     expect(bubble).not.toBeNull()
     expect(bubble?.textContent ?? '').toContain('Rin:')
     expect(container.textContent).toContain('bubble')
@@ -549,11 +562,11 @@ describe('vision Island real-path pet feedback integration', () => {
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
     expect(container.textContent).toContain('Subject response gate：Gated')
     expect(container.textContent).toContain('Rin response state：Gated')
-    expect(container.textContent).toContain('lastFeedbackType: subject_gated')
-    expect(container.textContent).toContain('resolvedFeedbackEventType: subject_gated')
-    expect(container.textContent).toContain('feedbackChannels: ui, toast')
-    expect(container.textContent).toContain('feedbackLevel: normal')
-    const gatedTemplateIdMatch = container.textContent?.match(/feedbackTemplateId: (\S+)/)
+    expect(container.textContent).toContain('最近反馈类型：subject_gated')
+    expect(container.textContent).toContain('解析后事件：subject_gated')
+    expect(container.textContent).toContain('反馈通道：ui, toast')
+    expect(container.textContent).toContain('反馈等级：normal')
+    const gatedTemplateIdMatch = container.textContent?.match(/模板 ID：(\S+)/)
     expect(gatedTemplateIdMatch).not.toBeNull()
     expect(gatedTemplateIdMatch?.[1]).toMatch(/^gated-bal-/)
     const gatedMessageMatch = container.textContent?.match(
@@ -586,7 +599,7 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
-    expect(container.textContent).toContain('Current pet state: celebrating')
+    expect(container.textContent).toContain('Current pet state: 庆祝中')
     expect(container.textContent).toContain('Celebration count: 1')
 
     unmount()
@@ -606,7 +619,7 @@ describe('vision Island real-path pet feedback integration', () => {
     })
     await openAdvancedDiagnostics(container)
 
-    expect(container.textContent).toContain('Current pet state: quiet')
+    expect(container.textContent).toContain('Current pet state: 安静模式')
     expect(container.textContent).toContain('Celebration count: 0')
     expect(container.textContent).toContain('Quiet visual mode active, celebration motion suppressed.')
 
@@ -624,8 +637,8 @@ describe('vision Island real-path pet feedback integration', () => {
 
     expect(mocks.currentMotion.value.group).toBe('Idle')
     expect(mocks.toggleExpression).toHaveBeenCalledTimes(0)
-    expect(container.textContent).toContain('lastFeedbackType: 无')
-    expect(container.textContent).toContain('resolvedFeedbackEventType: 无')
+    expect(container.textContent).toContain('最近反馈类型：无')
+    expect(container.textContent).toContain('解析后事件：无')
     expect(container.textContent).toContain('Face profile enrolled locally.')
 
     unmount()

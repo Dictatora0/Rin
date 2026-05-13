@@ -1018,4 +1018,93 @@ describe('useVisionPetFeedback', () => {
 
     unmount()
   })
+
+  it('stores feedback history with a hard limit of 20 items', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      feedbackMessageCooldownMs: 0,
+      subjectResponseCooldownMs: 0,
+    })
+
+    for (let index = 0; index < 25; index += 1) {
+      feedback.triggerContextualVisionFeedback('subject_centered', {
+        allowVisualFeedback: true,
+        direction: 'center',
+        force: true,
+        summary: `message-${index}`,
+      })
+      vi.advanceTimersByTime(1)
+    }
+
+    expect(feedback.visionFeedbackHistory.value.length).toBe(20)
+    expect(feedback.visionFeedbackHistory.value[0]?.message).toBe('message-5')
+    expect(feedback.visionFeedbackHistory.value[19]?.message).toBe('message-24')
+    expect(feedback.recentVisionFeedbackHistory.value.length).toBe(5)
+    expect(feedback.recentVisionFeedbackHistory.value[0]?.message).toBe('message-24')
+    unmount()
+  })
+
+  it('skips consecutive duplicate history messages', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      feedbackMessageCooldownMs: 0,
+      subjectResponseCooldownMs: 0,
+    })
+
+    feedback.triggerContextualVisionFeedback('subject_centered', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      force: true,
+      summary: 'same-message',
+    })
+    feedback.triggerContextualVisionFeedback('subject_centered', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      force: true,
+      summary: 'same-message',
+    })
+
+    expect(feedback.visionFeedbackHistory.value.length).toBe(1)
+    expect(feedback.visionFeedbackHistory.value[0]?.message).toBe('same-message')
+    unmount()
+  })
+
+  it('supports clearVisionFeedbackHistory', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      feedbackMessageCooldownMs: 0,
+      subjectResponseCooldownMs: 0,
+    })
+
+    feedback.triggerContextualVisionFeedback('subject_centered', {
+      allowVisualFeedback: true,
+      direction: 'center',
+      force: true,
+      summary: 'to-clear',
+    })
+    expect(feedback.visionFeedbackHistory.value.length).toBe(1)
+
+    feedback.clearVisionFeedbackHistory()
+    expect(feedback.visionFeedbackHistory.value.length).toBe(0)
+    expect(feedback.recentVisionFeedbackHistory.value.length).toBe(0)
+    unmount()
+  })
+
+  it('records gated event as natural Chinese history message', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      feedbackMessageCooldownMs: 0,
+      subjectResponseCooldownMs: 0,
+    })
+
+    feedback.triggerContextualVisionFeedback('subject_gated', {
+      allowVisualFeedback: false,
+      gateEnabled: true,
+      gateState: 'locked',
+      direction: 'center',
+      force: true,
+    })
+
+    const latest = feedback.visionFeedbackHistory.value[feedback.visionFeedbackHistory.value.length - 1]
+    expect(latest?.message).toBe('已检测到主体，但当前门控未通过。')
+    expect(latest?.source).toBe('face-gate')
+    expect(latest?.eventType).toBe('subject_gated')
+    unmount()
+  })
 })

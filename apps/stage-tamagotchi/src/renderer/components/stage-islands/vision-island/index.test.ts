@@ -126,6 +126,7 @@ function createInteractionState() {
     openCvFaceQuality: {
       status: ref<'idle' | 'loading' | 'ready' | 'failed' | 'fallback'>('ready'),
       errorMessage: ref(''),
+      latestQuality: ref<{ accepted: boolean, qualityScore: number } | null>(null),
     },
     canTriggerInteractiveFeedback: ref(true),
     canTriggerSubjectPositionResponse: ref(true),
@@ -205,6 +206,25 @@ function createPetFeedbackState() {
     celebrationCount: ref(0),
     cancelQuietVisualMode: mocks.cancelQuietVisualMode,
     clearBubble: mocks.clearBubble,
+    visionFeedbackHistory: ref<Array<{
+      id: string
+      at: string
+      source: 'subject-position' | 'face-gate' | 'expression-signal' | 'system'
+      message: string
+      level: 'subtle' | 'normal' | 'strong'
+      eventType: string
+      resolvedEventType?: string
+    }>>([]),
+    recentVisionFeedbackHistory: ref<Array<{
+      id: string
+      at: string
+      source: 'subject-position' | 'face-gate' | 'expression-signal' | 'system'
+      message: string
+      level: 'subtle' | 'normal' | 'strong'
+      eventType: string
+      resolvedEventType?: string
+    }>>([]),
+    clearVisionFeedbackHistory: vi.fn(() => {}),
     clearPetFeedback: mocks.clearPetFeedback,
   }
 }
@@ -346,6 +366,7 @@ describe('vision island usability pass', () => {
     expect(text).toContain('人脸门控：未启用')
     expect(text).toContain('最近反馈')
     expect(text).toContain('为什么 Rin 没响应？')
+    expect(text).toContain('视觉自检')
     expect(text).toContain('主体位置校准')
     expect(text).toContain('当前基准：默认中心')
 
@@ -487,8 +508,7 @@ describe('vision island usability pass', () => {
 
     const text = container.textContent ?? ''
     expect(text).toContain('Rin 暂时没有响应')
-    expect(text).toContain('没有检测到人脸')
-    expect(text).toContain('请靠近摄像头，确保画面中只有你一人')
+    expect(text).toContain('请让面部出现在画面中。')
 
     unmount()
   })
@@ -503,8 +523,7 @@ describe('vision island usability pass', () => {
     await nextTick()
 
     const text = container.textContent ?? ''
-    expect(text).toContain('检测到多人入镜')
-    expect(text).toContain('为了避免误触发，请让画面中只保留当前用户')
+    expect(text).toContain('检测到多人入镜，请确保画面中只有你一人。')
 
     unmount()
   })
@@ -522,8 +541,7 @@ describe('vision island usability pass', () => {
     await nextTick()
 
     let text = container.textContent ?? ''
-    expect(text).toContain('本地人脸资料尚未解锁')
-    expect(text).toContain('打开人脸录入页，输入本地口令解锁')
+    expect(text).toContain('当前不是已录入用户，Rin 不会响应主体反馈。')
     await clickButton(container, '打开人脸录入')
     expect(mocks.routerPush).toHaveBeenCalledWith('/vision-enrollment')
 
@@ -533,8 +551,7 @@ describe('vision island usability pass', () => {
     mocks.interactionState.isProfileUnlocked.value = true
     await nextTick()
     text = container.textContent ?? ''
-    expect(text).toContain('当前主体未通过本地人脸门控')
-    expect(text).toContain('请使用已录入用户，或重新录入本地人脸资料')
+    expect(text).toContain('当前不是已录入用户，Rin 不会响应主体反馈。')
 
     unmount()
   })
@@ -545,7 +562,7 @@ describe('vision island usability pass', () => {
     await nextTick()
 
     const text = container.textContent ?? ''
-    expect(text).toContain('摄像头未开启')
+    expect(text).toContain('请先开启摄像头。')
     await clickButton(container, '开启摄像头')
     expect(mocks.start).toHaveBeenCalledTimes(1)
 
@@ -562,11 +579,57 @@ describe('vision island usability pass', () => {
     await nextTick()
 
     const text = container.textContent ?? ''
-    expect(text).toContain('视觉模型加载失败')
-    expect(text).toContain('点击重试，或关闭视觉功能继续使用桌宠')
-    await openAdvancedDiagnostics(container)
-    await clickButton(container, '重试视觉运行时')
+    expect(text).toContain('视觉运行环境初始化失败，请重试视觉运行环境。')
+    await clickButton(container, '重试视觉运行环境')
     expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
+
+    unmount()
+  })
+
+  it('expands self-check report with actionable items', async () => {
+    mocks.interactionState.cameraState.value = 'off'
+    const { container, unmount } = mountVisionIsland('novice')
+    await nextTick()
+
+    await clickButton(container, '开始自检')
+    const text = container.textContent ?? ''
+    expect(text).toContain('Rin 暂时不会响应，需要处理')
+    expect(text).toContain('请先开启摄像头。')
+    expect(text).toContain('开启摄像头')
+
+    unmount()
+  })
+
+  it('renders feedback history and supports clear action', async () => {
+    const now = new Date('2026-05-13T08:30:00.000Z').toISOString()
+    const entry = {
+      id: 'h-1',
+      at: now,
+      source: 'subject-position' as const,
+      message: '你回到画面中心',
+      level: 'normal' as const,
+      eventType: 'subject_centered',
+      resolvedEventType: 'subject_position_center',
+    }
+    mocks.petFeedbackState.visionFeedbackHistory.value = [entry]
+    mocks.petFeedbackState.recentVisionFeedbackHistory.value = [entry]
+
+    const { container, unmount } = mountVisionIsland('expert')
+    await nextTick()
+
+    let text = container.textContent ?? ''
+    expect(text).toContain('最近反馈')
+    expect(text).toContain('你回到画面中心')
+    expect(text).toContain('清空历史')
+
+    await clickButton(container, '清空历史')
+    expect(mocks.petFeedbackState.clearVisionFeedbackHistory).toHaveBeenCalledTimes(1)
+
+    mocks.petFeedbackState.visionFeedbackHistory.value = []
+    mocks.petFeedbackState.recentVisionFeedbackHistory.value = []
+    await nextTick()
+    text = container.textContent ?? ''
+    expect(text).toContain('暂无反馈记录')
 
     unmount()
   })

@@ -48,6 +48,27 @@
   - `unmatched`：提示使用已录入用户或重新录入
 - 状态正常时：显示 `Rin 可以响应当前主体`
 
+### 可解释性增强（Round 12）
+
+- Vision Island 默认视图新增三块用户导向能力：
+  - `视觉自检`：一键输出当前可用性报告（纯函数驱动）。
+  - `为什么 Rin 没响应？`：显示最关键的 1～3 条阻塞原因（纯函数驱动）。
+  - `最近反馈`：展示 Rin 最近感知到的反馈记录，支持清空。
+
+- 视觉自检与解释卡均不直接读取 store 或操作 DOM：
+  - `vision-self-check.ts` 只根据传入状态生成 `overall / summary / items / primaryAction`。
+  - `vision-response-explainer.ts` 只根据传入状态生成自然语言解释与建议动作。
+
+- 最近反馈历史由 `use-vision-pet-feedback.ts` 维护：
+  - 内存队列最多 20 条（不持久化）。
+  - 默认视图显示最近 3～5 条，支持“查看更多/清空历史”。
+  - 连续相同 message 自动跳过，避免刷屏。
+  - 门控拦截事件会转换为自然中文文案（例如“已检测到主体，但当前门控未通过。”）。
+
+- 默认视图继续保持“用户任务优先”，不回退为诊断面板：
+  - 默认只显示自然中文状态与动作建议。
+  - `runtimeStatus raw / MediaPipe/OpenCV raw / templateId / channels / faceCenter raw / directionScores / directionDistribution 详细值` 继续留在高级诊断折叠区。
+
 ## 人脸录入页信息架构重构（Round 10）
 
 - 人脸录入页从“技术字段平铺”重构为“用户向导优先”的结构，按以下顺序呈现：

@@ -95,6 +95,16 @@ interface VisionSubjectResponseRecord {
   summary: string
 }
 
+export interface VisionFeedbackHistoryItem {
+  id: string
+  at: string
+  source: 'subject-position' | 'face-gate' | 'expression-signal' | 'system'
+  message: string
+  level: 'subtle' | 'normal' | 'strong'
+  eventType: string
+  resolvedEventType?: string
+}
+
 interface TriggerVisionPetFeedbackOptions {
   allowVisualFeedback?: boolean
   gateEnabled?: boolean
@@ -219,6 +229,8 @@ const FEEDBACK_INTENSITY_STORAGE_KEY = 'airi.vision-experiment.feedback-intensit
 const FEEDBACK_LOCALE_STORAGE_KEY = 'airi.vision-experiment.feedback-locale.v1'
 const FEEDBACK_VARIANT_STORAGE_KEY = 'airi.vision-experiment.feedback-variant.v1'
 const RECENT_TEMPLATE_IDS_LIMIT = 6
+const FEEDBACK_HISTORY_LIMIT = 20
+const FEEDBACK_HISTORY_DEFAULT_VISIBLE_LIMIT = 5
 
 function normalizeFeedbackIntensity(value: string | null): VisionFeedbackIntensity {
   if (value === 'minimal' || value === 'balanced' || value === 'expressive')
@@ -364,6 +376,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
   const activeBubbleTemplateId = ref<string | null>(null)
   const bubbleVisibleUntil = ref(0)
   const bubbleRemainingMs = ref(0)
+  const visionFeedbackHistory = ref<VisionFeedbackHistoryItem[]>([])
 
   const lastTriggeredAt = ref<Record<VisionPetFeedbackEventType, number>>({
     open_palm: Number.NEGATIVE_INFINITY,
@@ -647,7 +660,73 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
 
   function commitFeedbackRecord(record: VisionPetFeedbackRecord) {
     lastPetFeedback.value = record
+    appendVisionFeedbackHistory({
+      atMs: record.at,
+      message: record.summary,
+      level: 'subtle',
+      eventType: record.eventType,
+      gated: record.gated || record.eventType === 'gated',
+    })
   }
+
+  function getFeedbackHistorySource(input: {
+    eventType?: string
+    resolvedEventType?: string
+    gated?: boolean
+  }): VisionFeedbackHistoryItem['source'] {
+    if (input.gated || input.eventType === 'subject_gated' || input.resolvedEventType === 'subject_gated' || input.eventType === 'gated')
+      return 'face-gate'
+    if ((input.resolvedEventType ?? input.eventType ?? '').startsWith('expression_'))
+      return 'expression-signal'
+    if ((input.resolvedEventType ?? input.eventType ?? '').startsWith('subject_') || (input.eventType ?? '').startsWith('subject_'))
+      return 'subject-position'
+    return 'system'
+  }
+
+  function toNaturalHistoryMessage(message: string, input: {
+    gated?: boolean
+    eventType?: string
+    resolvedEventType?: string
+  }) {
+    if (input.gated || input.eventType === 'subject_gated' || input.resolvedEventType === 'subject_gated' || input.eventType === 'gated')
+      return '已检测到主体，但当前门控未通过。'
+    return message.trim()
+  }
+
+  function appendVisionFeedbackHistory(input: {
+    atMs: number
+    message: string
+    level: 'subtle' | 'normal' | 'strong'
+    eventType: string
+    resolvedEventType?: string
+    gated?: boolean
+  }) {
+    const normalizedMessage = toNaturalHistoryMessage(input.message, input)
+    if (!normalizedMessage)
+      return
+
+    const previous = visionFeedbackHistory.value[visionFeedbackHistory.value.length - 1]
+    if (previous && previous.message === normalizedMessage)
+      return
+
+    const nextEntry: VisionFeedbackHistoryItem = {
+      id: `${input.atMs}-${visionFeedbackHistory.value.length + 1}`,
+      at: new Date(input.atMs).toISOString(),
+      source: getFeedbackHistorySource(input),
+      message: normalizedMessage,
+      level: input.level,
+      eventType: input.eventType,
+      resolvedEventType: input.resolvedEventType,
+    }
+    const next = [...visionFeedbackHistory.value, nextEntry]
+    if (next.length > FEEDBACK_HISTORY_LIMIT)
+      next.splice(0, next.length - FEEDBACK_HISTORY_LIMIT)
+    visionFeedbackHistory.value = next
+  }
+
+  const recentVisionFeedbackHistory = computed(() => {
+    return visionFeedbackHistory.value.slice(-FEEDBACK_HISTORY_DEFAULT_VISIBLE_LIMIT).reverse()
+  })
 
   function mapSubjectResponseState(direction: VisionSubjectPosition): VisionSubjectResponseState {
     if (direction === 'left')
@@ -1293,6 +1372,15 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     else if (isQuietVisualMode.value)
       petFeedbackState.value = 'quiet'
 
+    appendVisionFeedbackHistory({
+      atMs: nowMs,
+      message: selectedMessage.text,
+      level: nextLevel,
+      eventType: isGateBlocked ? 'subject_gated' : eventType,
+      resolvedEventType,
+      gated: isGateBlocked || resolvedEventType === 'subject_gated',
+    })
+
     return true
   }
 
@@ -1571,6 +1659,11 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     lastDirectionalToastAt.value = Number.NEGATIVE_INFINITY
     highPriorityToastUntil.value = Number.NEGATIVE_INFINITY
     celebrationCount.value = 0
+    visionFeedbackHistory.value = []
+  }
+
+  function clearVisionFeedbackHistory() {
+    visionFeedbackHistory.value = []
   }
 
   onBeforeUnmount(() => {
@@ -1609,6 +1702,8 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     activeBubbleTemplateId,
     bubbleVisibleUntil,
     bubbleRemainingMs,
+    visionFeedbackHistory,
+    recentVisionFeedbackHistory,
     petFeedbackState,
     lastPetFeedback,
     subjectResponseState,
@@ -1620,6 +1715,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     celebrationCount,
     cancelQuietVisualMode,
     clearBubble,
+    clearVisionFeedbackHistory,
     clearPetFeedback,
   }
 }
