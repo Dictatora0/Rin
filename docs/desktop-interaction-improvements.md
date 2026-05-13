@@ -254,7 +254,15 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
 - 输入保护：
   - 当 `input` / `textarea` / `select` / `contenteditable` / `role="textbox"` 聚焦时，renderer 全局快捷键不会触发，避免干扰输入任务和日期。
 - 快捷键指南：
-  - 继续复用 Controls Island 现有指南面板结构，仅补充分组与 macOS 按键文案，不新增独立帮助面板。
+  - 从 Controls Island 小卡片升级为独立浮动面板，保留 Controls Island 入口按钮。
+  - 采用更清晰键帽样式（`⌘` / `⇧` / `Esc`）和更大字号，按分组展示：
+    - 控制面板
+    - Rin 形象
+    - 桌面交互
+    - 学习与视觉
+    - 帮助
+  - `Command + Shift + K` 可打开/关闭该独立快捷键指南面板。
+  - 输入框聚焦时全局快捷键不会触发，避免干扰输入。
     - 今日任务表格
     - 最近学习事件摘要（最多 10 条）
 

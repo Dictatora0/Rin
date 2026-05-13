@@ -60,6 +60,25 @@ docs:
     open-shortcuts-guide: 打开快捷键指南
     escape-action: 退出移动模式或关闭当前面板
     hint: 输入框聚焦时不会触发全局快捷键；窗口缩放也可通过窗口控制按钮操作。
+    inline-hint: 按 ⌘⇧K 打开完整快捷键指南。
+    panel:
+      title: 快捷键指南
+      subtitle: 适用于 macOS 的桌宠快捷操作
+      controls:
+        title: 控制面板
+        description: 这组快捷键沿用系统缩放习惯，作用于桌宠窗口/控制视图。
+      rin:
+        title: Rin 形象
+        description: 只调整 Rin 的显示大小，不改变窗口尺寸。
+      desktop:
+        title: 桌面交互
+        description: 移动模式用于拖动 Rin 附近的透明区域。
+      study-vision:
+        title: 学习与视觉
+        description: 学习面板用于专注任务，视觉面板用于本地视觉感知。
+      help:
+        title: 帮助
+        description: 输入框聚焦时，全局快捷键不会触发，避免影响输入。
   'labels':
     settings: 设置
     profile: 角色

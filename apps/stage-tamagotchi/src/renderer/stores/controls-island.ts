@@ -8,6 +8,7 @@ export const useControlsIslandStore = defineStore('controls-island', () => {
   const moveModeEnabled = useLocalStorage<boolean>('controls-island/move-mode-enabled', false)
   const controlsUIMode = useLocalStorage<'novice' | 'expert'>('controls-island/ui-mode', 'novice')
   const controlsPanelExpanded = ref(false)
+  const shortcutGuidePanelOpen = ref(false)
   const studyPanelOpen = ref(false)
   const visionPanelOpen = ref(false)
   const visionCameraRunning = ref(false)
@@ -45,6 +46,10 @@ export const useControlsIslandStore = defineStore('controls-island', () => {
     studyPanelOpen.value = !studyPanelOpen.value
   }
 
+  function toggleShortcutGuidePanel() {
+    shortcutGuidePanelOpen.value = !shortcutGuidePanelOpen.value
+  }
+
   function toggleVisionPanel() {
     visionPanelOpen.value = !visionPanelOpen.value
   }
@@ -57,6 +62,10 @@ export const useControlsIslandStore = defineStore('controls-island', () => {
     visionPanelOpen.value = open
   }
 
+  function setShortcutGuidePanelOpen(open: boolean) {
+    shortcutGuidePanelOpen.value = open
+  }
+
   function setVisionCameraRunning(running: boolean) {
     visionCameraRunning.value = running
   }
@@ -66,6 +75,7 @@ export const useControlsIslandStore = defineStore('controls-island', () => {
     moveModeEnabled,
     controlsUIMode,
     controlsPanelExpanded,
+    shortcutGuidePanelOpen,
     studyPanelOpen,
     visionPanelOpen,
     visionCameraRunning,
@@ -77,8 +87,10 @@ export const useControlsIslandStore = defineStore('controls-island', () => {
     toggleControlsUIMode,
     toggleControlsPanel,
     setControlsPanelExpanded,
+    toggleShortcutGuidePanel,
     toggleStudyPanel,
     toggleVisionPanel,
+    setShortcutGuidePanelOpen,
     setStudyPanelOpen,
     setVisionPanelOpen,
     setVisionCameraRunning,

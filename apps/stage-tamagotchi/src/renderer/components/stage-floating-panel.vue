@@ -4,6 +4,7 @@ import { computed } from 'vue'
 const props = withDefaults(defineProps<{
   title: string
   panelKind: 'study' | 'vision'
+  closeButtonTestId?: string
 }>(), {})
 
 const emit = defineEmits<{
@@ -64,7 +65,7 @@ const panelCardClasses = computed(() => {
           {{ title }}
         </h2>
         <button
-          data-testid="stage-floating-panel-close-button"
+          :data-testid="props.closeButtonTestId ?? 'stage-floating-panel-close-button'"
           type="button"
           :class="[
             'rounded-md px-2 py-1 text-xs',

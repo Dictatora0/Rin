@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
     moveModeEnabled: { value: false } as { value: boolean },
     controlsUIMode: { value: 'novice' } as { value: 'novice' | 'expert' },
     controlsPanelExpanded: { value: false } as { value: boolean },
+    shortcutGuidePanelOpen: { value: false } as { value: boolean },
     studyPanelOpen: { value: false } as { value: boolean },
     visionPanelOpen: { value: false } as { value: boolean },
     visionCameraRunning: { value: false } as { value: boolean },
@@ -46,6 +47,9 @@ const mocks = vi.hoisted(() => {
     toggleStudyPanel: vi.fn(() => {
       mocks.studyPanelOpen.value = !mocks.studyPanelOpen.value
     }),
+    toggleShortcutGuidePanel: vi.fn(() => {
+      mocks.shortcutGuidePanelOpen.value = !mocks.shortcutGuidePanelOpen.value
+    }),
     toggleVisionPanel: vi.fn(() => {
       mocks.visionPanelOpen.value = !mocks.visionPanelOpen.value
     }),
@@ -54,6 +58,9 @@ const mocks = vi.hoisted(() => {
     }),
     setVisionPanelOpen: vi.fn((open: boolean) => {
       mocks.visionPanelOpen.value = open
+    }),
+    setShortcutGuidePanelOpen: vi.fn((open: boolean) => {
+      mocks.shortcutGuidePanelOpen.value = open
     }),
     setVisionCameraRunning: vi.fn((running: boolean) => {
       mocks.visionCameraRunning.value = running
@@ -100,6 +107,7 @@ vi.mock('../../../stores/controls-island', () => ({
     moveModeEnabled: mocks.moveModeEnabled,
     controlsUIMode: mocks.controlsUIMode,
     controlsPanelExpanded: mocks.controlsPanelExpanded,
+    shortcutGuidePanelOpen: mocks.shortcutGuidePanelOpen,
     studyPanelOpen: mocks.studyPanelOpen,
     visionPanelOpen: mocks.visionPanelOpen,
     visionCameraRunning: mocks.visionCameraRunning,
@@ -107,8 +115,10 @@ vi.mock('../../../stores/controls-island', () => ({
     toggleControlsUIMode: mocks.toggleControlsUIMode,
     toggleControlsPanel: mocks.toggleControlsPanel,
     setControlsPanelExpanded: mocks.setControlsPanelExpanded,
+    toggleShortcutGuidePanel: mocks.toggleShortcutGuidePanel,
     toggleStudyPanel: mocks.toggleStudyPanel,
     toggleVisionPanel: mocks.toggleVisionPanel,
+    setShortcutGuidePanelOpen: mocks.setShortcutGuidePanelOpen,
     setStudyPanelOpen: mocks.setStudyPanelOpen,
     setVisionPanelOpen: mocks.setVisionPanelOpen,
     setVisionCameraRunning: mocks.setVisionCameraRunning,
@@ -308,6 +318,7 @@ describe('controls island move mode and size controls', () => {
     mocks.moveModeEnabled = ref(false)
     mocks.controlsUIMode = ref<'novice' | 'expert'>('novice')
     mocks.controlsPanelExpanded = ref(false)
+    mocks.shortcutGuidePanelOpen = ref(false)
     mocks.studyPanelOpen = ref(false)
     mocks.visionPanelOpen = ref(false)
     mocks.visionCameraRunning = ref(false)
@@ -325,8 +336,10 @@ describe('controls island move mode and size controls', () => {
     mocks.toggleControlsUIMode.mockClear()
     mocks.toggleControlsPanel.mockClear()
     mocks.setControlsPanelExpanded.mockClear()
+    mocks.toggleShortcutGuidePanel.mockClear()
     mocks.toggleStudyPanel.mockClear()
     mocks.toggleVisionPanel.mockClear()
+    mocks.setShortcutGuidePanelOpen.mockClear()
     mocks.setStudyPanelOpen.mockClear()
     mocks.setVisionPanelOpen.mockClear()
     mocks.setVisionCameraRunning.mockClear()
@@ -567,7 +580,7 @@ describe('controls island move mode and size controls', () => {
     unmount()
   })
 
-  it('toggles in-panel shortcuts cheat sheet without affecting window controls', async () => {
+  it('uses shortcuts entry to toggle standalone guide state and keeps inline hint', async () => {
     const { container, unmount } = mountControlsIsland()
     clickExpand(container)
     await nextTick()
@@ -577,23 +590,17 @@ describe('controls island move mode and size controls', () => {
     expect(shortcutsToggle).not.toBeNull()
     expect(zoomInButton).not.toBeNull()
     expect(container.querySelector('[data-testid="controls-shortcuts-card"]')).toBeNull()
+    const shortcutsHint = container.querySelector('[data-testid="controls-shortcuts-hint"]')
+    expect(shortcutsHint).not.toBeNull()
+    expect(shortcutsHint?.textContent ?? '').toContain('tamagotchi.stage.controls-island.shortcuts.inline-hint')
+    expect(mocks.shortcutGuidePanelOpen.value).toBe(false)
 
     shortcutsToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
 
-    const shortcutsCard = container.querySelector('[data-testid="controls-shortcuts-card"]')
-    expect(shortcutsCard).not.toBeNull()
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘+')
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘-')
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘0')
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧+')
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧-')
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧0')
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧M')
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧T')
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧V')
-    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧K')
-    expect(shortcutsCard?.textContent ?? '').toContain('Esc')
+    expect(mocks.toggleShortcutGuidePanel).toHaveBeenCalledTimes(1)
+    expect(mocks.shortcutGuidePanelOpen.value).toBe(true)
+    expect(container.querySelector('[data-testid="controls-shortcuts-card"]')).toBeNull()
 
     zoomInButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await vi.waitFor(() => {
@@ -604,6 +611,8 @@ describe('controls island move mode and size controls', () => {
     collapseShortcutsToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await vi.advanceTimersByTimeAsync(250)
     await nextTick()
+    expect(mocks.toggleShortcutGuidePanel).toHaveBeenCalledTimes(2)
+    expect(mocks.shortcutGuidePanelOpen.value).toBe(false)
     expect(container.querySelector('[data-testid="controls-shortcuts-card"]')).toBeNull()
 
     unmount()

@@ -15,7 +15,6 @@ import {
 
 export interface UseStageKeyboardShortcutsOptions {
   controlsPanelExpanded: Ref<boolean> | { value: boolean }
-  setShortcutsCardExpanded?: (expanded: boolean) => void
   setControlsPanelExpanded?: (expanded: boolean) => void
 }
 
@@ -67,12 +66,15 @@ export function useStageKeyboardShortcuts(options: UseStageKeyboardShortcutsOpti
         controlsIslandStore.toggleVisionPanel()
         return
       case 'show-shortcuts-guide':
-        controlsIslandStore.setControlsPanelExpanded(true)
-        options.setShortcutsCardExpanded?.(true)
+        controlsIslandStore.toggleShortcutGuidePanel()
         return
       case 'escape':
         if (controlsIslandStore.moveModeEnabled) {
           controlsIslandStore.toggleMoveMode()
+          return
+        }
+        if (controlsIslandStore.shortcutGuidePanelOpen) {
+          controlsIslandStore.setShortcutGuidePanelOpen(false)
           return
         }
         if (controlsIslandStore.visionPanelOpen) {
@@ -88,7 +90,6 @@ export function useStageKeyboardShortcuts(options: UseStageKeyboardShortcutsOpti
             options.setControlsPanelExpanded(false)
           else
             controlsIslandStore.setControlsPanelExpanded(false)
-          options.setShortcutsCardExpanded?.(false)
         }
 
       default:

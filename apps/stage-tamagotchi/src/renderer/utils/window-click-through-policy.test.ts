@@ -13,6 +13,7 @@ describe('window click-through policy', () => {
       isPointerInsideLive2DHitArea: false,
       isPointerInsideControls: false,
       isPointerInsideControlAnchor: false,
+      isPointerInsideShortcutGuidePanel: false,
       isPointerInsideStudyPanel: false,
       isPointerInsideVisionPanel: false,
       isPointerInsideMoveHitArea: false,
@@ -120,6 +121,16 @@ describe('window click-through policy', () => {
 
     expect(result.shouldIgnoreMouseEvents).toBe(false)
     expect(result.reason).toBe('study-panel-hover')
+  })
+
+  /** @example pointer inside shortcut guide panel should keep window interactive */
+  it('keeps mouse events when pointer is inside shortcut guide panel', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideShortcutGuidePanel: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('shortcut-guide-hover')
   })
 
   /** @example expanded controls should not claim whole transparent window */

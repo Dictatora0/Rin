@@ -30,7 +30,6 @@ const mocks = vi.hoisted(() => ({
 
 function mountShortcutHost() {
   const controlsPanelExpanded = ref(false)
-  const shortcutsCardExpanded = ref(false)
 
   const host = defineComponent({
     setup() {
@@ -38,9 +37,6 @@ function mountShortcutHost() {
         controlsPanelExpanded,
         setControlsPanelExpanded(expanded) {
           controlsPanelExpanded.value = expanded
-        },
-        setShortcutsCardExpanded(expanded) {
-          shortcutsCardExpanded.value = expanded
         },
       })
 
@@ -55,7 +51,6 @@ function mountShortcutHost() {
 
   return {
     controlsPanelExpanded,
-    shortcutsCardExpanded,
     unmount() {
       app.unmount()
       container.remove()
@@ -165,17 +160,22 @@ describe('useStageKeyboardShortcuts', () => {
     mounted.unmount()
   })
 
-  it('handles escape priority: move mode then vision then study then controls panel', () => {
+  it('handles escape priority: move mode then shortcuts guide then vision then study then controls panel', () => {
     const mounted = mountShortcutHost()
     const controlsStore = useControlsIslandStore()
 
     controlsStore.moveModeEnabled = true
+    controlsStore.shortcutGuidePanelOpen = true
     controlsStore.visionPanelOpen = true
     controlsStore.studyPanelOpen = true
     mounted.controlsPanelExpanded.value = true
 
     dispatchKeyDown({ key: 'Escape', code: 'Escape' })
     expect(controlsStore.moveModeEnabled).toBe(false)
+    expect(controlsStore.shortcutGuidePanelOpen).toBe(true)
+
+    dispatchKeyDown({ key: 'Escape', code: 'Escape' })
+    expect(controlsStore.shortcutGuidePanelOpen).toBe(false)
     expect(controlsStore.visionPanelOpen).toBe(true)
 
     dispatchKeyDown({ key: 'Escape', code: 'Escape' })
@@ -195,16 +195,16 @@ describe('useStageKeyboardShortcuts', () => {
     mounted.unmount()
   })
 
-  it('opens shortcuts guide with command shift k', () => {
+  it('toggles shortcuts guide panel with command shift k', () => {
     const mounted = mountShortcutHost()
     const controlsStore = useControlsIslandStore()
-    expect(controlsStore.controlsPanelExpanded).toBe(false)
-    expect(mounted.shortcutsCardExpanded.value).toBe(false)
+    expect(controlsStore.shortcutGuidePanelOpen).toBe(false)
 
     dispatchKeyDown({ key: 'k', code: 'KeyK', metaKey: true, shiftKey: true })
+    expect(controlsStore.shortcutGuidePanelOpen).toBe(true)
 
-    expect(controlsStore.controlsPanelExpanded).toBe(true)
-    expect(mounted.shortcutsCardExpanded.value).toBe(true)
+    dispatchKeyDown({ key: 'k', code: 'KeyK', metaKey: true, shiftKey: true })
+    expect(controlsStore.shortcutGuidePanelOpen).toBe(false)
 
     mounted.unmount()
   })

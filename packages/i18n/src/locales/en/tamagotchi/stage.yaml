@@ -60,6 +60,25 @@ docs:
     open-shortcuts-guide: Open shortcuts guide
     escape-action: Exit move mode or close current panel
     hint: Global shortcuts are ignored while text fields are focused; window zoom is also available via window controls.
+    inline-hint: Press ⌘⇧K to open the full shortcuts guide.
+    panel:
+      title: Keyboard Shortcuts
+      subtitle: macOS shortcuts for Rin desktop interactions
+      controls:
+        title: Controls
+        description: Follows familiar system zoom shortcuts for window and controls view adjustments.
+      rin:
+        title: Rin Avatar
+        description: Changes Rin display size only, without resizing the window.
+      desktop:
+        title: Desktop Interaction
+        description: Move mode lets you drag nearby transparent area to reposition Rin.
+      study-vision:
+        title: Study and Vision
+        description: Study panel is for focus tasks, Vision panel is for local visual sensing.
+      help:
+        title: Help
+        description: Global shortcuts are disabled while typing in input fields.
   'labels':
     settings: Settings
     profile: Avatar

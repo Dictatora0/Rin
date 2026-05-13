@@ -96,6 +96,17 @@ describe('resolveStageShortcut', () => {
     expect(shortcut).toBe('toggle-vision-panel')
   })
 
+  it('resolves command shift k to shortcuts guide toggle', () => {
+    const shortcut = resolveStageShortcut({
+      key: 'k',
+      code: 'KeyK',
+      metaKey: true,
+      shiftKey: true,
+    })
+
+    expect(shortcut).toBe('show-shortcuts-guide')
+  })
+
   it('resolves escape to escape action', () => {
     const shortcut = resolveStageShortcut({
       key: 'Escape',

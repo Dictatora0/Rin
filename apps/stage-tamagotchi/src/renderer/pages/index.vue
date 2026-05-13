@@ -37,6 +37,7 @@ import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
 import StageFloatingPanel from '../components/stage-floating-panel.vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
+import ShortcutGuidePanel from '../components/stage-islands/controls-island/shortcut-guide-panel.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 import StatusIsland from '../components/stage-islands/status-island/index.vue'
 import StudyBubble from '../components/stage-islands/study-bubble/index.vue'
@@ -69,6 +70,7 @@ const statusIslandRef = ref<InstanceType<typeof StatusIsland>>()
 const widgetStageRef = ref<InstanceType<typeof WidgetStage>>()
 const studyFloatingPanelElementRef = ref<HTMLElement | null>(null)
 const visionFloatingPanelElementRef = ref<HTMLElement | null>(null)
+const shortcutGuideFloatingPanelElementRef = ref<HTMLElement | null>(null)
 const stageCanvas = toRef(() => widgetStageRef.value?.canvasElement())
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 const stageMounted = computed(() => componentStateStage.value === 'mounted')
@@ -90,10 +92,12 @@ const { isOutside } = useElectronMouseInElement(controlsIslandRef)
 const { isOutside: isOutsideStatusIsland } = useElectronMouseInElement(statusIslandRef)
 const { isOutside: isOutsideStudyPanel } = useElectronMouseInElement(studyFloatingPanelElementRef)
 const { isOutside: isOutsideVisionPanel } = useElectronMouseInElement(visionFloatingPanelElementRef)
+const { isOutside: isOutsideShortcutGuidePanel } = useElectronMouseInElement(shortcutGuideFloatingPanelElementRef)
 const isOutsideFor250Ms = refDebounced(isOutside, 250)
 const isOutsideStatusIslandFor250Ms = refDebounced(isOutsideStatusIsland, 250)
 const isOutsideStudyPanelFor16Ms = refDebounced(isOutsideStudyPanel, 16)
 const isOutsideVisionPanelFor16Ms = refDebounced(isOutsideVisionPanel, 16)
+const isOutsideShortcutGuidePanelFor16Ms = refDebounced(isOutsideShortcutGuidePanel, 16)
 const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
 // NOTICE: In real-world use cases of Fade on Hover feature, the cursor may move around the edge of the
 // model rapidly, causing flickering effects when checking pixel transparency strictly.
@@ -122,6 +126,7 @@ const {
   moveModeEnabled,
   controlsUIMode,
   controlsPanelExpanded,
+  shortcutGuidePanelOpen,
   studyPanelOpen,
   visionPanelOpen,
   visionCameraRunning,
@@ -131,11 +136,6 @@ useStageKeyboardShortcuts({
   controlsPanelExpanded,
   setControlsPanelExpanded(expanded) {
     controlsIslandStore.setControlsPanelExpanded(expanded)
-  },
-  setShortcutsCardExpanded(expanded) {
-    const controlsIsland = controlsIslandRef.value
-    if (controlsIsland)
-      controlsIsland.shortcutsCardExpanded = expanded
   },
 })
 const studyPanelInteractionLocked = ref(false)
@@ -242,6 +242,7 @@ const { pause, resume } = watch(isTransparent, (transparent) => {
 const studyPanelInputActive = computed(() => studyPanelInteractionLocked.value)
 const isStudyPanelHovering = computed(() => studyPanelOpen.value && !isOutsideStudyPanelFor16Ms.value)
 const isVisionPanelHovering = computed(() => visionPanelOpen.value && !isOutsideVisionPanelFor16Ms.value)
+const isShortcutGuidePanelHovering = computed(() => shortcutGuidePanelOpen.value && !isOutsideShortcutGuidePanelFor16Ms.value)
 const isControlsPanelHovering = computed(() => !isOutsideFor250Ms.value || !isOutsideStatusIslandFor250Ms.value)
 const isInsideControlAnchor = computed(() => {
   const controlsRoot = document.querySelector('[data-testid="controls-island-root"]')
@@ -325,6 +326,10 @@ function closeVisionFloatingPanel() {
   controlsIslandStore.setVisionPanelOpen(false)
 }
 
+function closeShortcutGuidePanel() {
+  controlsIslandStore.setShortcutGuidePanelOpen(false)
+}
+
 function handleVisionCameraRunningChange(running: boolean) {
   controlsIslandStore.setVisionCameraRunning(running)
 }
@@ -345,6 +350,10 @@ function bindStudyFloatingPanelRef(target: Element | ComponentPublicInstance | n
 
 function bindVisionFloatingPanelRef(target: Element | ComponentPublicInstance | null) {
   visionFloatingPanelElementRef.value = resolveElementFromRefTarget(target)
+}
+
+function bindShortcutGuideFloatingPanelRef(target: Element | ComponentPublicInstance | null) {
+  shortcutGuideFloatingPanelElementRef.value = resolveElementFromRefTarget(target)
 }
 
 const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() => {
@@ -401,6 +410,7 @@ watch([
   isInsideControlAnchor,
   isStudyPanelHovering,
   isVisionPanelHovering,
+  isShortcutGuidePanelHovering,
   isInsideMoveHitArea,
   isAroundWindowBorderFor250Ms,
   isTransparent,
@@ -424,6 +434,7 @@ watch([
     isPointerInsideLive2DHitArea: live2dCharacterHit.value,
     isPointerInsideControls: isControlsPanelHovering.value,
     isPointerInsideControlAnchor: isInsideControlAnchor.value,
+    isPointerInsideShortcutGuidePanel: isShortcutGuidePanelHovering.value,
     isPointerInsideStudyPanel: isStudyPanelHovering.value,
     isPointerInsideVisionPanel: isVisionPanelHovering.value,
     isPointerInsideMoveHitArea: isInsideMoveHitArea.value,
@@ -820,6 +831,18 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
       '[-webkit-app-region:no-drag]',
     ]"
   >
+    <StageFloatingPanel
+      v-show="shortcutGuidePanelOpen"
+      :ref="bindShortcutGuideFloatingPanelRef"
+      data-testid="shortcut-guide-floating-panel-shell"
+      panel-kind="vision"
+      :title="$t('tamagotchi.stage.controls-island.shortcuts.panel.title')"
+      close-button-test-id="shortcut-guide-close"
+      @close="closeShortcutGuidePanel"
+    >
+      <ShortcutGuidePanel />
+    </StageFloatingPanel>
+
     <StageFloatingPanel
       v-if="studyPanelActivated"
       v-show="studyPanelOpen"

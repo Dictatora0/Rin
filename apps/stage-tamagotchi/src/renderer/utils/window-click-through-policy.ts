@@ -14,6 +14,7 @@ export interface ComputeWindowMouseIgnorePolicyInput {
   isPointerInsideLive2DHitArea: boolean
   isPointerInsideControls: boolean
   isPointerInsideControlAnchor: boolean
+  isPointerInsideShortcutGuidePanel: boolean
   isPointerInsideStudyPanel: boolean
   isPointerInsideVisionPanel: boolean
   isPointerInsideMoveHitArea: boolean
@@ -41,6 +42,7 @@ export interface WindowMouseIgnorePolicyResult {
     | 'focused-form'
     | 'controls-hover'
     | 'anchor-hover'
+    | 'shortcut-guide-hover'
     | 'study-panel-hover'
     | 'vision-panel-hover'
     | 'move-hit-area'
@@ -153,6 +155,15 @@ export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePo
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
       reason: 'study-panel-hover',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerInsideShortcutGuidePanel) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'shortcut-guide-hover',
       blockingStates: { ...input.blockingStates },
     }
   }
