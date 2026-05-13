@@ -72,14 +72,15 @@ const donutStyle = computed(() => {
         >
           <div
             :class="[
-              'absolute inset-3 rounded-full bg-white dark:bg-neutral-900',
+              'absolute inset-3 rounded-full',
               'flex flex-col items-center justify-center',
             ]"
+            :style="{ backgroundColor: 'var(--study-chart-surface)' }"
           >
-            <span :class="['text-xl font-semibold text-neutral-800 dark:text-neutral-100']">
+            <span :class="['text-xl font-semibold study-chart-value']">
               {{ completionStats.completionRate }}%
             </span>
-            <span :class="['text-[11px] text-neutral-500 dark:text-neutral-400']">
+            <span class="study-chart-subtitle">
               完成率
             </span>
           </div>
@@ -89,37 +90,37 @@ const donutStyle = computed(() => {
       <div :class="['grid grid-cols-1 gap-2']">
         <div :class="['flex items-center justify-between text-xs']">
           <span class="study-chart-muted">已完成</span>
-          <span :class="['font-medium text-emerald-600 dark:text-emerald-300']">{{ completionStats.completedTasks }}</span>
+          <span class="study-chart-value">{{ completionStats.completedTasks }}</span>
         </div>
         <div :class="['flex items-center justify-between text-xs']">
           <span class="study-chart-muted">未完成</span>
-          <span :class="['font-medium text-sky-600 dark:text-sky-300']">{{ completionStats.pendingTasks }}</span>
+          <span class="study-chart-value">{{ completionStats.pendingTasks }}</span>
         </div>
         <div :class="['flex items-center justify-between text-xs']">
           <span class="study-chart-muted">已逾期</span>
-          <span :class="['font-medium text-rose-600 dark:text-rose-300']">{{ completionStats.overdueTasks }}</span>
+          <span class="study-chart-value">{{ completionStats.overdueTasks }}</span>
         </div>
         <div
           v-if="completionStats.highPriorityPendingTasks > 0"
           :class="[
-            'rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px]',
-            'text-amber-700 dark:border-amber-800/70 dark:bg-amber-900/30 dark:text-amber-200',
+            'study-chart-pill text-[11px]',
           ]"
+          :style="{ backgroundColor: 'var(--study-chart-warning-soft)' }"
         >
           高优先级未完成：{{ completionStats.highPriorityPendingTasks }} 项
         </div>
       </div>
 
       <div class="study-chart-legend sm:col-span-2">
-        <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-item">
           <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-success)' }" />
           已完成
         </span>
-        <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-item">
           <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-primary)' }" />
           未完成
         </span>
-        <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-item">
           <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-danger)' }" />
           已逾期
         </span>

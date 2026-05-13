@@ -22,6 +22,12 @@ const qualityStats = computed(() => {
   })
 })
 
+const hasQualityData = computed(() => {
+  return qualityStats.value.totalFocusMinutes > 0
+    || qualityStats.value.totalFocusSessions > 0
+    || props.todayInterruptCount > 0
+})
+
 const summaryRows = computed(() => {
   return [
     {
@@ -71,23 +77,33 @@ const summaryRows = computed(() => {
       </div>
     </div>
 
-    <div :class="['study-chart-body grid grid-cols-1 gap-2 sm:grid-cols-2']">
+    <div
+      v-if="!hasQualityData"
+      data-testid="study-focus-quality-empty"
+      class="study-chart-empty"
+    >
+      还没有足够的专注数据
+    </div>
+
+    <div
+      v-else
+      :class="['study-chart-body grid grid-cols-1 gap-2 sm:grid-cols-2']"
+    >
       <article
         v-for="row in summaryRows"
         :key="row.label"
         :class="[
-          'study-focus-quality-item min-h-[96px] rounded-lg border border-neutral-200/70 bg-neutral-50/80 px-3 py-2',
-          'dark:border-neutral-700/70 dark:bg-neutral-800/70',
+          'study-focus-quality-item study-chart-metric-card',
         ]"
       >
-        <div :class="['inline-flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400']">
+        <div class="study-chart-metric-label">
           <span>{{ row.icon }}</span>
           {{ row.label }}
         </div>
-        <div :class="['mt-1 text-base font-semibold text-neutral-800 dark:text-neutral-100']">
+        <div class="study-chart-metric-value">
           {{ row.value }}
         </div>
-        <p :class="['mt-1 text-[11px] text-neutral-500 dark:text-neutral-400']">
+        <p class="study-chart-metric-hint">
           {{ row.hint }}
         </p>
       </article>

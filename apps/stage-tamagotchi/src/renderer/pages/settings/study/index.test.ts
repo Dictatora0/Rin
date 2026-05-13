@@ -125,9 +125,13 @@ function createStore() {
       { id: 'task-3', title: '完成演示稿', done: false, createdAt: '2026-05-12T10:00:00.000Z', priority: 'low', dueDate: '2026-05-14' },
       { id: 'task-1', title: '课程复盘', done: true, createdAt: '2026-05-12T08:00:00.000Z', priority: 'high' },
     ],
+    taskDueReminderEnabled: true,
     focusMinutes: 25,
     breakMinutes: 5,
     todayInterruptCount: 2,
+    setTaskDueReminderEnabled: vi.fn((enabled: boolean) => {
+      store.taskDueReminderEnabled = enabled
+    }),
     setFocusMinutes: mocks.setFocusMinutes,
     setBreakMinutes: mocks.setBreakMinutes,
     exportStudySnapshot: mocks.exportStudySnapshot,
@@ -241,8 +245,7 @@ describe('study settings page', () => {
     expect(text).toContain('最近 14 天')
     expect(text).toContain('最近 30 天')
 
-    expect(container.querySelector('[data-testid="study-history-bar-chart"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="study-history-heatmap"]')).not.toBeNull()
+    expect(container.textContent).toContain('详细趋势图、热力图和任务结构请查看下方“学习统计图表”分区。')
 
     unmount()
   })
@@ -265,16 +268,43 @@ describe('study settings page', () => {
     expect(container.querySelector('[data-testid="study-analytics-section-trend"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-analytics-section-task"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-analytics-section-quality"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="study-trend-chart"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="study-task-completion-chart"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="study-focus-quality-cards"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="study-task-priority-chart"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="study-history-bar-chart"]')).not.toBeNull()
-    expect(container.querySelector('[data-testid="study-history-heatmap"]')).not.toBeNull()
+    expect(container.querySelectorAll('[data-testid="study-trend-chart"]').length).toBe(1)
+    expect(container.querySelectorAll('[data-testid="study-task-completion-chart"]').length).toBe(1)
+    expect(container.querySelectorAll('[data-testid="study-focus-quality-cards"]').length).toBe(1)
+    expect(container.querySelectorAll('[data-testid="study-task-priority-chart"]').length).toBe(1)
+    expect(container.querySelectorAll('[data-testid="study-history-bar-chart"]').length).toBe(1)
+    expect(container.querySelectorAll('[data-testid="study-history-heatmap"]').length).toBe(1)
+    expect(container.querySelectorAll('.study-chart-card').length).toBe(6)
     expect(container.querySelector('[data-testid="study-trend-chart"]')?.className.includes('study-chart-card')).toBe(true)
+    expect(container.textContent).toContain('最近 14 天学习趋势')
+    expect(container.textContent).toContain('最近 7 天专注')
+    expect(container.textContent).toContain('学习热力图')
     expect(container.textContent).toContain('导出 JSON')
     expect(container.textContent).toContain('导出 Markdown 报告')
     expect(container.innerHTML.includes('overflow-x-auto')).toBe(false)
+
+    unmount()
+  })
+
+  it('renders due reminder settings and toggles global switch', async () => {
+    const { container, unmount } = mountPage()
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('截止日期提醒')
+    expect(text).toContain('Rin 会根据任务截止日期推荐提醒时间')
+    expect(text).toContain('系统通知由 macOS 显示')
+    expect(text).toContain('提醒仅在 Rin 运行期间检查')
+
+    const toggle = container.querySelector('[data-testid="task-due-reminder-enabled-toggle"]') as HTMLInputElement | null
+    if (!toggle)
+      throw new Error('task due reminder toggle missing')
+
+    expect(toggle.checked).toBe(true)
+    toggle.checked = false
+    toggle.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+    expect(mocks.store.taskDueReminderEnabled).toBe(false)
 
     unmount()
   })

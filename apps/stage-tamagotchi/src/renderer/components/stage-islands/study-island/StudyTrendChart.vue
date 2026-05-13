@@ -140,8 +140,16 @@ const trendSummary = computed(() => {
       >
         <defs>
           <linearGradient id="study-trend-area-gradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="rgb(59 130 246 / 0.4)" />
-            <stop offset="100%" stop-color="rgb(59 130 246 / 0.05)" />
+            <stop
+              data-testid="study-trend-gradient-start"
+              offset="0%"
+              stop-color="var(--study-chart-primary-soft)"
+            />
+            <stop
+              data-testid="study-trend-gradient-end"
+              offset="100%"
+              stop-color="rgb(255 255 255 / 0.02)"
+            />
           </linearGradient>
         </defs>
 
@@ -156,14 +164,16 @@ const trendSummary = computed(() => {
         />
 
         <polygon
+          data-testid="study-trend-area"
           :points="chartGeometry.areaPath"
           fill="url(#study-trend-area-gradient)"
         />
 
         <polyline
+          data-testid="study-trend-line"
           :points="chartGeometry.linePath"
           fill="none"
-          stroke="rgb(59 130 246)"
+          stroke="var(--study-chart-primary)"
           stroke-width="2.5"
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -175,7 +185,7 @@ const trendSummary = computed(() => {
           :cx="point.x"
           :cy="point.y"
           r="3"
-          fill="rgb(37 99 235)"
+          fill="var(--study-chart-primary)"
         >
           <title>{{ `${point.label}：${point.focusMinutes} 分钟（${point.focusSessions} 轮）` }}</title>
         </circle>
@@ -185,7 +195,7 @@ const trendSummary = computed(() => {
             :cx="highestPoint.x"
             :cy="highestPoint.y"
             r="5"
-            fill="rgb(16 185 129)"
+            fill="var(--study-chart-success)"
           />
           <title>{{ `最高点 ${highestPoint.label}：${highestPoint.focusMinutes} 分钟` }}</title>
         </g>
@@ -195,13 +205,13 @@ const trendSummary = computed(() => {
             :cx="todayPoint.x"
             :cy="todayPoint.y"
             r="5"
-            fill="rgb(14 165 233)"
+            fill="var(--study-chart-accent)"
           />
           <title>{{ `今日 ${todayPoint.label}：${todayPoint.focusMinutes} 分钟` }}</title>
         </g>
       </svg>
 
-      <div :class="['mt-2 grid grid-cols-7 gap-1 text-[11px] text-neutral-500 dark:text-neutral-400']">
+      <div :class="['study-chart-subtitle mt-2 grid grid-cols-7 gap-1 text-[11px]']">
         <span
           v-for="point in trendPoints.slice(-7)"
           :key="`label-${point.dayKey}`"
@@ -212,7 +222,7 @@ const trendSummary = computed(() => {
       </div>
 
       <div class="study-chart-legend">
-        <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-item">
           <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-primary)' }" />
           专注分钟
         </span>

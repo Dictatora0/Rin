@@ -42,6 +42,8 @@ describe('studyTaskPriorityChart', () => {
     expect(container.textContent).toContain('还没有任务数据')
     expect(container.querySelectorAll('[data-testid="study-task-priority-bar"]').length).toBe(0)
     expect(container.querySelector('.study-chart-card')).not.toBeNull()
+    expect(container.querySelector('.study-chart-title')?.textContent).toContain('任务优先级分布')
+    expect(container.querySelector('.study-chart-subtitle')?.textContent).toContain('观察高/中/低优先级任务的完成进度')
 
     unmount()
   })
@@ -59,6 +61,7 @@ describe('studyTaskPriorityChart', () => {
     expect(container.textContent).toContain('低优先级')
     expect(container.querySelectorAll('[data-testid="study-task-priority-bar"]').length).toBe(3)
     expect(container.querySelectorAll('.study-chart-legend-dot').length).toBe(3)
+    expect(container.querySelector('.study-chart-legend')).not.toBeNull()
     expect(container.textContent).toContain('还有 1 个高优先级任务')
     expect(container.querySelector('[data-testid="study-task-priority-high-pending"]')).not.toBeNull()
 

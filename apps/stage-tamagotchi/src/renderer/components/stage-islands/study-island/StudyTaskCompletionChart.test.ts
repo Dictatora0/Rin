@@ -43,6 +43,8 @@ describe('studyTaskCompletionChart', () => {
     expect(container.textContent).toContain('还没有任务数据')
     expect(container.querySelector('[data-testid="study-task-completion-donut"]')).toBeNull()
     expect(container.querySelector('.study-chart-card')).not.toBeNull()
+    expect(container.querySelector('.study-chart-title')?.textContent).toContain('任务完成结构')
+    expect(container.querySelector('.study-chart-subtitle')?.textContent).toContain('用完成率和逾期分布观察任务推进情况')
     unmount()
   })
 
@@ -62,6 +64,8 @@ describe('studyTaskCompletionChart', () => {
     expect(container.textContent).toContain('高优先级未完成：1 项')
     expect(container.textContent).toContain('完成率')
     expect(container.querySelectorAll('.study-chart-legend-dot').length).toBe(3)
+    expect(container.querySelector('.study-chart-legend')).not.toBeNull()
+    expect(container.querySelector('.study-chart-pill')?.textContent).toContain('高优先级未完成')
     expect(container.querySelector('.study-chart-card')).not.toBeNull()
 
     unmount()

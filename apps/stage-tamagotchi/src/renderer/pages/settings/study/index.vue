@@ -104,6 +104,15 @@ const historySummaryRows = computed(() => {
   ]
 })
 
+const taskDueReminderEnabledModel = computed({
+  get() {
+    return studyCompanion.taskDueReminderEnabled
+  },
+  set(value: boolean) {
+    studyCompanion.setTaskDueReminderEnabled(value)
+  },
+})
+
 const recentEvents = computed(() => {
   return [...studyCompanion.persisted.studyEvents]
     .slice(-50)
@@ -338,6 +347,31 @@ function handleClearTodayStats() {
       ]"
     >
       <h3 :class="['mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200']">
+        截止日期提醒
+      </h3>
+      <p :class="['text-xs text-neutral-600 dark:text-neutral-300']">
+        Rin 会根据任务截止日期推荐提醒时间，你也可以在任务详情中自定义提醒数量和时间。
+      </p>
+      <p :class="['mt-1 text-xs text-neutral-500 dark:text-neutral-400']">
+        系统通知由 macOS 显示，需要允许应用通知。提醒仅在 Rin 运行期间检查。
+      </p>
+      <label :class="['mt-2 inline-flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-200']">
+        <input
+          v-model="taskDueReminderEnabledModel"
+          data-testid="task-due-reminder-enabled-toggle"
+          type="checkbox"
+        >
+        <span>启用截止日期提醒</span>
+      </label>
+    </section>
+
+    <section
+      :class="[
+        'rounded-xl border border-neutral-200/60 bg-white/80 p-4',
+        'dark:border-neutral-700/60 dark:bg-neutral-900/70',
+      ]"
+    >
+      <h3 :class="['mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200']">
         历史统计
       </h3>
       <div :class="['grid grid-cols-1 gap-2 sm:grid-cols-3']">
@@ -357,12 +391,9 @@ function handleClearTodayStats() {
           </div>
         </div>
       </div>
-      <div :class="['mt-3']">
-        <StudyHistoryChart :entries="last7DaysStats" />
-      </div>
-      <div :class="['mt-3']">
-        <StudyHeatmap :entries="last30DaysStats" />
-      </div>
+      <p class="study-chart-caption">
+        详细趋势图、热力图和任务结构请查看下方“学习统计图表”分区。
+      </p>
     </section>
 
     <section

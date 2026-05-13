@@ -47,6 +47,8 @@ describe('studyHistoryChart', () => {
 
     await nextTick()
 
+    expect(container.textContent).toContain('最近 7 天专注')
+    expect(container.textContent).toContain('展示每日专注分钟和今日对比')
     expect(container.textContent).toContain('还没有足够的历史数据')
     expect(container.querySelector('[data-testid="study-history-bar-chart"]')).toBeNull()
     expect(container.querySelector('.study-chart-card')).not.toBeNull()
@@ -71,10 +73,13 @@ describe('studyHistoryChart', () => {
     if (!chart)
       throw new Error('chart not found')
 
+    expect(chart.querySelectorAll('[data-testid="study-history-bar"]').length).toBe(7)
     expect(chart.querySelectorAll('div[title]').length).toBe(7)
     expect(container.textContent).toContain('最近 7 天专注')
+    expect(container.textContent).toContain('展示每日专注分钟和今日对比')
     expect(container.textContent).toContain('专注分钟')
     expect(container.textContent).toContain('今日')
+    expect(container.querySelector('.study-chart-legend')).not.toBeNull()
     expect(container.querySelectorAll('.study-chart-legend-dot').length).toBe(2)
 
     unmount()

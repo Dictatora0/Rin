@@ -14,6 +14,14 @@ const props = defineProps<{
 const priorityStats = computed(() => buildTaskPriorityStats(props.tasks))
 const maxRowCount = computed(() => Math.max(1, ...priorityStats.value.rows.map(row => row.total)))
 const highPriorityPending = computed(() => priorityStats.value.rows.find(row => row.priority === 'high')?.pending ?? 0)
+
+function resolvePriorityColor(priority: 'high' | 'medium' | 'low') {
+  if (priority === 'high')
+    return 'var(--study-chart-accent)'
+  if (priority === 'medium')
+    return 'var(--study-chart-warning)'
+  return 'var(--study-chart-primary)'
+}
 </script>
 
 <template>
@@ -58,15 +66,11 @@ const highPriorityPending = computed(() => priorityStats.value.rows.find(row => 
         <div :class="['h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700']">
           <div
             data-testid="study-task-priority-bar"
-            :class="[
-              'h-full rounded-full',
-              row.priority === 'high'
-                ? 'bg-orange-400'
-                : row.priority === 'medium'
-                  ? 'bg-amber-400'
-                  : 'bg-sky-400/90',
-            ]"
-            :style="{ width: `${Math.max(8, Math.round((row.total / maxRowCount) * 100))}%` }"
+            :class="['h-full rounded-full']"
+            :style="{
+              width: `${Math.max(8, Math.round((row.total / maxRowCount) * 100))}%`,
+              backgroundColor: resolvePriorityColor(row.priority),
+            }"
           />
         </div>
         <div :class="['mt-1 text-[11px] text-neutral-500 dark:text-neutral-400']">
@@ -75,16 +79,16 @@ const highPriorityPending = computed(() => priorityStats.value.rows.find(row => 
       </article>
 
       <div class="study-chart-legend">
-        <span :class="['inline-flex items-center gap-1']">
-          <span class="study-chart-legend-dot" :class="['bg-orange-400']" />
+        <span class="study-chart-legend-item">
+          <span class="study-chart-legend-dot" :style="{ backgroundColor: resolvePriorityColor('high') }" />
           高优先级
         </span>
-        <span :class="['inline-flex items-center gap-1']">
-          <span class="study-chart-legend-dot" :class="['bg-amber-400']" />
+        <span class="study-chart-legend-item">
+          <span class="study-chart-legend-dot" :style="{ backgroundColor: resolvePriorityColor('medium') }" />
           中优先级
         </span>
-        <span :class="['inline-flex items-center gap-1']">
-          <span class="study-chart-legend-dot" :class="['bg-sky-400/90']" />
+        <span class="study-chart-legend-item">
+          <span class="study-chart-legend-dot" :style="{ backgroundColor: resolvePriorityColor('low') }" />
           低优先级
         </span>
       </div>

@@ -46,14 +46,14 @@ const heatmapCells = computed(() => {
 
 function resolveHeatClass(heatLevel: number) {
   if (heatLevel === 4)
-    return 'bg-primary-500 dark:bg-primary-400'
+    return 'study-heat-level-4'
   if (heatLevel === 3)
-    return 'bg-primary-400/90 dark:bg-primary-500/80'
+    return 'study-heat-level-3'
   if (heatLevel === 2)
-    return 'bg-primary-300/85 dark:bg-primary-500/60'
+    return 'study-heat-level-2'
   if (heatLevel === 1)
-    return 'bg-primary-200/80 dark:bg-primary-500/35'
-  return 'bg-neutral-200 dark:bg-neutral-700/80'
+    return 'study-heat-level-1'
+  return 'study-heat-level-0'
 }
 </script>
 
@@ -95,8 +95,9 @@ function resolveHeatClass(heatLevel: number) {
         v-for="cell in heatmapCells"
         :key="cell.dayKey"
         :title="`${cell.dayKey}：${cell.focusMinutes} 分钟（${cell.focusSessions} 轮）`"
+        :aria-label="`${cell.dayKey} 专注 ${cell.focusMinutes} 分钟，${cell.focusSessions} 轮`"
         :class="[
-          'h-4 rounded-md transition-colors',
+          'h-4 rounded-md transition-colors study-heat-cell',
           resolveHeatClass(cell.heatLevel),
         ]"
       />
@@ -107,19 +108,61 @@ function resolveHeatClass(heatLevel: number) {
       class="study-chart-legend"
     >
       <span>少</span>
-      <span :class="['inline-flex items-center gap-1']">
-        <span class="study-chart-legend-dot bg-primary-200/80 dark:bg-primary-500/35" />
+      <span class="study-chart-legend-item">
+        <span class="study-chart-legend-dot study-heat-level-1" />
       </span>
-      <span :class="['inline-flex items-center gap-1']">
-        <span class="study-chart-legend-dot bg-primary-300/85 dark:bg-primary-500/60" />
+      <span class="study-chart-legend-item">
+        <span class="study-chart-legend-dot study-heat-level-2" />
       </span>
-      <span :class="['inline-flex items-center gap-1']">
-        <span class="study-chart-legend-dot bg-primary-400/90 dark:bg-primary-500/80" />
+      <span class="study-chart-legend-item">
+        <span class="study-chart-legend-dot study-heat-level-3" />
       </span>
-      <span :class="['inline-flex items-center gap-1']">
-        <span class="study-chart-legend-dot bg-primary-500 dark:bg-primary-400" />
+      <span class="study-chart-legend-item">
+        <span class="study-chart-legend-dot study-heat-level-4" />
       </span>
       <span>多</span>
     </div>
   </section>
 </template>
+
+<style scoped>
+.study-heat-level-0 {
+  background-color: color-mix(in srgb, var(--study-chart-muted) 22%, transparent);
+}
+
+.study-heat-level-1 {
+  background-color: color-mix(in srgb, var(--study-chart-primary) 26%, white);
+}
+
+.study-heat-level-2 {
+  background-color: color-mix(in srgb, var(--study-chart-primary) 42%, white);
+}
+
+.study-heat-level-3 {
+  background-color: color-mix(in srgb, var(--study-chart-primary) 66%, transparent);
+}
+
+.study-heat-level-4 {
+  background-color: var(--study-chart-primary);
+}
+
+.dark .study-heat-level-0 {
+  background-color: color-mix(in srgb, var(--study-chart-muted) 38%, transparent);
+}
+
+.dark .study-heat-level-1 {
+  background-color: color-mix(in srgb, var(--study-chart-primary) 28%, transparent);
+}
+
+.dark .study-heat-level-2 {
+  background-color: color-mix(in srgb, var(--study-chart-primary) 45%, transparent);
+}
+
+.dark .study-heat-level-3 {
+  background-color: color-mix(in srgb, var(--study-chart-primary) 68%, transparent);
+}
+
+.dark .study-heat-level-4 {
+  background-color: color-mix(in srgb, var(--study-chart-primary) 86%, transparent);
+}
+</style>

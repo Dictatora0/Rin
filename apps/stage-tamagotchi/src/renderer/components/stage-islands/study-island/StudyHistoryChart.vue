@@ -50,6 +50,9 @@ const chartRows = computed(() => {
         <h3 class="study-chart-title">
           最近 7 天专注
         </h3>
+        <p class="study-chart-subtitle">
+          展示每日专注分钟和今日对比
+        </p>
       </div>
     </div>
 
@@ -75,15 +78,17 @@ const chartRows = computed(() => {
           {{ entry.focusMinutes }}
         </div>
         <div
+          data-testid="study-history-bar"
           :title="`${entry.dayKey}：${entry.focusMinutes} 分钟（${entry.focusSessions} 轮）`"
           :class="[
             'w-full rounded-sm transition-all',
-            entry.isToday
-              ? 'bg-sky-400 dark:bg-sky-300'
-              : 'bg-primary-300/85 dark:bg-primary-500/70',
+            entry.isToday ? 'opacity-100 ring-1 ring-white/70 dark:ring-white/50' : 'opacity-90',
             'min-h-1',
           ]"
-          :style="{ height: entry.heightPercent }"
+          :style="{
+            height: entry.heightPercent,
+            backgroundColor: entry.isToday ? 'var(--study-chart-accent)' : 'var(--study-chart-primary)',
+          }"
         />
         <div :class="['text-[10px] text-neutral-500 dark:text-neutral-400']">
           {{ entry.dayLabel }}
@@ -95,12 +100,12 @@ const chartRows = computed(() => {
       v-if="hasHistoryData"
       class="study-chart-legend"
     >
-      <span :class="['inline-flex items-center gap-1']">
-        <span class="study-chart-legend-dot" :class="['bg-primary-400 dark:bg-primary-300']" />
+      <span class="study-chart-legend-item">
+        <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-primary)' }" />
         专注分钟
       </span>
-      <span :class="['inline-flex items-center gap-1']">
-        <span class="study-chart-legend-dot" :class="['bg-sky-400 dark:bg-sky-300']" />
+      <span class="study-chart-legend-item">
+        <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-accent)' }" />
         今日
       </span>
     </div>

@@ -42,6 +42,7 @@ describe('studyHeatmap', () => {
 
     await nextTick()
 
+    expect(container.textContent).toContain('学习热力图')
     expect(container.textContent).toContain('暂无历史数据')
     expect(container.textContent).toContain('颜色越深，专注投入越高')
     expect(container.querySelector('[data-testid="study-history-heatmap"]')).toBeNull()
@@ -68,9 +69,11 @@ describe('studyHeatmap', () => {
       throw new Error('heatmap not found')
 
     expect(heatmap.querySelectorAll('div[title]').length).toBe(7)
+    expect(heatmap.querySelectorAll('[aria-label]').length).toBe(7)
     expect(container.textContent).toContain('学习热力图')
     expect(container.textContent).toContain('少')
     expect(container.textContent).toContain('多')
+    expect(container.querySelector('.study-chart-legend')).not.toBeNull()
     expect(container.querySelectorAll('.study-chart-legend-dot').length).toBe(4)
 
     unmount()
