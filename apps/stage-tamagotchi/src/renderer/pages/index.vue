@@ -46,6 +46,7 @@ import StageMoveOverlay from '../components/stage-move-overlay.vue'
 
 import { electronOpenOnboarding, electronStartDraggingWindow } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
+import { useStageKeyboardShortcuts } from '../composables/use-stage-keyboard-shortcuts'
 import { useStudyCompanionBubble } from '../composables/use-study-companion-bubble'
 import { useStudyStageFeedback } from '../composables/use-study-stage-feedback'
 import { useChatSyncStore } from '../stores/chat-sync'
@@ -125,6 +126,18 @@ const {
   visionPanelOpen,
   visionCameraRunning,
 } = storeToRefs(controlsIslandStore)
+
+useStageKeyboardShortcuts({
+  controlsPanelExpanded,
+  setControlsPanelExpanded(expanded) {
+    controlsIslandStore.setControlsPanelExpanded(expanded)
+  },
+  setShortcutsCardExpanded(expanded) {
+    const controlsIsland = controlsIslandRef.value
+    if (controlsIsland)
+      controlsIsland.shortcutsCardExpanded = expanded
+  },
+})
 const studyPanelInteractionLocked = ref(false)
 const studyPanelActivated = ref(false)
 const visionPanelActivated = ref(false)

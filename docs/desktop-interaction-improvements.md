@@ -236,6 +236,25 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - 高窗口：保持 `tall`，展示更多身体；
   - 中/小窗口：使用更接近 legacy 上半身视角的布局参数，减少大面积下半身暴露。
 - `full-body` 仍保持完整身体展示能力，不会被上半身参数覆盖。
+
+## Stage 快捷键增强（Round 6）
+
+- 本轮新增 renderer 层快捷键，保持现有窗口级缩放习惯不变：
+  - `Command + +` / `Command + -` 继续沿用现有窗口缩放链路（不在 renderer 改写）。
+- 新增 Rin 形象大小快捷键（仅影响 Live2D 显示比例，不改窗口尺寸）：
+  - `Command + Shift + +`：放大 Rin 形象
+  - `Command + Shift + -`：缩小 Rin 形象
+  - `Command + Shift + 0`：重置 Rin 形象大小
+- 新增高频桌宠交互快捷键：
+  - `Command + Shift + M`：切换移动模式
+  - `Command + Shift + T`：打开/关闭学习面板
+  - `Command + Shift + V`：打开/关闭视觉面板
+  - `Command + Shift + K`：展开快捷键指南
+  - `Escape`：按优先级退出移动模式/关闭视觉面板/关闭学习面板/收起 Controls
+- 输入保护：
+  - 当 `input` / `textarea` / `select` / `contenteditable` / `role="textbox"` 聚焦时，renderer 全局快捷键不会触发，避免干扰输入任务和日期。
+- 快捷键指南：
+  - 继续复用 Controls Island 现有指南面板结构，仅补充分组与 macOS 按键文案，不新增独立帮助面板。
     - 今日任务表格
     - 最近学习事件摘要（最多 10 条）
 

@@ -122,6 +122,8 @@ function setOverlay(key: string, active: boolean) {
 defineExpose({
   get hearingDialogOpen() { return blockingOverlays.has('hearing') },
   set hearingDialogOpen(v: boolean) { setOverlay('hearing', v) },
+  get shortcutsCardExpanded() { return shortcutsCardExpanded.value },
+  set shortcutsCardExpanded(v: boolean) { shortcutsCardExpanded.value = v },
 })
 
 watch(controlsPanelExpanded, (isExpanded) => {
@@ -573,15 +575,56 @@ async function resizeWindowByAction(action: StageWindowSizeAction) {
                   </div>
                   <div class="mt-1 flex items-center justify-between gap-2">
                     <span>{{ t('tamagotchi.stage.controls-island.shortcuts.zoom-in') }}</span>
-                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">Cmd/Ctrl + +</code>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘+</code>
                   </div>
                   <div class="mt-1 flex items-center justify-between gap-2">
                     <span>{{ t('tamagotchi.stage.controls-island.shortcuts.zoom-out') }}</span>
-                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">Cmd/Ctrl + -</code>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘-</code>
                   </div>
                   <div class="mt-1 flex items-center justify-between gap-2">
                     <span>{{ t('tamagotchi.stage.controls-island.shortcuts.reset-size') }}</span>
-                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">Cmd/Ctrl + 0</code>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘0</code>
+                  </div>
+                  <div class="mt-2 text-[10px] text-neutral-600 font-semibold dark:text-neutral-300">
+                    {{ t('tamagotchi.stage.controls-island.shortcuts.group-rin') }}
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.rin-scale-up') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘⇧+</code>
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.rin-scale-down') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘⇧-</code>
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.rin-scale-reset') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘⇧0</code>
+                  </div>
+                  <div class="mt-2 text-[10px] text-neutral-600 font-semibold dark:text-neutral-300">
+                    {{ t('tamagotchi.stage.controls-island.shortcuts.group-desktop') }}
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.toggle-move-mode') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘⇧M</code>
+                  </div>
+                  <div class="mt-2 text-[10px] text-neutral-600 font-semibold dark:text-neutral-300">
+                    {{ t('tamagotchi.stage.controls-island.shortcuts.group-panels') }}
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.toggle-study-panel') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘⇧T</code>
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.toggle-vision-panel') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘⇧V</code>
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.open-shortcuts-guide') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">⌘⇧K</code>
+                  </div>
+                  <div class="mt-1 flex items-center justify-between gap-2">
+                    <span>{{ t('tamagotchi.stage.controls-island.shortcuts.escape-action') }}</span>
+                    <code class="rounded bg-neutral-200/75 px-1.5 py-0.5 text-[10px] dark:bg-neutral-700/70">Esc</code>
                   </div>
                   <div class="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
                     {{ t('tamagotchi.stage.controls-island.shortcuts.hint') }}

@@ -376,6 +376,8 @@ describe('controls island layout regression locks', () => {
     expect(live2dModelSource).toContain(':data-fit-mode="fitModeAttr"')
     expect(live2dModelSource).toContain('data-testid="live2d-fit-preference"')
     expect(live2dModelSource).toContain(':data-fit-preference="props.fitPreference"')
+    expect(live2dModelSource).toContain('data-testid="live2d-display-scale"')
+    expect(live2dModelSource).toContain(':data-display-scale="props.scale"')
     expect(live2dModelSource).toContain('watch(() => props.fitPreference, () => setScaleAndPosition())')
 
     const fadedStart = pageSource.indexOf('shouldFadeOnCursorWithin ? \'op-0\' : \'op-100\'')

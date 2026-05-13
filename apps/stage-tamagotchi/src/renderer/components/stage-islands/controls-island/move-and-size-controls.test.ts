@@ -583,9 +583,17 @@ describe('controls island move mode and size controls', () => {
 
     const shortcutsCard = container.querySelector('[data-testid="controls-shortcuts-card"]')
     expect(shortcutsCard).not.toBeNull()
-    expect(shortcutsCard?.textContent ?? '').toContain('Cmd/Ctrl + +')
-    expect(shortcutsCard?.textContent ?? '').toContain('Cmd/Ctrl + -')
-    expect(shortcutsCard?.textContent ?? '').toContain('Cmd/Ctrl + 0')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘+')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘-')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘0')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧+')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧-')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧0')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧M')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧T')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧V')
+    expect(shortcutsCard?.textContent ?? '').toContain('⌘⇧K')
+    expect(shortcutsCard?.textContent ?? '').toContain('Esc')
 
     zoomInButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await vi.waitFor(() => {

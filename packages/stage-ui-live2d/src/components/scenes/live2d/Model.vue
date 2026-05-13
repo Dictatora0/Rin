@@ -804,6 +804,11 @@ import.meta.hot?.dispose(() => {
     :data-fit-preference="props.fitPreference"
     hidden
   />
+  <div
+    data-testid="live2d-display-scale"
+    :data-display-scale="props.scale"
+    hidden
+  />
   <div ref="dropShadowColorComputer" hidden bg="primary-400 dark:primary-500" />
   <slot />
 </template>

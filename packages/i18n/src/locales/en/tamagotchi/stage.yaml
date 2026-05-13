@@ -48,7 +48,18 @@ docs:
     zoom-in: Zoom in
     zoom-out: Zoom out
     reset-size: Reset size
-    hint: Also available via window controls.
+    group-rin: Rin display
+    rin-scale-up: Enlarge Rin
+    rin-scale-down: Shrink Rin
+    rin-scale-reset: Reset Rin size
+    group-desktop: Desktop actions
+    toggle-move-mode: Toggle move mode
+    group-panels: Study & Vision
+    toggle-study-panel: Toggle Study panel
+    toggle-vision-panel: Toggle Vision panel
+    open-shortcuts-guide: Open shortcuts guide
+    escape-action: Exit move mode or close current panel
+    hint: Global shortcuts are ignored while text fields are focused; window zoom is also available via window controls.
   'labels':
     settings: Settings
     profile: Avatar

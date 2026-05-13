@@ -48,7 +48,18 @@ docs:
     zoom-in: 放大
     zoom-out: 缩小
     reset-size: 重置尺寸
-    hint: 也可通过窗口控制按钮操作。
+    group-rin: Rin 形象
+    rin-scale-up: 放大 Rin 形象
+    rin-scale-down: 缩小 Rin 形象
+    rin-scale-reset: 重置 Rin 形象大小
+    group-desktop: 桌面交互
+    toggle-move-mode: 切换移动模式
+    group-panels: 学习与视觉
+    toggle-study-panel: 打开或关闭学习面板
+    toggle-vision-panel: 打开或关闭视觉面板
+    open-shortcuts-guide: 打开快捷键指南
+    escape-action: 退出移动模式或关闭当前面板
+    hint: 输入框聚焦时不会触发全局快捷键；窗口缩放也可通过窗口控制按钮操作。
   'labels':
     settings: 设置
     profile: 角色
