@@ -295,3 +295,18 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
 4. Toggle Move Mode off and verify normal click behavior returns.
 5. Use Zoom In / Zoom Out / Reset Size and verify size changes remain clamped and usable.
 6. Verify Vision Island, controls-island, and resize handles remain clickable during and after move/resize.
+
+## Live2D 透明窗口点击穿透修复（Round 6）
+
+- 问题根因：透明窗口在系统层面仍是完整矩形命中区域；仅靠前端 `pointer-events` 或 z-index 不能把窗口外侧透明区域真正“让给”下层应用。
+
+- 修复策略：
+  - 以 `electron.window.setIgnoreMouseEvents` 作为主控：
+    - 默认 `setIgnoreMouseEvents(true, { forward: true })`，窗口整体穿透。
+    - 仅当鼠标进入 Live2D 角色近似命中区，或处于面板/输入/拖拽等交互状态时，切回 `false` 以接收鼠标。
+  - 渲染层新增角色命中区估算：基于现有 Live2D fit 布局参数（scale/offset/viewport）计算角色近似热区，而不是使用整窗矩形。
+  - 增加状态去重：仅在穿透状态变化时发送 IPC，避免高频 `mousemove` 抖动造成反复调用。
+
+- 交互保障：
+  - Study/Vision 浮动面板、Controls Island、输入框聚焦、窗口边缘 resize 区、Move Mode 等状态优先保持可交互，不会被错误切回全局穿透。
+  - 透明背景默认穿透，不再持续拦截背后应用点击。

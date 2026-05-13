@@ -31,7 +31,7 @@ import { useHearingSpeechInputPipeline } from '@proj-airi/stage-ui/stores/module
 import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
-import { refDebounced, useAsyncState, useBroadcastChannel } from '@vueuse/core'
+import { refDebounced, useActiveElement, useAsyncState, useBroadcastChannel } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 
@@ -52,7 +52,15 @@ import { useChatSyncStore } from '../stores/chat-sync'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { useWindowStore } from '../stores/window'
+import {
+  computeLive2DHitArea,
+  isPointInLive2DHitArea,
+} from '../utils/live2d-hit-area'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
+import {
+  computeWindowMouseIgnorePolicy,
+  WindowMouseIgnoreStateEmitter,
+} from '../utils/window-click-through-policy'
 
 const controlsIslandRef = ref<InstanceType<typeof ControlsIsland>>()
 const statusIslandRef = ref<InstanceType<typeof StatusIsland>>()
@@ -96,7 +104,7 @@ const isTransparentByThree = useThreeSceneIsTransparentAtPoint(
 )
 
 const settingsStore = useSettings()
-const { stageModelRenderer, stageModelSelectedUrl } = storeToRefs(settingsStore)
+const { stageModelRenderer, stageModelSelectedUrl, live2dFitPreference } = storeToRefs(settingsStore)
 const modelStore = useModelStore()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
@@ -108,6 +116,7 @@ const {
   controlsPanelExpanded,
   studyPanelOpen,
   visionPanelOpen,
+  visionCameraRunning,
 } = storeToRefs(controlsIslandStore)
 const studyPanelInteractionLocked = ref(false)
 const studyPanelActivated = ref(false)
@@ -151,6 +160,55 @@ function handleMoveOverlayDragStart() {
 const live2dStore = useLive2d()
 const { scale, positionInPercentageString } = storeToRefs(live2dStore)
 const { live2dLookAtX, live2dLookAtY } = storeToRefs(useWindowStore())
+
+const live2DMouseIgnoreEmitter = new WindowMouseIgnoreStateEmitter()
+const activeElement = useActiveElement()
+const hasFocusedFormField = computed(() => {
+  const element = activeElement.value
+  if (!element || !(element instanceof HTMLElement))
+    return false
+
+  const tagName = element.tagName.toLowerCase()
+  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select')
+    return true
+
+  return element.isContentEditable
+})
+const live2dCharacterHit = computed(() => {
+  if (stageModelRenderer.value !== 'live2d' || componentStateStage.value !== 'mounted' || stagePaused.value)
+    return false
+
+  const stageElement = stageCanvas.value
+  if (!stageElement)
+    return false
+
+  const stageRect = stageElement.getBoundingClientRect()
+  const viewportWidth = Math.max(1, stageRect.width)
+  const viewportHeight = Math.max(1, stageRect.height)
+  const modelWidth = Math.max(1, Number(stageElement.width || stageRect.width || 1))
+  const modelHeight = Math.max(1, Number(stageElement.height || stageRect.height || 1))
+
+  // NOTICE:
+  // In a transparent Electron window, the full window rectangle participates in OS hit testing.
+  // We approximate the character silhouette area from current Live2D fit layout and only disable
+  // click-through while the pointer is near the character body or interactive UI zones.
+  const fitResult = computeLive2DHitArea({
+    viewportWidth,
+    viewportHeight,
+    modelWidth,
+    modelHeight,
+    userScale: Number(scale.value || 1),
+    xOffsetPx: (Number.parseFloat(String(positionInPercentageString.value.x || '0')) / 100) * viewportWidth,
+    yOffsetPx: (Number.parseFloat(String(positionInPercentageString.value.y || '0')) / 100) * viewportHeight,
+    fitPreference: live2dFitPreference.value ?? 'auto',
+    zonePreset: 'normal',
+  })
+
+  return isPointInLive2DHitArea({
+    x: Number(relativeMouseX.value),
+    y: Number(relativeMouseY.value),
+  }, fitResult.area)
+})
 
 const { pause, resume } = watch(isTransparent, (transparent) => {
   shouldFadeOnCursorWithin.value = fadeOnHoverEnabled.value && !transparent
@@ -240,87 +298,54 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
   })
 })
 
-watch([isOutsideFor250Ms, isOutsideStatusIslandFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, hearingDialogOpen, studyPanelPinned, fadeOnHoverEnabled, moveModeEnabled, controlsPanelExpanded, stagePaused], () => {
-  if (stagePaused.value) {
-    isIgnoringMouseEvents.value = false
-    shouldFadeOnCursorWithin.value = false
-    setIgnoreMouseEvents([false, { forward: true }])
-    pause()
-    return
-  }
-
-  if (moveModeEnabled.value) {
-    // Move mode needs reliable pointer events on stage to avoid click-through conflicts.
-    // Keep stage interactive, but still allow fade preview to work.
-    const fadeEnabled = fadeOnHoverEnabled.value
-    const insideControls = !isOutsideFor250Ms.value || !isOutsideStatusIslandFor250Ms.value
-    isIgnoringMouseEvents.value = false
-    shouldFadeOnCursorWithin.value = fadeEnabled
-      && !insideControls
-      && !isTransparent.value
-    setIgnoreMouseEvents([false, { forward: true }])
-    if (shouldFadeOnCursorWithin.value)
-      resume()
-    else
-      pause()
-    return
-  }
-
-  if (controlsPanelExpanded.value) {
-    // Keep the control drawer interactive, while still allowing stage fade preview.
-    const fadeEnabled = fadeOnHoverEnabled.value
-    const insideControls = !isOutsideFor250Ms.value || !isOutsideStatusIslandFor250Ms.value
-    isIgnoringMouseEvents.value = false
-    shouldFadeOnCursorWithin.value = fadeEnabled
-      && !insideControls
-      && !isTransparent.value
-    setIgnoreMouseEvents([false, { forward: true }])
-    if (shouldFadeOnCursorWithin.value)
-      resume()
-    else
-      pause()
-    return
-  }
-
-  if (studyPanelPinned.value) {
-    // Study panel text editing should stay interactive and avoid click-through.
-    isIgnoringMouseEvents.value = false
-    shouldFadeOnCursorWithin.value = false
-    setIgnoreMouseEvents([false, { forward: true }])
-    pause()
-    return
-  }
-
-  if (hearingDialogOpen.value) {
-    // Hearing dialog/drawer is open; keep window interactive
-    isIgnoringMouseEvents.value = false
-    shouldFadeOnCursorWithin.value = false
-    setIgnoreMouseEvents([false, { forward: true }])
-    pause()
-    return
-  }
-
+watch([
+  isOutsideFor250Ms,
+  isOutsideStatusIslandFor250Ms,
+  isAroundWindowBorderFor250Ms,
+  isOutsideWindow,
+  isTransparent,
+  hearingDialogOpen,
+  studyPanelPinned,
+  visionPanelOpen,
+  visionCameraRunning,
+  fadeOnHoverEnabled,
+  moveModeEnabled,
+  controlsPanelExpanded,
+  stagePaused,
+  hasFocusedFormField,
+  live2dCharacterHit,
+], () => {
   const insideControls = !isOutsideFor250Ms.value || !isOutsideStatusIslandFor250Ms.value
   const nearBorder = isAroundWindowBorderFor250Ms.value
+  const shouldPinVisionPanel = visionPanelOpen.value || visionCameraRunning.value
 
-  if (insideControls || nearBorder) {
-    // Inside interactive controls or near resize border: do NOT ignore events
-    isIgnoringMouseEvents.value = false
-    shouldFadeOnCursorWithin.value = false
-    setIgnoreMouseEvents([false, { forward: true }])
+  const policy = computeWindowMouseIgnorePolicy({
+    stagePaused: stagePaused.value,
+    moveModeEnabled: moveModeEnabled.value,
+    controlsPanelExpanded: controlsPanelExpanded.value,
+    hearingDialogOpen: hearingDialogOpen.value,
+    studyPanelPinned: studyPanelPinned.value,
+    visionPanelPinned: shouldPinVisionPanel,
+    hasFocusedFormField: hasFocusedFormField.value,
+    isPointerInsideControls: insideControls,
+    isNearWindowBorder: nearBorder,
+    isPointerInsideLive2DHitArea: live2dCharacterHit.value,
+    fadeOnHoverEnabled: fadeOnHoverEnabled.value,
+  })
+
+  isIgnoringMouseEvents.value = policy.shouldIgnoreMouseEvents
+  shouldFadeOnCursorWithin.value = policy.shouldFadeStage
+    && !insideControls
+    && !isTransparent.value
+
+  if (live2DMouseIgnoreEmitter.shouldEmit(policy.shouldIgnoreMouseEvents)) {
+    setIgnoreMouseEvents([policy.shouldIgnoreMouseEvents, { forward: true }])
+  }
+
+  if (shouldFadeOnCursorWithin.value)
+    resume()
+  else
     pause()
-  }
-  else {
-    const fadeEnabled = fadeOnHoverEnabled.value
-    // Otherwise allow click-through while we fade UI based on transparency (when enabled)
-    isIgnoringMouseEvents.value = fadeEnabled
-    shouldFadeOnCursorWithin.value = fadeEnabled && !isTransparent.value
-    setIgnoreMouseEvents([fadeEnabled, { forward: true }])
-    if (fadeEnabled)
-      resume()
-    else
-      pause()
-  }
 })
 
 // Emit runtime snapshot on change and on request from settings panel
@@ -524,6 +549,9 @@ watch(enabled, async (val) => {
 }, { immediate: true })
 
 onMounted(() => {
+  if (live2DMouseIgnoreEmitter.shouldEmit(true))
+    setIgnoreMouseEvents([true, { forward: true }])
+
   chatSyncStore.initialize('authority')
   if (onboardingStore.needsOnboarding) {
     openOnboarding()
@@ -532,6 +560,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  live2DMouseIgnoreEmitter.reset()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   tryCatch(() => {
     postModelSettingsRuntimeChannelEvent({
