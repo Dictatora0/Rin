@@ -2,6 +2,7 @@
 import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 import type { ComponentPublicInstance } from 'vue'
 
+import type { TamagotchiTrayCommandPayload } from '../../shared/eventa'
 import type { ModelSettingsRuntimeChannelEvent } from '../../shared/model-settings-runtime'
 
 import workletUrl from '@proj-airi/stage-ui/workers/vad/process.worklet?worker&url'
@@ -45,7 +46,7 @@ import StudyIsland from '../components/stage-islands/study-island/index.vue'
 import VisionIsland from '../components/stage-islands/vision-island/index.vue'
 import StageMoveOverlay from '../components/stage-move-overlay.vue'
 
-import { electronOpenOnboarding, electronStartDraggingWindow } from '../../shared/eventa'
+import { electronOpenOnboarding, electronStartDraggingWindow, tamagotchiTrayCommandEvent, tamagotchiTrayRendererStateEvent } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
 import { useStageKeyboardShortcuts } from '../composables/use-stage-keyboard-shortcuts'
 import { useStudyCompanionBubble } from '../composables/use-study-companion-bubble'
@@ -59,6 +60,7 @@ import {
   isPointInLive2DHitArea,
 } from '../utils/live2d-hit-area'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
+import { applyTrayCommand } from '../utils/tray-commands'
 import {
   buildWindowClickThroughDebugPayload,
   computeWindowMouseIgnorePolicy,
@@ -93,8 +95,8 @@ const { isOutside: isOutsideStatusIsland } = useElectronMouseInElement(statusIsl
 const { isOutside: isOutsideStudyPanel } = useElectronMouseInElement(studyFloatingPanelElementRef)
 const { isOutside: isOutsideVisionPanel } = useElectronMouseInElement(visionFloatingPanelElementRef)
 const { isOutside: isOutsideShortcutGuidePanel } = useElectronMouseInElement(shortcutGuideFloatingPanelElementRef)
-const isOutsideFor250Ms = refDebounced(isOutside, 250)
-const isOutsideStatusIslandFor250Ms = refDebounced(isOutsideStatusIsland, 250)
+const isOutsideFor16Ms = refDebounced(isOutside, 16)
+const isOutsideStatusIslandFor16Ms = refDebounced(isOutsideStatusIsland, 16)
 const isOutsideStudyPanelFor16Ms = refDebounced(isOutsideStudyPanel, 16)
 const isOutsideVisionPanelFor16Ms = refDebounced(isOutsideVisionPanel, 16)
 const isOutsideShortcutGuidePanelFor16Ms = refDebounced(isOutsideShortcutGuidePanel, 16)
@@ -131,6 +133,8 @@ const {
   visionPanelOpen,
   visionCameraRunning,
 } = storeToRefs(controlsIslandStore)
+const settingsRefs = storeToRefs(settingsStore)
+const live2dEventa = useLive2d()
 
 useStageKeyboardShortcuts({
   controlsPanelExpanded,
@@ -243,7 +247,7 @@ const studyPanelInputActive = computed(() => studyPanelInteractionLocked.value)
 const isStudyPanelHovering = computed(() => studyPanelOpen.value && !isOutsideStudyPanelFor16Ms.value)
 const isVisionPanelHovering = computed(() => visionPanelOpen.value && !isOutsideVisionPanelFor16Ms.value)
 const isShortcutGuidePanelHovering = computed(() => shortcutGuidePanelOpen.value && !isOutsideShortcutGuidePanelFor16Ms.value)
-const isControlsPanelHovering = computed(() => !isOutsideFor250Ms.value || !isOutsideStatusIslandFor250Ms.value)
+const isControlsPanelHovering = computed(() => !isOutsideFor16Ms.value || !isOutsideStatusIslandFor16Ms.value)
 const isInsideControlAnchor = computed(() => {
   const controlsRoot = document.querySelector('[data-testid="controls-island-root"]')
   if (!controlsRoot)
@@ -354,6 +358,27 @@ function bindVisionFloatingPanelRef(target: Element | ComponentPublicInstance | 
 
 function bindShortcutGuideFloatingPanelRef(target: Element | ComponentPublicInstance | null) {
   shortcutGuideFloatingPanelElementRef.value = resolveElementFromRefTarget(target)
+}
+
+function emitTrayRendererStateSnapshot() {
+  const fitPreference = settingsRefs.live2dFitPreference.value
+  eventaContext.value.emit(tamagotchiTrayRendererStateEvent, {
+    moveModeEnabled: moveModeEnabled.value,
+    live2dFitPreference: fitPreference,
+  })
+}
+
+function handleTrayCommand(command: TamagotchiTrayCommandPayload) {
+  applyTrayCommand(command, {
+    openStudyPanel: () => controlsIslandStore.setStudyPanelOpen(true),
+    openVisionPanel: () => controlsIslandStore.setVisionPanelOpen(true),
+    openShortcutGuide: () => controlsIslandStore.setShortcutGuidePanelOpen(true),
+    toggleMoveMode: () => controlsIslandStore.toggleMoveMode(),
+    setFitPreference: fitPreference => settingsStore.setLive2dFitPreference(fitPreference),
+    setAlwaysOnTop: alwaysOnTop => (settingsStore.alwaysOnTop = alwaysOnTop),
+    getRinScale: () => Number(live2dEventa.scale || 1),
+    setRinScale: nextScale => (live2dEventa.scale = nextScale),
+  })
 }
 
 const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() => {
@@ -686,12 +711,20 @@ function handlePointerUp() {
 }
 
 onMounted(() => {
+  eventaContext.value.on(tamagotchiTrayCommandEvent, (event) => {
+    if (!event?.body)
+      return
+    handleTrayCommand(event.body)
+  })
+
   window.addEventListener('pointerdown', handlePointerDown, true)
   window.addEventListener('pointerup', handlePointerUp, true)
   window.addEventListener('pointercancel', handlePointerUp, true)
 
   if (live2DMouseIgnoreEmitter.shouldEmit(true))
     setIgnoreMouseEvents([true, { forward: true }])
+
+  emitTrayRendererStateSnapshot()
 
   chatSyncStore.initialize('authority')
   if (onboardingStore.needsOnboarding) {
@@ -738,6 +771,10 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     }
   }
 })
+
+watch([moveModeEnabled, () => settingsRefs.live2dFitPreference.value], () => {
+  emitTrayRendererStateSnapshot()
+}, { immediate: true })
 
 // Assistant caption is broadcast from Stage.vue via the same channel
 </script>

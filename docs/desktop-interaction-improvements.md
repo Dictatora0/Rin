@@ -258,6 +258,25 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - 采用更清晰键帽样式（`⌘` / `⇧` / `Esc`）和更大字号，按分组展示：
     - 控制面板
     - Rin 形象
+
+## 菜单栏快捷入口增强（Round 7）
+
+- 顶部菜单栏（Tray）新增中文快捷分组，作为 Controls Island 之外的兜底入口：
+  - Rin
+  - 面板
+  - 形象
+  - 应用
+- 菜单新增高频入口：
+  - 打开学习面板
+  - 打开视觉面板
+  - 打开快捷键指南
+  - 放大/缩小/重置 Rin 形象大小
+  - 切换 Live2D 展示方式（自动适配 / 完整身体 / 上半身优先）
+- 菜单状态支持轻量同步：
+  - 保持置顶（checkbox）
+  - 展示方式（radio）
+  - 显示/隐藏 Rin 文案根据窗口可见状态切换
+- 主进程通过现有 Eventa 通道向 renderer 分发命令，避免在主进程直接操作 renderer store。
     - 桌面交互
     - 学习与视觉
     - 帮助

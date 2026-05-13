@@ -28,6 +28,33 @@ export const electronOpenChat = defineInvokeEventa('eventa:invoke:electron:windo
 export const electronOpenSettingsDevtools = defineInvokeEventa('eventa:invoke:electron:windows:settings:devtools:open')
 export const electronOpenDevtoolsWindow = defineInvokeEventa<void, { key: string, route?: string, width?: number, height?: number, x?: number, y?: number }>('eventa:invoke:electron:windows:devtools:open')
 
+export type TamagotchiTrayFitPreference = 'auto' | 'full-body' | 'upper-body'
+
+export type TamagotchiTrayCommand
+  = | 'open-study-panel'
+    | 'open-vision-panel'
+    | 'open-shortcut-guide'
+    | 'increase-rin-scale'
+    | 'decrease-rin-scale'
+    | 'reset-rin-scale'
+    | 'toggle-move-mode'
+    | 'set-fit-preference'
+    | 'set-always-on-top'
+
+export interface TamagotchiTrayCommandPayload {
+  command: TamagotchiTrayCommand
+  fitPreference?: TamagotchiTrayFitPreference
+  alwaysOnTop?: boolean
+}
+
+export interface TamagotchiTrayRendererStatePayload {
+  moveModeEnabled: boolean
+  live2dFitPreference: TamagotchiTrayFitPreference
+}
+
+export const tamagotchiTrayCommandEvent = defineEventa<TamagotchiTrayCommandPayload>('eventa:event:tamagotchi:tray:command')
+export const tamagotchiTrayRendererStateEvent = defineEventa<TamagotchiTrayRendererStatePayload>('eventa:event:tamagotchi:tray:renderer-state')
+
 export interface ElectronServerChannelConfig {
   tlsConfig?: ServerOptions['tlsConfig'] | null
   authToken: string
