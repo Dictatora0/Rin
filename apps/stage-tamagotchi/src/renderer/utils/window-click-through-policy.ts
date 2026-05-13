@@ -103,12 +103,14 @@ export interface BuildWindowClickThroughDebugPayloadInput {
   isLive2DFadedForReading: boolean
   shouldFadeOnCursorWithin: boolean
   isPointerInsideLive2DHitArea: boolean
+  isPointerInsideLive2DFadeTriggerArea: boolean
   isPointerInsideProtectedControlElement: boolean
   isPointerInsideControls: boolean
   isPointerInsideControlAnchor: boolean
   controlsPreActivationActive: boolean
   protectedElementTag?: string | null
   protectedElementDataset?: string | null
+  fadeTriggerAreaBounds?: string | null
   policy: WindowMouseIgnorePolicyResult
 }
 
@@ -117,12 +119,14 @@ export interface BuildWindowClickThroughDebugPayloadResult {
   isLive2DFadedForReading: boolean
   shouldFadeOnCursorWithin: boolean
   isPointerInsideLive2DHitArea: boolean
+  isPointerInsideLive2DFadeTriggerArea: boolean
   isPointerInsideProtectedControlElement: boolean
   isPointerInsideControls: boolean
   isPointerInsideControlAnchor: boolean
   controlsPreActivationActive: boolean
   protectedElementTag?: string | null
   protectedElementDataset?: string | null
+  fadeTriggerAreaBounds?: string | null
   ignoreMouseEvents: boolean
   reason: WindowMouseIgnorePolicyResult['reason']
   blockingStates: WindowClickThroughBlockingStates
@@ -139,9 +143,14 @@ export interface ResolveWindowMouseIgnoreRefreshInput {
   isLive2DFadedForReading: boolean
   shouldFadeOnCursorWithin: boolean
   isPointerInsideLive2DHitArea: boolean
+  isPointerInsideLive2DFadeTriggerArea: boolean
   isPointerInsideProtectedControlElement: boolean
   isPointerInsideControls: boolean
   isPointerInsideControlAnchor: boolean
+  controlsPreActivationActive: boolean
+  protectedElementTag?: string | null
+  protectedElementDataset?: string | null
+  fadeTriggerAreaBounds?: string | null
   policy: WindowMouseIgnorePolicyResult
   emitter: WindowMouseIgnoreStateEmitter
 }
@@ -415,12 +424,14 @@ export function buildWindowClickThroughDebugPayload(input: BuildWindowClickThrou
     isLive2DFadedForReading: input.isLive2DFadedForReading,
     shouldFadeOnCursorWithin: input.shouldFadeOnCursorWithin,
     isPointerInsideLive2DHitArea: input.isPointerInsideLive2DHitArea,
+    isPointerInsideLive2DFadeTriggerArea: input.isPointerInsideLive2DFadeTriggerArea,
     isPointerInsideProtectedControlElement: input.isPointerInsideProtectedControlElement,
     isPointerInsideControls: input.isPointerInsideControls,
     isPointerInsideControlAnchor: input.isPointerInsideControlAnchor,
     controlsPreActivationActive: input.controlsPreActivationActive,
     protectedElementTag: input.protectedElementTag ?? null,
     protectedElementDataset: input.protectedElementDataset ?? null,
+    fadeTriggerAreaBounds: input.fadeTriggerAreaBounds ?? null,
     ignoreMouseEvents: input.policy.shouldIgnoreMouseEvents,
     reason: input.policy.reason,
     blockingStates: { ...input.policy.blockingStates },
@@ -446,9 +457,14 @@ export function resolveWindowMouseIgnoreRefresh(input: ResolveWindowMouseIgnoreR
     isLive2DFadedForReading: input.isLive2DFadedForReading,
     shouldFadeOnCursorWithin: input.shouldFadeOnCursorWithin,
     isPointerInsideLive2DHitArea: input.isPointerInsideLive2DHitArea,
+    isPointerInsideLive2DFadeTriggerArea: input.isPointerInsideLive2DFadeTriggerArea,
     isPointerInsideProtectedControlElement: input.isPointerInsideProtectedControlElement,
     isPointerInsideControls: input.isPointerInsideControls,
     isPointerInsideControlAnchor: input.isPointerInsideControlAnchor,
+    controlsPreActivationActive: input.controlsPreActivationActive,
+    protectedElementTag: input.protectedElementTag,
+    protectedElementDataset: input.protectedElementDataset,
+    fadeTriggerAreaBounds: input.fadeTriggerAreaBounds,
     policy: input.policy,
   })
 

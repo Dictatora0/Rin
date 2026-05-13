@@ -259,6 +259,58 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
     - 控制面板
     - Rin 形象
 
+## Transparent Window Click-Through Hardening（Round 7）
+
+- 本轮目标：在保留 Live2D 靠近淡出的低打扰穿透能力下，保证 Controls 区域稳定可点，不需要三连击等记忆型补救交互。
+
+- 按钮区域精确保护：
+  - Controls Island root 增加 `data-click-through-protected="true"`。
+  - Emergency Anchor 增加 `data-control-layer="controls-anchor"` 与 `data-click-through-protected="true"`。
+  - Controls 通用按钮统一增加：
+    - `data-control-button="true"`
+    - `data-click-through-protected="true"`
+  - 对应范围包含聊天、学习、视觉、设置、移动模式、缩放/重置、快捷键指南、关闭、展开/收起等主操作。
+
+- 进入控制区域预激活：
+  - 鼠标进入 Controls / Anchor / protected 元素附近时触发 `500ms` 预激活窗口。
+  - 预激活期间窗口保持接收鼠标，避免“刚移入按钮就第一次点击穿透”。
+  - 预激活仅作用于控制区域，不会扩展为整窗拦截。
+
+- Anchor 兜底：
+  - Emergency Anchor 保持稳定可点击并始终作为兜底入口。
+  - Anchor 命中优先级高于 Live2D 淡出穿透，保证可恢复操作。
+
+- 优先级与穿透边界：
+  - 明确 UI/控制区（protected / anchor / controls / preactivation）优先于 Live2D 淡出策略。
+  - 空白透明区域仍保持点击与滚动穿透。
+  - Live2D 淡出区域仍保持 0 打扰穿透（在未命中受保护控件时）。
+
+- 方案取舍：
+  - 未采用双击/三连击/计数器类 fallback。
+  - 原因：此类交互增加用户记忆负担，并可能误触发后方应用，不符合自然点击预期。
+
+## Near-Cursor Fade Responsiveness（Round 8）
+
+- 目标：提升“靠近淡出”响应速度，同时不回退 click-through 精确保护机制。
+
+- 触发区解耦：
+  - 新增独立 `live2dFadeTriggerArea`（大于 interaction hitArea）。
+  - `fadeTriggerArea` 只用于决定是否进入 `isLive2DFadedForReading`。
+  - `interaction hitArea` 继续用于 click-through policy 的 `live2d-hit` 判定。
+
+- 进入/退出时序：
+  - 鼠标进入 `fadeTriggerArea`：立即进入淡出态。
+  - 鼠标离开 `fadeTriggerArea`：延迟约 `180ms` 再恢复，减少边缘抖动闪烁。
+  - 不对“进入淡出”增加 debounce。
+
+- 与 click-through 同步：
+  - `fade` 状态变化会主动触发 `refreshWindowMouseIgnorePolicy('fade-state-changed')`。
+  - 保留 emitter 去重，避免重复 IPC。
+
+- 保护机制保持不变：
+  - `protected-control` / `anchor-hover` / `controls-preactivation` 仍优先于 `live2d-faded-pass-through`。
+  - Controls / Anchor / Floating Panel 的可点击性不受影响。
+
 ## 菜单栏快捷入口增强（Round 7）
 
 - 顶部菜单栏（Tray）新增中文快捷分组，作为 Controls Island 之外的兜底入口：

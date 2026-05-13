@@ -30,6 +30,16 @@ export interface Live2DHitAreaResult {
   resolvedFitMode: Live2DResolvedFitMode
 }
 
+export interface ComputeLive2DFadeTriggerAreaInput extends ComputeLive2DHitAreaInput {
+  fadeMarginX?: number
+  fadeMarginY?: number
+}
+
+export interface Live2DFadeTriggerAreaResult {
+  area: Live2DHitAreaRect
+  resolvedFitMode: Live2DResolvedFitMode
+}
+
 interface HitAreaRatioProfile {
   widthRatio: number
   topInsetRatio: number
@@ -62,6 +72,12 @@ function toPositiveOrFallback(value: number, fallback: number) {
 
 function toFiniteOrFallback(value: number | undefined, fallback: number) {
   if (value == null || !Number.isFinite(value))
+    return fallback
+  return value
+}
+
+function toNonNegativeFiniteOrFallback(value: number | undefined, fallback: number) {
+  if (value == null || !Number.isFinite(value) || value < 0)
     return fallback
   return value
 }
@@ -191,4 +207,60 @@ export function isPointInLive2DHitArea(point: { x: number, y: number }, area: Li
     && point.x <= area.right
     && point.y >= area.top
     && point.y <= area.bottom
+}
+
+/**
+ * Computes a near-cursor fade trigger area around Live2D interaction hit area.
+ *
+ * Use when:
+ * - Fade-on-hover should respond earlier than strict interaction hit-testing
+ * - Pointer entering nearby character space should quickly fade the stage
+ *
+ * Expects:
+ * - Viewport and model dimensions are finite pixel values
+ * - Margins are non-negative finite numbers
+ *
+ * Returns:
+ * - Viewport-clamped fade trigger area larger than or equal to interaction hit area
+ */
+export function computeLive2DFadeTriggerArea(input: ComputeLive2DFadeTriggerAreaInput): Live2DFadeTriggerAreaResult {
+  const viewportWidth = toPositiveOrFallback(input.viewportWidth, 1)
+  const viewportHeight = toPositiveOrFallback(input.viewportHeight, 1)
+  const marginX = toNonNegativeFiniteOrFallback(input.fadeMarginX, 44)
+  const marginY = toNonNegativeFiniteOrFallback(input.fadeMarginY, 56)
+
+  const interaction = computeLive2DHitArea(input)
+
+  const expandedLeft = clamp(interaction.area.left - marginX, 0, viewportWidth)
+  const expandedRight = clamp(interaction.area.right + marginX, 0, viewportWidth)
+  const expandedTop = clamp(interaction.area.top - marginY, 0, viewportHeight)
+  const expandedBottom = clamp(interaction.area.bottom + marginY, 0, viewportHeight)
+
+  return {
+    resolvedFitMode: interaction.resolvedFitMode,
+    area: {
+      left: expandedLeft,
+      right: expandedRight,
+      top: expandedTop,
+      bottom: expandedBottom,
+      width: Math.max(0, expandedRight - expandedLeft),
+      height: Math.max(0, expandedBottom - expandedTop),
+    },
+  }
+}
+
+/**
+ * Checks whether a window-relative mouse coordinate is inside the Live2D fade trigger area.
+ *
+ * Use when:
+ * - Stage should fade quickly when pointer approaches the character
+ *
+ * Expects:
+ * - `x` and `y` are finite window-relative coordinates
+ *
+ * Returns:
+ * - `true` only when the point is inside the inclusive rectangular fade trigger area
+ */
+export function isPointInLive2DFadeTriggerArea(point: { x: number, y: number }, area: Live2DHitAreaRect) {
+  return isPointInLive2DHitArea(point, area)
 }

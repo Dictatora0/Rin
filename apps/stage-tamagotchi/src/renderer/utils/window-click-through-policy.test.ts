@@ -13,8 +13,10 @@ describe('window click-through policy', () => {
     return {
       isPointerInsideLive2DHitArea: false,
       isLive2DFadedForReading: false,
+      isInsideProtectedControlElement: false,
       isPointerInsideControls: false,
       isPointerInsideControlAnchor: false,
+      controlsPreActivationActive: false,
       isPointerInsideShortcutGuidePanel: false,
       isPointerInsideStudyPanel: false,
       isPointerInsideVisionPanel: false,
@@ -172,6 +174,30 @@ describe('window click-through policy', () => {
 
     expect(result.shouldIgnoreMouseEvents).toBe(false)
     expect(result.reason).toBe('anchor-hover')
+  })
+
+  /** @example protected control must always receive mouse even in faded character region */
+  it('keeps mouse events when pointer is inside protected control element', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isInsideProtectedControlElement: true,
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('protected-control')
+  })
+
+  /** @example controls preactivation keeps first click stable after entering controls zone */
+  it('keeps mouse events when controls preactivation is active', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      controlsPreActivationActive: true,
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('controls-preactivation')
   })
 
   /** @example near-anchor fallback should keep interaction to avoid first-click loss around anchor edge */
@@ -378,7 +404,7 @@ describe('window click-through policy', () => {
     }))
 
     expect(result.shouldIgnoreMouseEvents).toBe(false)
-    expect(result.reason).toBe('resizing')
+    expect(result.reason).toBe('window-border')
   })
 
   /** @example pointer down should keep interaction until release */
@@ -501,14 +527,17 @@ describe('window click-through policy', () => {
       isLive2DFadedForReading: false,
       shouldFadeOnCursorWithin: false,
       isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: false,
       isPointerInsideProtectedControlElement: false,
       isPointerInsideControls: true,
       isPointerInsideControlAnchor: false,
+      controlsPreActivationActive: false,
       policy,
     })
 
     expect(payload.trigger).toBe('policy-input-changed')
     expect(payload.isLive2DFadedForReading).toBe(false)
+    expect(payload.isPointerInsideLive2DFadeTriggerArea).toBe(false)
     expect(payload.ignoreMouseEvents).toBe(false)
     expect(payload.reason).toBe('controls-hover')
     expect(payload.blockingStates.visionCameraRunning).toBe(true)
@@ -526,14 +555,17 @@ describe('window click-through policy', () => {
       isLive2DFadedForReading: true,
       shouldFadeOnCursorWithin: true,
       isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isPointerInsideProtectedControlElement: false,
       isPointerInsideControls: false,
       isPointerInsideControlAnchor: false,
+      controlsPreActivationActive: false,
       policy,
     })
 
     expect(payload.trigger).toBe('fade-state-changed')
     expect(payload.isLive2DFadedForReading).toBe(true)
+    expect(payload.isPointerInsideLive2DFadeTriggerArea).toBe(true)
     expect(payload.ignoreMouseEvents).toBe(true)
     expect(payload.reason).toBe('live2d-faded-pass-through')
   })
@@ -555,9 +587,11 @@ describe('window click-through policy', () => {
       isLive2DFadedForReading: false,
       shouldFadeOnCursorWithin: false,
       isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isPointerInsideProtectedControlElement: false,
       isPointerInsideControls: false,
       isPointerInsideControlAnchor: false,
+      controlsPreActivationActive: false,
       policy: live2dHitPolicy,
       emitter,
     })
@@ -566,9 +600,11 @@ describe('window click-through policy', () => {
       isLive2DFadedForReading: true,
       shouldFadeOnCursorWithin: true,
       isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isPointerInsideProtectedControlElement: false,
       isPointerInsideControls: false,
       isPointerInsideControlAnchor: false,
+      controlsPreActivationActive: false,
       policy: fadedPolicy,
       emitter,
     })
@@ -581,15 +617,18 @@ describe('window click-through policy', () => {
     expect(fadeRefresh.nextIgnoreMouseEvents).toBe(true)
     expect(fadeRefresh.debugPayload.reason).toBe('live2d-faded-pass-through')
     expect(fadeRefresh.debugPayload.trigger).toBe('fade-state-changed')
+    expect(fadeRefresh.debugPayload.isPointerInsideLive2DFadeTriggerArea).toBe(true)
 
     const duplicateFadeRefresh = resolveWindowMouseIgnoreRefresh({
       trigger: 'fade-state-changed',
       isLive2DFadedForReading: true,
       shouldFadeOnCursorWithin: true,
       isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isPointerInsideProtectedControlElement: false,
       isPointerInsideControls: false,
       isPointerInsideControlAnchor: false,
+      controlsPreActivationActive: false,
       policy: fadedPolicy,
       emitter,
     })
@@ -610,9 +649,11 @@ describe('window click-through policy', () => {
       isLive2DFadedForReading: true,
       shouldFadeOnCursorWithin: true,
       isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isPointerInsideProtectedControlElement: true,
       isPointerInsideControls: true,
       isPointerInsideControlAnchor: false,
+      controlsPreActivationActive: false,
       policy,
       emitter,
     })
@@ -620,5 +661,15 @@ describe('window click-through policy', () => {
     expect(refresh.debugPayload.reason).toBe('controls-hover')
     expect(refresh.nextIgnoreMouseEvents).toBe(false)
     expect(refresh.shouldEmitIgnoreMouseEvents).toBe(true)
+  })
+
+  it('keeps default pass-through when only fade-trigger-area is active but live2d hit is false', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: false,
+      isLive2DFadedForReading: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(true)
+    expect(result.reason).toBe('default-pass-through')
   })
 })

@@ -58,7 +58,14 @@ import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { useWindowStore } from '../stores/window'
 import {
+  getClickThroughProtectedElementFromPoint,
+  isPointInsideClickThroughProtectedElement,
+} from '../utils/click-through-protected-elements'
+import { computeLive2DFadeTriggerState } from '../utils/live2d-fade-trigger-state'
+import {
+  computeLive2DFadeTriggerArea,
   computeLive2DHitArea,
+  isPointInLive2DFadeTriggerArea,
   isPointInLive2DHitArea,
 } from '../utils/live2d-hit-area'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
@@ -84,6 +91,7 @@ const { currentBubble } = useStudyCompanionBubble()
 
 const isIgnoringMouseEvents = ref(false)
 const shouldFadeOnCursorWithin = ref(false)
+const isLive2DFadedForReading = ref(false)
 
 const onboardingStore = useOnboardingStore()
 const studyCompanionStore = useStudyCompanionStore()
@@ -107,6 +115,8 @@ const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
 const { width: windowBoundsWidth, height: windowBoundsHeight } = useElectronWindowBounds()
 const controlsAnchorProximityThreshold = 20
 const controlsAnchorPressProtectionDurationMs = 120
+const controlsPreActivationDurationMs = 500
+const fadeTriggerReleaseDelayMs = 180
 const controlsAnchorFallbackWidthPx = 112
 const controlsAnchorFallbackHeightPx = 176
 const controlsAnchorFallbackRightInsetPx = 20
@@ -160,7 +170,11 @@ const visionPanelOpenedAt = ref<number>(0)
 const isPointerDown = ref(false)
 const isDraggingWindow = ref(false)
 const controlsAnchorPressProtectionActive = ref(false)
+const controlsPreActivationActive = ref(false)
+const controlsPreActivationUntil = ref(0)
+const live2dFadeTriggerState = ref<{ faded: boolean, releaseAt: number | null }>({ faded: false, releaseAt: null })
 let controlsAnchorPressProtectionTimer: ReturnType<typeof setTimeout> | undefined
+let controlsPreActivationTimer: ReturnType<typeof setTimeout> | undefined
 const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
 const { data: modelSettingsRuntimeChannelEvent, post: postModelSettingsRuntimeChannelEvent } = useBroadcastChannel<ModelSettingsRuntimeChannelEvent, ModelSettingsRuntimeChannelEvent>({ name: modelSettingsRuntimeSnapshotChannelName })
 const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransparency({
@@ -169,21 +183,12 @@ const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransp
   stageModelRenderer: stageModelRenderer.value,
   stagePaused: stagePaused.value,
 }))
-const isTransparent = computed(() => {
-  if (stagePaused.value || componentStateStage.value !== 'mounted' || !fadeOnHoverEnabled.value)
-    return true
-
-  if (stageModelRenderer.value === 'vrm')
-    return shouldUseThreeTransparencyHitTest.value ? isTransparentByThree.value : true
-
-  if (stageModelRenderer.value === 'live2d')
-    return isTransparentByPixels.value
-
-  // NOTICE:
-  // Godot / unsupported renderers currently do not provide per-pixel transparency sampling.
-  // Returning `false` here keeps fade-on-hover visually functional instead of being permanently disabled.
-  return false
-})
+// NOTICE:
+// Keep pixel/three transparency trackers active for future diagnostics and fallback tuning.
+// The current near-cursor fade path uses geometric fade trigger area for responsiveness.
+void shouldUseThreeTransparencyHitTest.value
+void isTransparentByThree
+void isTransparentByPixels
 
 const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 10 })
 const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
@@ -215,26 +220,31 @@ const hasFocusedFormField = computed(() => {
 
   return element.isContentEditable
 })
+const protectedControlElementAtPointer = computed(() => {
+  const pointerX = Number(relativeMouseX.value)
+  const pointerY = Number(relativeMouseY.value)
+  return getClickThroughProtectedElementFromPoint(pointerX, pointerY)
+})
 const isInsideProtectedControlElement = computed(() => {
   const pointerX = Number(relativeMouseX.value)
   const pointerY = Number(relativeMouseY.value)
-  if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY))
-    return false
+  return isPointInsideClickThroughProtectedElement(pointerX, pointerY)
+})
+const protectedControlElementTag = computed(() => {
+  const protectedElement = protectedControlElementAtPointer.value
+  return protectedElement ? protectedElement.tagName.toLowerCase() : null
+})
+const protectedControlElementDataset = computed(() => {
+  const protectedElement = protectedControlElementAtPointer.value
+  if (!(protectedElement instanceof HTMLElement))
+    return null
 
-  const hovered = document.elementFromPoint(pointerX, pointerY)
-  if (!(hovered instanceof HTMLElement))
-    return false
+  const datasetEntries = Object.entries(protectedElement.dataset)
+    .filter(([, value]) => typeof value === 'string' && value.length > 0)
+  if (datasetEntries.length === 0)
+    return null
 
-  if (hovered.closest('[data-testid="controls-anchor"]'))
-    return true
-
-  if (hovered.closest('[data-testid="controls-panel"]'))
-    return true
-
-  if (hovered.closest('[data-testid="stage-floating-panel"]'))
-    return true
-
-  return false
+  return JSON.stringify(Object.fromEntries(datasetEntries))
 })
 const live2dCharacterHit = computed(() => {
   if (stageModelRenderer.value !== 'live2d' || componentStateStage.value !== 'mounted' || stagePaused.value)
@@ -271,9 +281,56 @@ const live2dCharacterHit = computed(() => {
     y: Number(relativeMouseY.value),
   }, fitResult.area)
 })
+const live2dFadeTriggerAreaBounds = computed(() => {
+  if (stageModelRenderer.value !== 'live2d' || componentStateStage.value !== 'mounted' || stagePaused.value)
+    return null
 
-const { pause, resume } = watch(isTransparent, (transparent) => {
-  shouldFadeOnCursorWithin.value = fadeOnHoverEnabled.value && !transparent
+  const stageElement = stageCanvas.value
+  if (!stageElement)
+    return null
+
+  const stageRect = stageElement.getBoundingClientRect()
+  const viewportWidth = Math.max(1, stageRect.width)
+  const viewportHeight = Math.max(1, stageRect.height)
+  const modelWidth = Math.max(1, Number(stageElement.width || stageRect.width || 1))
+  const modelHeight = Math.max(1, Number(stageElement.height || stageRect.height || 1))
+
+  const fadeTrigger = computeLive2DFadeTriggerArea({
+    viewportWidth,
+    viewportHeight,
+    modelWidth,
+    modelHeight,
+    userScale: Number(scale.value || 1),
+    xOffsetPx: (Number.parseFloat(String(positionInPercentageString.value.x || '0')) / 100) * viewportWidth,
+    yOffsetPx: (Number.parseFloat(String(positionInPercentageString.value.y || '0')) / 100) * viewportHeight,
+    fitPreference: live2dFitPreference.value ?? 'auto',
+    zonePreset: 'normal',
+    fadeMarginX: 42,
+    fadeMarginY: 56,
+  })
+
+  return fadeTrigger.area
+})
+const isPointerInsideLive2DFadeTriggerArea = computed(() => {
+  const area = live2dFadeTriggerAreaBounds.value
+  if (!area)
+    return false
+
+  return isPointInLive2DFadeTriggerArea({
+    x: Number(relativeMouseX.value),
+    y: Number(relativeMouseY.value),
+  }, area)
+})
+const live2dFadeTriggerAreaBoundsPayload = computed(() => {
+  const area = live2dFadeTriggerAreaBounds.value
+  if (!area)
+    return null
+
+  return JSON.stringify(area)
+})
+
+const { pause, resume } = watch(() => isLive2DFadedForReading.value, (faded) => {
+  shouldFadeOnCursorWithin.value = faded
 }, { immediate: true })
 
 const studyPanelInputActive = computed(() => studyPanelInteractionLocked.value)
@@ -325,6 +382,12 @@ const isInsideControlAnchor = computed(() => {
     && pointerY <= expandedBottom
   return anchorHit || isInsideControlAnchorFallback.value
 })
+const isInsideControlsPreActivationZone = computed(() => {
+  return isInsideProtectedControlElement.value
+    || isControlsPanelHovering.value
+    || isInsideControlAnchor.value
+})
+const isControlsPreActivationExpired = computed(() => Date.now() > controlsPreActivationUntil.value)
 const isInsideMoveHitArea = computed(() => {
   if (!moveModeEnabled.value || isLoading.value)
     return false
@@ -489,12 +552,17 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
 
 function refreshWindowMouseIgnorePolicy(trigger: 'pointer-move' | 'fade-state-changed' | 'panel-state-changed' | 'policy-input-changed') {
   const nearBorder = isAroundWindowBorderFor250Ms.value
+  if (isControlsPreActivationExpired.value && controlsPreActivationActive.value) {
+    controlsPreActivationActive.value = false
+  }
 
   const policy = computeWindowMouseIgnorePolicy({
     isPointerInsideLive2DHitArea: live2dCharacterHit.value,
-    isLive2DFadedForReading: shouldFadeOnCursorWithin.value,
-    isPointerInsideControls: isControlsPanelHovering.value || isInsideProtectedControlElement.value,
+    isLive2DFadedForReading: isLive2DFadedForReading.value,
+    isInsideProtectedControlElement: isInsideProtectedControlElement.value,
+    isPointerInsideControls: isControlsPanelHovering.value,
     isPointerInsideControlAnchor: isInsideControlAnchor.value,
+    controlsPreActivationActive: controlsPreActivationActive.value,
     isPointerInsideShortcutGuidePanel: isShortcutGuidePanelHovering.value,
     isPointerInsideStudyPanel: isStudyPanelHovering.value,
     isPointerInsideVisionPanel: isVisionPanelHovering.value,
@@ -521,12 +589,17 @@ function refreshWindowMouseIgnorePolicy(trigger: 'pointer-move' | 'fade-state-ch
 
   const refreshResult = resolveWindowMouseIgnoreRefresh({
     trigger,
-    isLive2DFadedForReading: shouldFadeOnCursorWithin.value,
+    isLive2DFadedForReading: isLive2DFadedForReading.value,
     shouldFadeOnCursorWithin: shouldFadeOnCursorWithin.value,
     isPointerInsideLive2DHitArea: live2dCharacterHit.value,
+    isPointerInsideLive2DFadeTriggerArea: isPointerInsideLive2DFadeTriggerArea.value,
     isPointerInsideProtectedControlElement: isInsideProtectedControlElement.value,
     isPointerInsideControls: isControlsPanelHovering.value,
     isPointerInsideControlAnchor: isInsideControlAnchor.value,
+    controlsPreActivationActive: controlsPreActivationActive.value,
+    protectedElementTag: protectedControlElementTag.value,
+    protectedElementDataset: protectedControlElementDataset.value,
+    fadeTriggerAreaBounds: live2dFadeTriggerAreaBoundsPayload.value,
     policy,
     emitter: live2DMouseIgnoreEmitter,
   })
@@ -535,8 +608,7 @@ function refreshWindowMouseIgnorePolicy(trigger: 'pointer-move' | 'fade-state-ch
 
   isIgnoringMouseEvents.value = policy.shouldIgnoreMouseEvents
   shouldFadeOnCursorWithin.value = policy.shouldFadeStage
-    && !isControlsPanelHovering.value
-    && !isTransparent.value
+    && isLive2DFadedForReading.value
 
   if (refreshResult.shouldEmitIgnoreMouseEvents) {
     setIgnoreMouseEvents([refreshResult.nextIgnoreMouseEvents, { forward: true }])
@@ -548,6 +620,32 @@ function refreshWindowMouseIgnorePolicy(trigger: 'pointer-move' | 'fade-state-ch
     pause()
 }
 
+function setLive2DFadedForReading(nextValue: boolean) {
+  if (isLive2DFadedForReading.value === nextValue)
+    return
+
+  isLive2DFadedForReading.value = nextValue
+  refreshWindowMouseIgnorePolicy('fade-state-changed')
+}
+
+function evaluateLive2DFadeStateByPointer() {
+  const result = computeLive2DFadeTriggerState({
+    now: Date.now(),
+    canFade: fadeOnHoverEnabled.value
+      && !stagePaused.value
+      && componentStateStage.value === 'mounted'
+      && stageModelRenderer.value === 'live2d',
+    insideFadeTriggerArea: isPointerInsideLive2DFadeTriggerArea.value,
+    releaseDelayMs: fadeTriggerReleaseDelayMs,
+    previousState: live2dFadeTriggerState.value,
+  })
+
+  live2dFadeTriggerState.value = result.nextState
+  if (result.changed) {
+    setLive2DFadedForReading(result.nextState.faded)
+  }
+}
+
 watch([
   isControlsPanelHovering,
   isInsideControlAnchor,
@@ -557,7 +655,7 @@ watch([
   isShortcutGuidePanelHovering,
   isInsideMoveHitArea,
   isAroundWindowBorderFor250Ms,
-  isTransparent,
+  isPointerInsideLive2DFadeTriggerArea,
   studyPanelOpen,
   visionPanelOpen,
   visionCameraRunning,
@@ -570,23 +668,33 @@ watch([
   isPointerDown,
   isDraggingWindow,
   controlsAnchorPressProtectionActive,
+  controlsPreActivationActive,
   hasRecentStudyPanelOpenProtection,
   hasRecentVisionPanelOpenProtection,
 ], () => {
+  evaluateLive2DFadeStateByPointer()
   refreshWindowMouseIgnorePolicy('policy-input-changed')
 }, { immediate: true })
-
-watch([
-  shouldFadeOnCursorWithin,
-], () => {
-  refreshWindowMouseIgnorePolicy('fade-state-changed')
-})
 
 watch([
   relativeMouseX,
   relativeMouseY,
 ], () => {
+  if (isInsideControlsPreActivationZone.value) {
+    activateControlsPreActivationWindow()
+  }
+  evaluateLive2DFadeStateByPointer()
   refreshWindowMouseIgnorePolicy('pointer-move')
+})
+
+watch([
+  fadeOnHoverEnabled,
+  stagePaused,
+  componentStateStage,
+  stageModelRenderer,
+], () => {
+  evaluateLive2DFadeStateByPointer()
+  refreshWindowMouseIgnorePolicy('fade-state-changed')
 })
 
 watch([
@@ -816,6 +924,21 @@ function handlePointerUp() {
   isDraggingWindow.value = false
 }
 
+function activateControlsPreActivationWindow() {
+  controlsPreActivationUntil.value = Date.now() + controlsPreActivationDurationMs
+  controlsPreActivationActive.value = true
+  if (controlsPreActivationTimer) {
+    clearTimeout(controlsPreActivationTimer)
+  }
+  controlsPreActivationTimer = setTimeout(() => {
+    controlsPreActivationTimer = undefined
+    if (Date.now() > controlsPreActivationUntil.value) {
+      controlsPreActivationActive.value = false
+      refreshWindowMouseIgnorePolicy('policy-input-changed')
+    }
+  }, controlsPreActivationDurationMs)
+}
+
 onMounted(() => {
   eventaContext.value.on(tamagotchiTrayCommandEvent, (event) => {
     if (!event?.body)
@@ -847,6 +970,8 @@ onUnmounted(() => {
   window.removeEventListener('pointercancel', handlePointerUp, true)
   if (controlsAnchorPressProtectionTimer)
     clearTimeout(controlsAnchorPressProtectionTimer)
+  if (controlsPreActivationTimer)
+    clearTimeout(controlsPreActivationTimer)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   tryCatch(() => {
     postModelSettingsRuntimeChannelEvent({
@@ -911,7 +1036,7 @@ watch([moveModeEnabled, () => settingsRefs.live2dFitPreference.value], () => {
           'top-0 left-0 w-full h-full',
           'overflow-hidden',
           'rounded-2xl',
-          'transition-opacity duration-250 ease-in-out',
+          'transition-opacity duration-150 ease-in-out',
         ]"
       >
         <StatusIsland ref="statusIslandRef" class="relative z-60" />
@@ -982,6 +1107,7 @@ watch([moveModeEnabled, () => settingsRefs.live2dFitPreference.value], () => {
       v-show="shortcutGuidePanelOpen"
       :ref="bindShortcutGuideFloatingPanelRef"
       data-testid="shortcut-guide-floating-panel-shell"
+      data-shortcut-guide-panel="true"
       panel-kind="vision"
       :title="$t('tamagotchi.stage.controls-island.shortcuts.panel.title')"
       close-button-test-id="shortcut-guide-close"

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  computeLive2DFadeTriggerArea,
   computeLive2DHitArea,
+  isPointInLive2DFadeTriggerArea,
   isPointInLive2DHitArea,
 } from './live2d-hit-area'
 
@@ -97,5 +99,139 @@ describe('live2d hit area geometry', () => {
 
     expect(isPointInLive2DHitArea(centerPoint, area)).toBe(true)
     expect(isPointInLive2DHitArea(outsidePoint, area)).toBe(false)
+  })
+
+  it('computes fade trigger area larger than interaction hit area', () => {
+    const hit = computeLive2DHitArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'auto',
+      userScale: 1,
+      zonePreset: 'normal',
+    })
+
+    const fade = computeLive2DFadeTriggerArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'auto',
+      userScale: 1,
+      zonePreset: 'normal',
+      fadeMarginX: 36,
+      fadeMarginY: 48,
+    })
+
+    expect(fade.area.width).toBeGreaterThanOrEqual(hit.area.width)
+    expect(fade.area.height).toBeGreaterThanOrEqual(hit.area.height)
+    expect(fade.area.left).toBeLessThanOrEqual(hit.area.left)
+    expect(fade.area.right).toBeGreaterThanOrEqual(hit.area.right)
+    expect(fade.area.top).toBeLessThanOrEqual(hit.area.top)
+    expect(fade.area.bottom).toBeGreaterThanOrEqual(hit.area.bottom)
+  })
+
+  it('supports hit=true fade=true at hit-area center', () => {
+    const hit = computeLive2DHitArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'full-body',
+      userScale: 1,
+      zonePreset: 'normal',
+    })
+    const fade = computeLive2DFadeTriggerArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'full-body',
+      userScale: 1,
+      zonePreset: 'normal',
+    })
+    const centerPoint = {
+      x: (hit.area.left + hit.area.right) / 2,
+      y: (hit.area.top + hit.area.bottom) / 2,
+    }
+
+    expect(isPointInLive2DHitArea(centerPoint, hit.area)).toBe(true)
+    expect(isPointInLive2DFadeTriggerArea(centerPoint, fade.area)).toBe(true)
+  })
+
+  it('supports hit=false fade=true for points in fade-margin ring', () => {
+    const hit = computeLive2DHitArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'upper-body',
+      userScale: 1,
+      zonePreset: 'normal',
+    })
+    const fade = computeLive2DFadeTriggerArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'upper-body',
+      userScale: 1,
+      zonePreset: 'normal',
+      fadeMarginX: 36,
+      fadeMarginY: 48,
+    })
+
+    const ringPoint = {
+      x: Math.min(fade.area.right - 1, hit.area.right + 18),
+      y: (hit.area.top + hit.area.bottom) / 2,
+    }
+
+    expect(isPointInLive2DHitArea(ringPoint, hit.area)).toBe(false)
+    expect(isPointInLive2DFadeTriggerArea(ringPoint, fade.area)).toBe(true)
+  })
+
+  it('returns fade=false outside fade trigger area', () => {
+    const fade = computeLive2DFadeTriggerArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'auto',
+      userScale: 1,
+      zonePreset: 'normal',
+    })
+
+    const outsidePoint = {
+      x: Math.min(449, fade.area.right + 8),
+      y: Math.min(619, fade.area.bottom + 8),
+    }
+
+    expect(isPointInLive2DFadeTriggerArea(outsidePoint, fade.area)).toBe(false)
+  })
+
+  it('keeps fade trigger area finite and clamped in all fit preferences', () => {
+    const fitPreferences: Array<'auto' | 'full-body' | 'upper-body'> = ['auto', 'full-body', 'upper-body']
+
+    for (const fitPreference of fitPreferences) {
+      const fade = computeLive2DFadeTriggerArea({
+        viewportWidth: 450,
+        viewportHeight: 620,
+        modelWidth: 1200,
+        modelHeight: 2100,
+        fitPreference,
+        userScale: 1,
+        zonePreset: 'normal',
+      })
+
+      expect(Number.isFinite(fade.area.left)).toBe(true)
+      expect(Number.isFinite(fade.area.top)).toBe(true)
+      expect(Number.isFinite(fade.area.right)).toBe(true)
+      expect(Number.isFinite(fade.area.bottom)).toBe(true)
+      expect(fade.area.left).toBeGreaterThanOrEqual(0)
+      expect(fade.area.top).toBeGreaterThanOrEqual(0)
+      expect(fade.area.right).toBeLessThanOrEqual(450)
+      expect(fade.area.bottom).toBeLessThanOrEqual(620)
+    }
   })
 })
