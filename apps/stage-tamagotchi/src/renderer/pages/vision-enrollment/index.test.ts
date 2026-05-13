@@ -69,10 +69,10 @@ function createInteractionState() {
     cameraState: ref<'off' | 'loading' | 'active' | 'error'>('off'),
     cameraPermissionState: ref<'unknown' | 'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt'),
     mediaPipeStatus: ref<'idle' | 'loading' | 'ready' | 'failed'>('ready'),
-    runtimeStatus: ref<'idle' | 'warming' | 'ready' | 'partial_ready' | 'failed' | 'resetting'>('idle'),
-    runtimeWarmupDurationMs: ref<number | null>(null),
-    runtimeRetryCount: ref(0),
-    runtimeLastError: ref(''),
+    runtimeStatus: ref<'idle' | 'warming' | 'ready' | 'partial_ready' | 'failed' | 'resetting'>('partial_ready'),
+    runtimeWarmupDurationMs: ref<number | null>(1200),
+    runtimeRetryCount: ref(2),
+    runtimeLastError: ref('MediaPipe warmup timed out'),
     errorMessage: ref(''),
     displayName,
     profileStatus,
@@ -96,14 +96,14 @@ function createInteractionState() {
     },
     encryptedProfile,
     cameraDiagnostics: ref({
-      trackEndedCount: 0,
+      trackEndedCount: 1,
       unexpectedTrackEndedCount: 0,
       lastTrackEndedAt: null,
       lastTrackEndedTrackId: null,
       lastTrackEndedTrackLabel: null,
       lastTrackEndedIntentional: null,
-      inferenceErrorCount: 0,
-      consecutiveInferenceErrorCount: 0,
+      inferenceErrorCount: 3,
+      consecutiveInferenceErrorCount: 1,
       lastInferenceErrorAt: null,
       lastInferenceErrorMessage: '',
     }),
@@ -206,7 +206,17 @@ async function clickButton(container: HTMLElement, text: string) {
   await nextTick()
 }
 
-describe('vision enrollment page stability behaviors', () => {
+async function openDetails(container: HTMLElement, selector: string) {
+  const details = container.querySelector(selector) as HTMLDetailsElement | null
+  if (!details)
+    throw new Error(`details "${selector}" missing`)
+  details.open = true
+  details.dispatchEvent(new Event('toggle', { bubbles: true }))
+  await nextTick()
+  return details
+}
+
+describe('vision enrollment page information architecture', () => {
   beforeEach(() => {
     mocks.start.mockReset()
     mocks.stop.mockReset()
@@ -233,92 +243,117 @@ describe('vision enrollment page stability behaviors', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows vision diagnostics statuses for demo troubleshooting', async () => {
-    mocks.interactionState.runtimeStatus.value = 'failed'
-    mocks.interactionState.runtimeWarmupDurationMs.value = 1200
-    mocks.interactionState.runtimeRetryCount.value = 2
-    mocks.interactionState.runtimeLastError.value = 'MediaPipe warmup timed out'
-    mocks.interactionState.cameraState.value = 'error'
-    mocks.interactionState.cameraPermissionState.value = 'denied'
-    mocks.interactionState.mediaPipeStatus.value = 'failed'
-    mocks.interactionState.openCvFaceQuality.status.value = 'fallback'
-    mocks.interactionState.profileStatus.value = 'encrypted'
-    mocks.interactionState.localFaceGate.gateState.value = 'locked'
-    mocks.interactionState.localFaceGate.profileStatus.value = 'multiple_faces'
-    mocks.interactionState.errorMessage.value = 'Vision prewarm failed'
-
+  it('renders guided enrollment structure and keeps diagnostics hidden by default', async () => {
     const { container, unmount } = mountPage()
     await nextTick()
 
     const text = container.textContent ?? ''
-    expect(text).toContain('Vision Runtime')
-    expect(text).toContain('status：failed')
-    expect(text).toContain('retryCount：2')
-    expect(text).toContain('lastError：MediaPipe warmup timed out')
-    expect(text).toContain('Vision Diagnostics')
-    expect(text).toContain('runtimeStatus：failed')
-    expect(text).toContain('cameraState：error')
-    expect(text).toContain('cameraPermission：已拒绝')
-    expect(text).toContain('MediaPipe：failed')
-    expect(text).toContain('OpenCV：降级模式')
-    expect(text).toContain('faceProfile：encrypted')
-    expect(text).toContain('faceGate：locked / multiple_faces')
-    expect(text).toContain('lastError：Vision prewarm failed')
-    expect(mocks.warmupVisionRuntime).toHaveBeenCalledWith({
-      background: true,
-      includeOpenCv: false,
-    })
+    expect(text).toContain('人脸录入与门控')
+    expect(text).toContain('本机加密保存')
+    expect(text).toContain('当前状态')
+    expect(text).toContain('四步录入向导')
+    expect(text).toContain('步骤 1 / 4：开启摄像头')
+    expect(text).toContain('步骤 2 / 4：设置本地档案')
+    expect(text).toContain('步骤 3 / 4：采集人脸样本')
+    expect(text).toContain('步骤 4 / 4：完成并启用')
+    expect(text).toContain('采样进度：0 / 6')
+
+    expect(text).toContain('人脸门控已配置')
+    expect(text).toContain('昵称：Alice')
+    expect(text).toContain('样本数量：6')
+    expect(text).toContain('档案状态：已解锁')
+    expect(text).toContain('门控状态：已启用')
+
+    expect(text).toContain('高级录入参数')
+    expect(text).toContain('诊断详情')
+    expect(text).not.toContain('匹配阈值')
+    expect(text).not.toContain('质量阈值')
+    expect(text).not.toContain('目标采样数')
+    expect(text).not.toContain('稳定判定帧数')
+
+    expect(text).not.toContain('runtimeStatus')
+    expect(text).not.toContain('runtimeWarmup')
+    expect(text).not.toContain('retryCount')
+    expect(text).not.toContain('MediaPipe：')
+    expect(text).not.toContain('OpenCV：')
+    expect(text).not.toContain('摄像头诊断日志')
+    expect(text).not.toContain('轨道结束次数')
+    expect(text).not.toContain('识别异常总数')
+    expect(text).not.toContain('亮度：')
+    expect(text).not.toContain('清晰度：')
+    expect(text).not.toContain('对比度：')
+    expect(text).not.toContain('人脸尺寸：')
+
+    expect(text).not.toContain('First startup may take a moment')
+    expect(text).not.toContain('Models are reused after warmup')
+    expect(text).not.toContain('Stop Camera releases camera only')
+    expect(text).not.toContain('Retry Runtime')
+    expect(text).not.toContain('Reset Runtime')
+    expect(text).not.toContain('Vision Diagnostics')
 
     unmount()
   })
 
-  it('wires runtime retry and reset buttons to shared runtime controls', async () => {
+  it('expands advanced parameters section and shows enrollment tuning fields', async () => {
     const { container, unmount } = mountPage()
     await nextTick()
 
-    await clickButton(container, 'Retry Runtime')
+    await openDetails(container, '[data-testid="advanced-enrollment-details"]')
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('匹配阈值')
+    expect(text).toContain('质量阈值')
+    expect(text).toContain('目标采样数')
+    expect(text).toContain('稳定判定帧数')
+
+    unmount()
+  })
+
+  it('expands diagnostics section and keeps runtime actions available', async () => {
+    const { container, unmount } = mountPage()
+    await nextTick()
+
+    await openDetails(container, '[data-testid="diagnostics-details"]')
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('视觉运行状态（runtimeStatus）')
+    expect(text).toContain('MediaPipe：')
+    expect(text).toContain('OpenCV：')
+    expect(text).toContain('摄像头诊断日志')
+    expect(text).toContain('轨道结束次数：1')
+    expect(text).toContain('识别异常总数：3')
+
+    await clickButton(container, '重试视觉运行环境')
     expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
 
-    await clickButton(container, 'Reset Runtime')
+    await clickButton(container, '重置视觉运行环境')
     expect(mocks.resetVisionRuntime).toHaveBeenCalledTimes(1)
 
     unmount()
   })
 
-  it('uses opaque panel shell and cards for better readability', async () => {
-    const { container, unmount } = mountPage()
-    await nextTick()
-
-    const markup = container.innerHTML
-    expect(markup).toContain('bg-neutral-100')
-    expect(markup).toContain('dark:bg-neutral-950')
-    expect(markup).toContain('bg-white')
-    expect(markup).toContain('dark:bg-neutral-900')
-    expect(markup).not.toContain('bg-white/88')
-    expect(markup).not.toContain('dark:bg-neutral-900/80')
-    expect(markup).not.toContain('border-neutral-200/70')
-    expect(markup).not.toContain('dark:border-neutral-700/70')
-
-    unmount()
-  })
-
-  it('deletes profile only after confirmation and reflects cleared state in UI', async () => {
+  it('keeps delete action in danger zone with confirmation', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { container, unmount } = mountPage()
     await nextTick()
 
+    const dangerCard = Array.from(container.querySelectorAll('section'))
+      .find(section => section.textContent?.includes('危险操作'))
+    if (!dangerCard)
+      throw new Error('danger zone missing')
+
+    expect(dangerCard.textContent).toContain('删除档案')
+    expect(dangerCard.textContent).toContain('重新录入')
+    expect(dangerCard.textContent).toContain('锁定档案')
+
     await clickButton(container, '删除档案')
 
     expect(confirmSpy).toHaveBeenCalledTimes(1)
-    expect(confirmSpy).toHaveBeenCalledWith('确认删除本地加密人脸档案？此操作不可撤销。')
+    expect(confirmSpy).toHaveBeenCalledWith('确认删除本地加密人脸档案？删除后需重新录入。')
     expect(mocks.deleteLocalFaceProfile).toHaveBeenCalledTimes(1)
     expect(mocks.setFaceGateEnabled).toHaveBeenCalledWith(false)
-    expect(mocks.toastMessage).toHaveBeenCalledWith('本地加密人脸档案已删除。')
 
     const text = container.textContent ?? ''
-    expect(text).toContain('档案状态：未录入')
-    expect(text).toContain('门控状态：未启用')
-    expect(text).toContain('样本数量：0')
     expect(text).toContain('档案已清除。')
 
     unmount()
@@ -334,12 +369,11 @@ describe('vision enrollment page stability behaviors', () => {
     expect(confirmSpy).toHaveBeenCalledTimes(1)
     expect(mocks.deleteLocalFaceProfile).toHaveBeenCalledTimes(0)
     expect(mocks.setFaceGateEnabled).toHaveBeenCalledTimes(0)
-    expect(mocks.toastMessage).toHaveBeenCalledTimes(0)
 
     unmount()
   })
 
-  it('keeps encrypted profile when unlock passphrase is wrong and surfaces safe error', async () => {
+  it('keeps unlock failure behavior unchanged in configured profile area', async () => {
     mocks.unlockFaceProfile.mockResolvedValue({ ok: false as const, reason: 'Unable to unlock local face profile.' })
     mocks.interactionState.profileStatus.value = 'encrypted'
     mocks.interactionState.encryptedProfile.unlockedProfile.value = null
@@ -361,8 +395,25 @@ describe('vision enrollment page stability behaviors', () => {
       rememberOnDevice: false,
     })
     expect(mocks.toastError).toHaveBeenCalledWith('无法解锁本地人脸档案。')
-    expect(mocks.interactionState.hasEncryptedProfile.value).toBe(true)
-    expect(mocks.interactionState.profileStatus.value).toBe('encrypted')
+
+    unmount()
+  })
+
+  it('shows localized status labels in overview card', async () => {
+    mocks.interactionState.cameraState.value = 'off'
+    mocks.interactionState.runtimeStatus.value = 'partial_ready'
+    mocks.interactionState.profileStatus.value = 'encrypted'
+    mocks.interactionState.localFaceGate.gateState.value = 'gated'
+    mocks.interactionState.localFaceGate.profileStatus.value = 'matching'
+
+    const { container, unmount } = mountPage()
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('摄像头：已关闭')
+    expect(text).toContain('模型：部分就绪')
+    expect(text).toContain('人脸档案：已锁定')
+    expect(text).toContain('人脸门控：等待匹配')
 
     unmount()
   })

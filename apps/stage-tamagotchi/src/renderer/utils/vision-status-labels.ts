@@ -1,5 +1,29 @@
 export type VisionStatusLocale = 'zh-CN' | 'en'
 
+export type VisionEnrollmentCameraState = 'off' | 'loading' | 'active' | 'error'
+export type VisionEnrollmentCameraPermissionState = 'unknown' | 'prompt' | 'granted' | 'denied' | 'unsupported'
+export type VisionEnrollmentRuntimeStatus = 'idle' | 'warming' | 'ready' | 'partial_ready' | 'failed' | 'resetting'
+export type VisionEnrollmentProfileStatus = 'none' | 'encrypted' | 'unlocked'
+export type VisionEnrollmentGateState = 'disabled' | 'enabled' | 'gated' | 'locked'
+export type VisionEnrollmentMatchStatus
+  = 'not_enrolled'
+    | 'enrolling'
+    | 'enrolled'
+    | 'matching'
+    | 'matched'
+    | 'unmatched'
+    | 'uncertain'
+    | 'multiple_faces'
+    | 'no_face'
+
+export interface VisionEnrollmentFaceQualitySnapshot {
+  qualityScore: number
+  brightness: number
+  sharpness: number
+  contrast: number
+  faceSize: number
+}
+
 const FIELD_LABELS: Record<string, Record<VisionStatusLocale, string>> = {
   cameraState: { 'zh-CN': '摄像头', 'en': 'Camera' },
   facePresence: { 'zh-CN': '主体状态', 'en': 'Subject' },
@@ -68,6 +92,7 @@ const VALUE_LABELS: Record<string, Record<VisionStatusLocale, string>> = {
   allowed: { 'zh-CN': '已允许', 'en': 'Allowed' },
   none: { 'zh-CN': '无', 'en': 'None' },
   idle: { 'zh-CN': '空闲', 'en': 'Idle' },
+  encrypted: { 'zh-CN': '已加密保存', 'en': 'Encrypted' },
   following_left: { 'zh-CN': '跟随左侧', 'en': 'Following left' },
   following_right: { 'zh-CN': '跟随右侧', 'en': 'Following right' },
   looking_up: { 'zh-CN': '看向上方', 'en': 'Looking up' },
@@ -275,4 +300,193 @@ export function formatSubjectResponseState(value: string, locale: VisionStatusLo
  */
 export function formatVisionStatusValue(value: string, locale: VisionStatusLocale = 'zh-CN') {
   return VALUE_LABELS[value]?.[locale] ?? value
+}
+
+/**
+ * Formats enrollment camera status for end users.
+ *
+ * Use when:
+ * - Face enrollment page needs a natural-language camera state summary.
+ *
+ * Expects:
+ * - Camera state and permission state from vision interaction composable.
+ *
+ * Returns:
+ * - User-facing localized status text without raw runtime keys.
+ */
+export function formatVisionEnrollmentCameraStatus(
+  cameraState: VisionEnrollmentCameraState,
+  permissionState: VisionEnrollmentCameraPermissionState,
+  locale: VisionStatusLocale = 'zh-CN',
+) {
+  if (permissionState === 'denied')
+    return locale === 'zh-CN' ? '权限被拒绝' : 'Permission denied'
+
+  const map: Record<VisionEnrollmentCameraState, Record<VisionStatusLocale, string>> = {
+    off: { 'zh-CN': '已关闭', 'en': 'Off' },
+    loading: { 'zh-CN': '准备中', 'en': 'Preparing' },
+    active: { 'zh-CN': '已开启', 'en': 'On' },
+    error: { 'zh-CN': '异常', 'en': 'Error' },
+  }
+
+  return map[cameraState]?.[locale] ?? (locale === 'zh-CN' ? '未知' : 'Unknown')
+}
+
+/**
+ * Formats enrollment runtime/model readiness status.
+ *
+ * Use when:
+ * - Face enrollment page needs human-friendly runtime readiness text.
+ *
+ * Expects:
+ * - Runtime status from vision runtime manager.
+ *
+ * Returns:
+ * - Localized readiness string with graceful fallback.
+ */
+export function formatVisionEnrollmentModelStatus(
+  runtimeStatus: VisionEnrollmentRuntimeStatus,
+  locale: VisionStatusLocale = 'zh-CN',
+) {
+  const map: Record<VisionEnrollmentRuntimeStatus, Record<VisionStatusLocale, string>> = {
+    idle: { 'zh-CN': '准备中', 'en': 'Preparing' },
+    warming: { 'zh-CN': '准备中', 'en': 'Preparing' },
+    ready: { 'zh-CN': '已就绪', 'en': 'Ready' },
+    partial_ready: { 'zh-CN': '部分就绪', 'en': 'Partially ready' },
+    failed: { 'zh-CN': '初始化失败', 'en': 'Init failed' },
+    resetting: { 'zh-CN': '重置中', 'en': 'Resetting' },
+  }
+
+  return map[runtimeStatus]?.[locale] ?? (locale === 'zh-CN' ? '未知' : 'Unknown')
+}
+
+/**
+ * Formats enrollment profile lock/enrollment status.
+ *
+ * Use when:
+ * - Face enrollment page displays local encrypted profile state.
+ *
+ * Expects:
+ * - Encrypted profile status (`none/encrypted/unlocked`).
+ *
+ * Returns:
+ * - Localized profile summary.
+ */
+export function formatVisionEnrollmentProfileStatus(
+  profileStatus: VisionEnrollmentProfileStatus,
+  locale: VisionStatusLocale = 'zh-CN',
+) {
+  const map: Record<VisionEnrollmentProfileStatus, Record<VisionStatusLocale, string>> = {
+    none: { 'zh-CN': '未录入', 'en': 'Not enrolled' },
+    encrypted: { 'zh-CN': '已锁定', 'en': 'Locked' },
+    unlocked: { 'zh-CN': '已解锁', 'en': 'Unlocked' },
+  }
+
+  return map[profileStatus]?.[locale] ?? (locale === 'zh-CN' ? '未知' : 'Unknown')
+}
+
+/**
+ * Formats enrollment face-gate status with profile match context.
+ *
+ * Use when:
+ * - Enrollment page needs a concise gate state indicator for non-technical users.
+ *
+ * Expects:
+ * - Gate state and face-profile match status from local face gate.
+ *
+ * Returns:
+ * - Localized gate status summary.
+ */
+export function formatVisionEnrollmentGateStatus(
+  gateState: VisionEnrollmentGateState,
+  matchStatus: VisionEnrollmentMatchStatus,
+  locale: VisionStatusLocale = 'zh-CN',
+) {
+  if (gateState === 'disabled')
+    return locale === 'zh-CN' ? '未启用' : 'Disabled'
+  if (gateState === 'locked')
+    return locale === 'zh-CN' ? '已锁定' : 'Locked'
+  if (gateState === 'enabled')
+    return locale === 'zh-CN' ? '已启用' : 'Enabled'
+
+  const matchMap: Partial<Record<VisionEnrollmentMatchStatus, Record<VisionStatusLocale, string>>> = {
+    matching: { 'zh-CN': '等待匹配', 'en': 'Matching' },
+    matched: { 'zh-CN': '已匹配', 'en': 'Matched' },
+    unmatched: { 'zh-CN': '未匹配', 'en': 'Unmatched' },
+    no_face: { 'zh-CN': '等待匹配', 'en': 'Waiting for face' },
+    multiple_faces: { 'zh-CN': '未匹配', 'en': 'Unmatched' },
+    uncertain: { 'zh-CN': '未匹配', 'en': 'Unmatched' },
+    enrolled: { 'zh-CN': '门控中', 'en': 'Gated' },
+    enrolling: { 'zh-CN': '门控中', 'en': 'Gated' },
+    not_enrolled: { 'zh-CN': '未录入', 'en': 'Not enrolled' },
+  }
+
+  const mapped = matchMap[matchStatus]?.[locale]
+  if (mapped)
+    return mapped
+
+  return locale === 'zh-CN' ? '门控中' : 'Gated'
+}
+
+/**
+ * Formats enrollment face-quality summary for end users.
+ *
+ * Use when:
+ * - Enrollment step should show a concise quality hint instead of raw metrics.
+ *
+ * Expects:
+ * - Latest OpenCV quality snapshot when available.
+ *
+ * Returns:
+ * - Localized quality hint.
+ */
+export function formatVisionEnrollmentQualityStatus(
+  quality: VisionEnrollmentFaceQualitySnapshot | null | undefined,
+  locale: VisionStatusLocale = 'zh-CN',
+) {
+  if (!quality)
+    return locale === 'zh-CN' ? '等待检测' : 'Waiting'
+
+  if (quality.brightness < 85)
+    return locale === 'zh-CN' ? '偏暗' : 'Too dark'
+  if (quality.sharpness < 14)
+    return locale === 'zh-CN' ? '模糊' : 'Blurry'
+  if (quality.faceSize < 0.12)
+    return locale === 'zh-CN' ? '请靠近摄像头' : 'Move closer'
+  if (quality.qualityScore >= 0.7)
+    return locale === 'zh-CN' ? '良好' : 'Good'
+
+  return locale === 'zh-CN' ? '样本质量不足，请重试' : 'Quality too low'
+}
+
+/**
+ * Formats enrollment face-detection status without raw gate keys.
+ *
+ * Use when:
+ * - Enrollment step needs a simple face-presence sentence.
+ *
+ * Expects:
+ * - Local face-gate profile status.
+ *
+ * Returns:
+ * - Localized face detection hint.
+ */
+export function formatVisionEnrollmentFaceDetectionStatus(
+  status: VisionEnrollmentMatchStatus,
+  locale: VisionStatusLocale = 'zh-CN',
+) {
+  const map: Partial<Record<VisionEnrollmentMatchStatus, Record<VisionStatusLocale, string>>> = {
+    matched: { 'zh-CN': '已检测到单人', 'en': 'Single face detected' },
+    matching: { 'zh-CN': '已检测到单人', 'en': 'Single face detected' },
+    enrolled: { 'zh-CN': '已检测到单人', 'en': 'Single face detected' },
+    no_face: { 'zh-CN': '未检测到人脸', 'en': 'No face detected' },
+    multiple_faces: { 'zh-CN': '检测到多人', 'en': 'Multiple faces detected' },
+    uncertain: { 'zh-CN': '等待检测', 'en': 'Waiting' },
+    not_enrolled: { 'zh-CN': '等待检测', 'en': 'Waiting' },
+  }
+
+  const mapped = map[status]?.[locale]
+  if (mapped)
+    return mapped
+  return locale === 'zh-CN' ? '等待检测' : 'Waiting'
 }
