@@ -407,6 +407,76 @@ pages:
   models:
     description: Live2D, VRM, etc.
     title: Models
+    panel:
+      support_title: We support both 2D and 3D models
+      support_description_1: Click Select Model to import different formats of models into catalog, currently, .zip (Live2D) and .vrm (VRM) are supported.
+      support_description_2: Neuro-sama uses 2D model driven by Live2D Inc. developed framework. While Grok Ani (first female character announced in Grok Companion) uses 3D model that is driven by VRM / MMD open formats.
+      select_model: Select Model
+    godot:
+      title: Godot Stage (Experimental)
+      callout_label: Godot Stage
+      toggle:
+        back_to_builtin: Back to Built-in Stage
+        switch_to_godot: Switch to Godot Stage (Experimental)
+      status:
+        no_model: Select Model continues to update the active scene input. Godot-specific stage controls will land here later.
+        default: Model selection stays active while the embedded scene renderer is paused. Godot-specific stage controls will land here later.
+      errors:
+        query_status_failed: Failed to query Godot stage status.
+        apply_input_failed: Failed to apply model input to Godot stage.
+        switch_mode_failed: Failed to switch Godot stage mode.
+    vrm:
+      model_position: Model Position
+      rotation_x_deg: RotationXDeg
+      rotation_y_deg: RotationYDeg
+      directional_light_rotation_x: Directional Light Rotation - X
+      directional_light_rotation_y: Directional Light Rotation - Y
+      directional_light_color: Directional Light Color
+      directional_light_intensity: Directional Light Intensity
+      ambient_light_intensity: Ambient Light Intensity
+      ambient_light_color: Ambient Light Color
+      environment:
+        title: Environment
+        options:
+          hemisphere: Hemisphere
+          skybox: SkyBox
+      intensity: Intensity
+      hemisphere_light_intensity: Hemisphere Light Intensity
+      hemisphere_sky_color: Hemisphere Sky Color
+      hemisphere_ground_color: Hemisphere Ground Color
+      tips_label: Tips!
+    live2d:
+      parameters:
+        title: Parameters
+      idle_animation:
+        label: Idle Animation
+        placeholder: Select Motion
+        empty: No motions available
+      auto_blink: Auto Blink
+      force_auto_blink: Force Auto Blink (fallback timer)
+      shadow: Shadow
+      reset_default_parameters: Reset To Default Parameters
+      clear_model_cache: Clear Model Cache
+      groups:
+        head_rotation: Head Rotation
+        eyes: Eyes
+        eyebrows: Eyebrows
+        mouth: Mouth
+        face: Face
+        body: Body
+      llm_mode:
+        none: None
+        all: All
+        custom: Custom
+      expressions:
+        title: Expressions
+        system: Expression System
+        disabled_hint: SDK expression manager and eye blink are preserved when disabled.
+        empty: No expressions available for this model.
+        expose_to_llm: Expose to LLM
+        llm_integration_hint: LLM tool integration is not yet wired up.
+        save_defaults: Save Expression Defaults
+        reset_all: Reset All Expressions
     sections:
       section:
         live2d:

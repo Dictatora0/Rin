@@ -68,14 +68,14 @@ const settingsLockClass = computed(() => {
 const envOptions = computed(() => [
   {
     value: 'hemisphere',
-    label: 'Hemisphere',
+    label: t('settings.pages.models.vrm.environment.options.hemisphere'),
     icon: envSelect.value === 'hemisphere'
       ? 'i-solar:forbidden-circle-bold rotate-45'
       : 'i-solar:forbidden-circle-linear rotate-45',
   },
   {
     value: 'skyBox',
-    label: 'SkyBox',
+    label: t('settings.pages.models.vrm.environment.options.skybox'),
     icon: envSelect.value === 'skyBox'
       ? 'i-solar:gallery-circle-bold'
       : 'i-solar:gallery-circle-linear',
@@ -106,7 +106,7 @@ const envOptions = computed(() => [
         v-model:y="modelOffset.y"
         v-model:z="modelOffset.z"
         :disabled="controlsLocked"
-        label="Model Position"
+        :label="t('settings.pages.models.vrm.model_position')"
         :x-config="{ min: -modelSize.x * 2, max: modelSize.x * 2, step: modelSize.x / 10000, label: 'X', formatValue: val => val?.toFixed(4) }"
         :y-config="{ min: -modelSize.y * 2, max: modelSize.y * 2, step: modelSize.y / 10000, label: 'Y', formatValue: val => val?.toFixed(4) }"
         :z-config="{ min: -modelSize.z * 2, max: modelSize.z * 2, step: modelSize.z / 10000, label: 'Z', formatValue: val => val?.toFixed(4) }"
@@ -150,35 +150,35 @@ const envOptions = computed(() => [
 
       <PropertyNumber
         v-model="directionalLightRotation.x"
-        :config="{ min: -180, max: 180, step: 1, label: 'RotationXDeg', formatValue: val => val?.toFixed(0), disabled: controlsLocked }"
-        label="Directional Light Rotation - X"
+        :config="{ min: -180, max: 180, step: 1, label: t('settings.pages.models.vrm.rotation_x_deg'), formatValue: val => val?.toFixed(0), disabled: controlsLocked }"
+        :label="t('settings.pages.models.vrm.directional_light_rotation_x')"
       />
       <PropertyNumber
         v-model="directionalLightRotation.y"
-        :config="{ min: -180, max: 180, step: 1, label: 'RotationYDeg', formatValue: val => val?.toFixed(0), disabled: controlsLocked }"
-        label="Directional Light Rotation - Y"
+        :config="{ min: -180, max: 180, step: 1, label: t('settings.pages.models.vrm.rotation_y_deg'), formatValue: val => val?.toFixed(0), disabled: controlsLocked }"
+        :label="t('settings.pages.models.vrm.directional_light_rotation_y')"
       />
       <PropertyColor
         v-model="directionalLightColor"
         :disabled="controlsLocked"
-        label="Directional Light Color"
+        :label="t('settings.pages.models.vrm.directional_light_color')"
       />
 
       <PropertyNumber
         v-model="directionalLightIntensity"
-        :config="{ min: 0, max: 10, step: 0.01, label: 'Intensity', disabled: controlsLocked }"
-        label="Directional Light Intensity"
+        :config="{ min: 0, max: 10, step: 0.01, label: t('settings.pages.models.vrm.intensity'), disabled: controlsLocked }"
+        :label="t('settings.pages.models.vrm.directional_light_intensity')"
       />
 
       <PropertyNumber
         v-model="ambientLightIntensity"
-        :config="{ min: 0, max: 10, step: 0.01, label: 'Intensity', disabled: controlsLocked }"
-        label="Ambient Light Intensity"
+        :config="{ min: 0, max: 10, step: 0.01, label: t('settings.pages.models.vrm.intensity'), disabled: controlsLocked }"
+        :label="t('settings.pages.models.vrm.ambient_light_intensity')"
       />
       <PropertyColor
         v-model="ambientLightColor"
         :disabled="controlsLocked"
-        label="Ambient Light Color"
+        :label="t('settings.pages.models.vrm.ambient_light_color')"
       />
     </div>
     <div>
@@ -191,7 +191,7 @@ const envOptions = computed(() => [
           'dark:text-neutral-400',
         ]"
       >
-        Environment
+        {{ t('settings.pages.models.vrm.environment.title') }}
       </div>
       <div :class="['p-2', ...settingsLockClass]">
         <SelectTab v-model="envSelect" :options="envOptions" :disabled="controlsLocked" size="sm" />
@@ -201,18 +201,18 @@ const envOptions = computed(() => [
         <div grid="~ cols-5 gap-1" p-2 :class="settingsLockClass">
           <PropertyNumber
             v-model="hemisphereLightIntensity"
-            :config="{ min: 0, max: 10, step: 0.01, label: 'Intensity', disabled: controlsLocked }"
-            label="Hemisphere Light Intensity"
+            :config="{ min: 0, max: 10, step: 0.01, label: t('settings.pages.models.vrm.intensity'), disabled: controlsLocked }"
+            :label="t('settings.pages.models.vrm.hemisphere_light_intensity')"
           />
           <PropertyColor
             v-model="hemisphereSkyColor"
             :disabled="controlsLocked"
-            label="Hemisphere Sky Color"
+            :label="t('settings.pages.models.vrm.hemisphere_sky_color')"
           />
           <PropertyColor
             v-model="hemisphereGroundColor"
             :disabled="controlsLocked"
-            label="Hemisphere Ground Color"
+            :label="t('settings.pages.models.vrm.hemisphere_ground_color')"
           />
         </div>
       </div>
@@ -258,7 +258,7 @@ const envOptions = computed(() => [
     </Callout>
     <Callout
       theme="lime"
-      label="Tips!"
+      :label="t('settings.pages.models.vrm.tips_label')"
     >
       <div class="text-sm text-neutral-600 space-y-1 dark:text-neutral-400">
         {{ t('settings.vrm.scale-and-position.tips') }}

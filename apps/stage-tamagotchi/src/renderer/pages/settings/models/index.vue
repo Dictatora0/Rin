@@ -14,6 +14,7 @@ import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { Button, Callout } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import {
   electronGodotStageApplySceneInput,
@@ -24,6 +25,7 @@ import {
 import { useModelSettingsRuntimeSnapshot } from '../../../composables/model-settings-runtime-snapshot'
 
 const settingsStore = useSettings()
+const { t } = useI18n()
 const { stageModelRenderer, stageModelSelectedDisplayModel } = storeToRefs(settingsStore)
 const applyGodotStageSceneInput = useElectronEventaInvoke(electronGodotStageApplySceneInput)
 const getGodotStageStatus = useElectronEventaInvoke(electronGodotStageGetStatus)
@@ -44,8 +46,8 @@ let latestSceneSyncRequest = 0
 
 const usesGodotStage = computed(() => stageModelRenderer.value === 'godot')
 const godotToggleLabel = computed(() => usesGodotStage.value
-  ? 'Back to Built-in Stage'
-  : 'Switch to Godot Stage (Experimental)')
+  ? t('settings.pages.models.godot.toggle.back_to_builtin')
+  : t('settings.pages.models.godot.toggle.switch_to_godot'))
 const godotStatusMessage = computed(() => {
   if (godotStageError.value)
     return godotStageError.value
@@ -125,7 +127,7 @@ async function refreshGodotStageStatus() {
   }
   catch (error) {
     godotStageStatus.value = createEmptyGodotStageStatus()
-    godotStageError.value = errorMessageFrom(error) ?? 'Failed to query Godot stage status.'
+    godotStageError.value = errorMessageFrom(error) ?? t('settings.pages.models.godot.errors.query_status_failed')
   }
 }
 
@@ -147,7 +149,7 @@ async function syncGodotSceneInput(model: DisplayModel) {
     if (requestId !== latestSceneSyncRequest)
       return
 
-    godotStageError.value = errorMessageFrom(error) ?? 'Failed to apply model input to Godot stage.'
+    godotStageError.value = errorMessageFrom(error) ?? t('settings.pages.models.godot.errors.apply_input_failed')
   }
 }
 
@@ -166,7 +168,7 @@ async function handleGodotStageToggle() {
     settingsStore.setStageModelRenderer('godot')
   }
   catch (error) {
-    godotStageError.value = errorMessageFrom(error) ?? 'Failed to switch Godot stage mode.'
+    godotStageError.value = errorMessageFrom(error) ?? t('settings.pages.models.godot.errors.switch_mode_failed')
     await refreshGodotStageStatus()
   }
   finally {
@@ -195,7 +197,7 @@ onMounted(async () => {
     <Callout
       v-if="godotStatusMessage"
       :class="['w-full max-w-6xl']"
-      label="Godot Stage"
+      :label="t('settings.pages.models.godot.callout_label')"
       theme="orange"
     >
       <p>{{ godotStatusMessage }}</p>

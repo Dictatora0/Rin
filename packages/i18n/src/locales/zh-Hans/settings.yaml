@@ -341,7 +341,7 @@ pages:
     description: 存放记忆的地方，以及策略
     title: 记忆体
   data:
-    title: Data
+    title: 数据
     description: 管理存储 AIRI 数据、导出和重置
     sections:
       chats:
@@ -393,6 +393,76 @@ pages:
   models:
     description: 切换角色的 Live2D，VRM 模型
     title: 角色模型
+    panel:
+      support_title: 支持 2D 和 3D 模型
+      support_description_1: 点击“选择模型”可导入不同格式的模型到目录。目前支持 .zip（Live2D）和 .vrm（VRM）。
+      support_description_2: Neuro-sama 使用 Live2D Inc. 框架驱动的 2D 模型；而 Grok Ani（Grok Companion 首个公布的女性角色）使用 VRM / MMD 开放格式驱动的 3D 模型。
+      select_model: 选择模型
+    godot:
+      title: Godot 舞台（实验性）
+      callout_label: Godot 舞台
+      toggle:
+        back_to_builtin: 返回内置舞台
+        switch_to_godot: 切换到 Godot 舞台（实验性）
+      status:
+        no_model: 选择模型后仍会继续同步当前场景输入。Godot 专属舞台控制项将在后续提供。
+        default: 即使嵌入场景渲染暂停，模型选择仍会保持生效。Godot 专属舞台控制项将在后续提供。
+      errors:
+        query_status_failed: 无法获取 Godot 舞台状态。
+        apply_input_failed: 无法将模型输入应用到 Godot 舞台。
+        switch_mode_failed: 无法切换 Godot 舞台模式。
+    vrm:
+      model_position: 模型位置
+      rotation_x_deg: X 轴旋转（度）
+      rotation_y_deg: Y 轴旋转（度）
+      directional_light_rotation_x: 主方向光旋转 - X
+      directional_light_rotation_y: 主方向光旋转 - Y
+      directional_light_color: 主方向光颜色
+      directional_light_intensity: 主方向光强度
+      ambient_light_intensity: 环境光强度
+      ambient_light_color: 环境光颜色
+      environment:
+        title: 环境
+        options:
+          hemisphere: 半球光
+          skybox: 天空盒
+      intensity: 强度
+      hemisphere_light_intensity: 半球光强度
+      hemisphere_sky_color: 半球天空颜色
+      hemisphere_ground_color: 半球地面颜色
+      tips_label: 提示
+    live2d:
+      parameters:
+        title: 参数
+      idle_animation:
+        label: 待机动作
+        placeholder: 选择动作
+        empty: 当前模型没有可用动作
+      auto_blink: 自动眨眼
+      force_auto_blink: 强制自动眨眼（后备定时器）
+      shadow: 阴影
+      reset_default_parameters: 重置为默认参数
+      clear_model_cache: 清除模型缓存
+      groups:
+        head_rotation: 头部旋转
+        eyes: 眼睛
+        eyebrows: 眉毛
+        mouth: 嘴部
+        face: 面部
+        body: 身体
+      llm_mode:
+        none: 不启用
+        all: 全部
+        custom: 自定义
+      expressions:
+        title: 表情
+        system: 表情系统
+        disabled_hint: 关闭后将保留 SDK 的表情管理与自动眨眼能力。
+        empty: 当前模型没有可用表情。
+        expose_to_llm: 暴露给 LLM
+        llm_integration_hint: LLM 工具集成暂未接入。
+        save_defaults: 保存默认表情
+        reset_all: 重置全部表情
     sections:
       section:
         live2d:
@@ -1416,27 +1486,27 @@ pages:
   credits:
     buy: 购买
   scene:
-    title: Scenes
-    description: Customize the virtual environment for your characters.
-    beta_label: Scenes System
-    beta_description: Each character card specifies its own preferred background from this gallery. Setting it here will set it as the default for the currently active character.
+    title: 场景
+    description: 自定义角色所在的虚拟环境。
+    beta_label: 场景系统
+    beta_description: 每张角色卡都可以指定自己的偏好背景。你在这里设置后，会作为当前激活角色的默认背景。
     background_image:
-      title: Active Character Background
-      no_background: No background active for this character. Upload a square or landscape image for best results.
-      upload: Upload to Gallery
-      change: Change Background
-      clear: Clear Default
+      title: 当前角色背景
+      no_background: 当前角色还没有启用背景。建议上传方形或横向图片以获得更好的显示效果。
+      upload: 上传到场景库
+      change: 更换背景
+      clear: 清除默认背景
     gallery:
-      title: Scene Gallery
-      empty: No images in gallery yet. Upload one above!
-      set_as_global: Set as Character Default
-      delete: Delete from Gallery
-      global_badge: Character Default
-      active_badge: Current Scene
-      delete_confirm: Are you sure you want to delete this background?
+      title: 场景库
+      empty: 场景库还没有图片，先上传一张吧！
+      set_as_global: 设为角色默认背景
+      delete: 从场景库删除
+      global_badge: 角色默认
+      active_badge: 当前场景
+      delete_confirm: 确定要删除这个背景吗？
     tip:
-      label: Tip!
-      description: Using a square image will leverage <b>cover</b> cropping in portrait mode, focusing on the center of the scene.
+      label: 提示
+      description: 使用方形图片时，竖屏模式会采用 <b>cover</b> 裁剪，更聚焦场景中心区域。
 sections:
   section:
     general:

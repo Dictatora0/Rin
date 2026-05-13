@@ -103,9 +103,9 @@ watch(() => live2d.availableMotions, (motions) => {
 }, { immediate: true })
 
 const llmModeOptions = [
-  { value: 'none', label: 'None' },
-  { value: 'all', label: 'All' },
-  { value: 'custom', label: 'Custom' },
+  { value: 'none', label: t('settings.pages.models.live2d.llm_mode.none') },
+  { value: 'all', label: t('settings.pages.models.live2d.llm_mode.all') },
+  { value: 'custom', label: t('settings.pages.models.live2d.llm_mode.custom') },
 ]
 
 // Get available runtime motions from the model
@@ -306,7 +306,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     </a>
   </Section> -->
   <Section
-    title="Parameters"
+    :title="t('settings.pages.models.live2d.parameters.title')"
     icon="i-solar:settings-bold-duotone"
     :class="[
       'rounded-xl',
@@ -354,15 +354,15 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
 
     <FieldCombobox
       v-model="selectedRuntimeMotion"
-      label="Idle Animation"
+      :label="t('settings.pages.models.live2d.idle_animation.label')"
       :options="runtimeMotionOptions"
-      placeholder="Select Motion"
+      :placeholder="t('settings.pages.models.live2d.idle_animation.placeholder')"
       :select-class="['w-full']"
       :content-min-width="256"
       @update:model-value="handleMotionSelect"
     >
       <template #empty>
-        No motions available
+        {{ t('settings.pages.models.live2d.idle_animation.empty') }}
       </template>
     </FieldCombobox>
 
@@ -385,17 +385,17 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     </label>
 
     <div mt-4 flex items-center justify-between>
-      <span text-sm text-neutral-600 dark:text-neutral-400>Auto Blink</span>
+      <span text-sm text-neutral-600 dark:text-neutral-400>{{ t('settings.pages.models.live2d.auto_blink') }}</span>
       <Checkbox v-model="live2dAutoBlinkEnabled" />
     </div>
 
     <div mt-3 flex items-center justify-between>
-      <span text-sm text-neutral-600 dark:text-neutral-400>Force Auto Blink (fallback timer)</span>
+      <span text-sm text-neutral-600 dark:text-neutral-400>{{ t('settings.pages.models.live2d.force_auto_blink') }}</span>
       <Checkbox v-model="live2dForceAutoBlinkEnabled" />
     </div>
 
     <div mt-4 flex items-center justify-between>
-      <span text-sm text-neutral-600 dark:text-neutral-400>Shadow</span>
+      <span text-sm text-neutral-600 dark:text-neutral-400>{{ t('settings.pages.models.live2d.shadow') }}</span>
       <Checkbox v-model="live2dShadowEnabled" />
     </div>
 
@@ -404,7 +404,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       class="mt-4 w-full"
       @click="resetToDefaultParameters"
     >
-      Reset To Default Parameters
+      {{ t('settings.pages.models.live2d.reset_default_parameters') }}
     </Button>
 
     <Button
@@ -414,12 +414,12 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       :loading="clearingCache"
       @click="clearModelCache"
     >
-      Clear Model Cache
+      {{ t('settings.pages.models.live2d.clear_model_cache') }}
     </Button>
 
     <!-- Head Rotation -->
     <div mb-2 mt-4 text-xs text-neutral-500 font-semibold dark:text-neutral-400>
-      Head Rotation
+      {{ t('settings.pages.models.live2d.groups.head_rotation') }}
     </div>
     <FieldRange v-model="modelParameters.angleX" as="div" :min="-30" :max="30" :step="0.1" label="Angle X">
       <template #label>
@@ -454,7 +454,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
 
     <!-- Eyes -->
     <div mb-2 mt-4 text-xs text-neutral-500 font-semibold dark:text-neutral-400>
-      Eyes
+      {{ t('settings.pages.models.live2d.groups.eyes') }}
     </div>
     <FieldRange v-model="modelParameters.leftEyeOpen" as="div" :min="0" :max="1" :step="0.01" label="Left Eye Open/Close">
       <template #label>
@@ -499,7 +499,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
 
     <!-- Eyebrows -->
     <div mb-2 mt-4 text-xs text-neutral-500 font-semibold dark:text-neutral-400>
-      Eyebrows
+      {{ t('settings.pages.models.live2d.groups.eyebrows') }}
     </div>
     <FieldRange v-model="modelParameters.leftEyebrowLR" as="div" :min="-1" :max="1" :step="0.01" label="Left eyebrow Left/Right">
       <template #label>
@@ -584,7 +584,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
 
     <!-- Mouth -->
     <div mb-2 mt-4 text-xs text-neutral-500 font-semibold dark:text-neutral-400>
-      Mouth
+      {{ t('settings.pages.models.live2d.groups.mouth') }}
     </div>
     <FieldRange v-model="modelParameters.mouthOpen" as="div" :min="0" :max="1" :step="0.01" label="Mouth Open/Close">
       <template #label>
@@ -609,7 +609,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
 
     <!-- Face -->
     <div mb-2 mt-4 text-xs text-neutral-500 font-semibold dark:text-neutral-400>
-      Face
+      {{ t('settings.pages.models.live2d.groups.face') }}
     </div>
     <FieldRange v-model="modelParameters.cheek" as="div" :min="0" :max="1" :step="0.01" label="Cheek">
       <template #label>
@@ -624,7 +624,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
 
     <!-- Body -->
     <div mb-2 mt-4 text-xs text-neutral-500 font-semibold dark:text-neutral-400>
-      Body
+      {{ t('settings.pages.models.live2d.groups.body') }}
     </div>
     <FieldRange v-model="modelParameters.bodyAngleX" as="div" :min="-10" :max="10" :step="0.1" label="Body rotation X">
       <template #label>
@@ -668,7 +668,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     </FieldRange>
   </Section>
   <Section
-    title="Expressions"
+    :title="t('settings.pages.models.live2d.expressions.title')"
     icon="i-solar:face-scan-circle-bold-duotone"
     :class="[
       'rounded-xl',
@@ -679,15 +679,15 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     :expand="false"
   >
     <div flex items-center justify-between>
-      <span text-sm text-neutral-600 dark:text-neutral-400>Expression System</span>
+      <span text-sm text-neutral-600 dark:text-neutral-400>{{ t('settings.pages.models.live2d.expressions.system') }}</span>
       <Checkbox v-model="live2dExpressionEnabled" />
     </div>
     <div v-if="!live2dExpressionEnabled" py-2 text-xs text-neutral-500 dark:text-neutral-400>
-      SDK expression manager and eye blink are preserved when disabled.
+      {{ t('settings.pages.models.live2d.expressions.disabled_hint') }}
     </div>
     <template v-else-if="expressionGroups.size === 0">
       <div py-2 text-sm text-neutral-500 dark:text-neutral-400>
-        No expressions available for this model.
+        {{ t('settings.pages.models.live2d.expressions.empty') }}
       </div>
     </template>
     <template v-else>
@@ -707,7 +707,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       </div>
 
       <div mt-4 flex items-center gap-3>
-        <span whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400>Expose to LLM</span>
+        <span whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400>{{ t('settings.pages.models.live2d.expressions.expose_to_llm') }}</span>
         <SelectTab
           :model-value="expressionStore.llmMode"
           :options="llmModeOptions"
@@ -716,7 +716,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
         />
       </div>
       <span v-if="expressionStore.llmMode !== 'none'" text-xs text-neutral-500 dark:text-neutral-400>
-        LLM tool integration is not yet wired up.
+        {{ t('settings.pages.models.live2d.expressions.llm_integration_hint') }}
       </span>
 
       <!-- Custom per-expression LLM toggles (only when mode = 'custom') -->
@@ -737,10 +737,10 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       <!-- Action buttons -->
       <div mt-4 flex gap-2>
         <Button variant="secondary" @click="expressionStore.saveDefaults()">
-          Save Expression Defaults
+          {{ t('settings.pages.models.live2d.expressions.save_defaults') }}
         </Button>
         <Button variant="secondary" @click="expressionStore.resetAll()">
-          Reset All Expressions
+          {{ t('settings.pages.models.live2d.expressions.reset_all') }}
         </Button>
       </div>
     </template>

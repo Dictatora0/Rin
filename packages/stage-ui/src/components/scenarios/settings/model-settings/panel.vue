@@ -6,6 +6,7 @@ import { useLive2d } from '@proj-airi/stage-ui-live2d'
 import { Button, Callout } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import Godot from './godot.vue'
 import Live2D from './live2d.vue'
@@ -29,6 +30,7 @@ defineEmits<{
 }>()
 
 const modelSelectorOpen = ref(false)
+const { t } = useI18n()
 const settingsStore = useSettings()
 const { stageModelSelected, stageModelSelectedDisplayModel } = storeToRefs(settingsStore)
 
@@ -58,21 +60,18 @@ async function handleModelPick(selectedModel: DisplayModel | undefined) {
       ...settingsClassList,
     ]"
   >
-    <Callout label="We support both 2D and 3D models">
+    <Callout :label="t('settings.pages.models.panel.support_title')">
       <p>
-        Click <strong>Select Model</strong> to import different formats of
-        models into catalog, currently, <code>.zip</code> (Live2D) and <code>.vrm</code> (VRM) are supported.
+        {{ t('settings.pages.models.panel.support_description_1') }}
       </p>
       <p>
-        Neuro-sama uses 2D model driven by Live2D Inc. developed framework.
-        While Grok Ani (first female character announced in Grok Companion)
-        uses 3D model that is driven by VRM / MMD open formats.
+        {{ t('settings.pages.models.panel.support_description_2') }}
       </p>
     </Callout>
     <div :class="['flex flex-wrap items-center gap-2']">
       <ModelSelectorDialog v-model:show="modelSelectorOpen" :selected-model="currentSelectedDisplayModel" @pick="handleModelPick">
         <Button variant="secondary">
-          Select Model
+          {{ t('settings.pages.models.panel.select_model') }}
         </Button>
       </ModelSelectorDialog>
       <slot name="actions" />
