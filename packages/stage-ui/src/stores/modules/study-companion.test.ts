@@ -699,6 +699,12 @@ describe('useStudyCompanionStore', () => {
     expect(markdown).toContain('| 任务 | 状态 | 优先级 | 截止日期 | 完成时间 |')
     expect(markdown).toContain('| 读书 | 已完成 | 高 | 2026-05-06 |')
     expect(markdown).toContain('## 最近 7 天学习趋势')
+    expect(markdown).toContain('## 最近 14 天趋势摘要')
+    expect(markdown).toContain('## 任务完成结构')
+    expect(markdown).toContain('## 专注质量概览')
+    expect(markdown).toContain('## 优先级任务分布')
+    expect(markdown).toContain('| 任务状态 | 数量 |')
+    expect(markdown).toContain('| 优先级 | 数量 | 已完成 | 未完成 |')
     expect(markdown).toContain('## 最近学习事件（最多 10 条）')
   })
 

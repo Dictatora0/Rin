@@ -13,8 +13,12 @@ import { Button, Callout, DoubleCheckButton } from '@proj-airi/ui'
 import { useNow } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 
+import StudyFocusQualityCards from '../../../components/stage-islands/study-island/StudyFocusQualityCards.vue'
 import StudyHeatmap from '../../../components/stage-islands/study-island/StudyHeatmap.vue'
 import StudyHistoryChart from '../../../components/stage-islands/study-island/StudyHistoryChart.vue'
+import StudyTaskCompletionChart from '../../../components/stage-islands/study-island/StudyTaskCompletionChart.vue'
+import StudyTaskPriorityChart from '../../../components/stage-islands/study-island/StudyTaskPriorityChart.vue'
+import StudyTrendChart from '../../../components/stage-islands/study-island/StudyTrendChart.vue'
 
 const studyCompanion = useStudyCompanionStore()
 const now = useNow({ interval: 1000 })
@@ -63,6 +67,7 @@ const taskSummaryRows = computed(() => {
 const last7DaysStats = computed(() => studyCompanion.getLast7DaysStats())
 const last14DaysStats = computed(() => studyCompanion.getLast14DaysStats())
 const last30DaysStats = computed(() => studyCompanion.getLast30DaysStats())
+const sortedTasks = computed(() => studyCompanion.sortedTasks)
 
 function summarizeHistory(entries: Array<{ focusMinutes: number, focusSessions: number, completedTasks: number, interruptCount: number }>) {
   return entries.reduce((summary, entry) => {
@@ -357,6 +362,34 @@ function handleClearTodayStats() {
       </div>
       <div :class="['mt-3']">
         <StudyHeatmap :entries="last30DaysStats" />
+      </div>
+    </section>
+
+    <section
+      :class="[
+        'rounded-xl border border-neutral-200/60 bg-white/80 p-4',
+        'dark:border-neutral-700/60 dark:bg-neutral-900/70',
+      ]"
+    >
+      <h3 :class="['mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200']">
+        学习统计图表
+      </h3>
+
+      <div :class="['grid grid-cols-1 gap-3']">
+        <StudyTrendChart :entries="last14DaysStats" :days="14" />
+        <div :class="['grid grid-cols-1 gap-3 lg:grid-cols-2']">
+          <StudyTaskCompletionChart :tasks="sortedTasks" />
+          <StudyTaskPriorityChart :tasks="sortedTasks" />
+        </div>
+        <div :class="['grid grid-cols-1 gap-3 lg:grid-cols-2']">
+          <StudyFocusQualityCards
+            :entries="last14DaysStats"
+            :today-focus-minutes="studyCompanion.persisted.todayFocusMinutes"
+            :today-focus-sessions="studyCompanion.persisted.todayFocusSessions"
+            :today-interrupt-count="studyCompanion.todayInterruptCount"
+          />
+          <StudyHeatmap :entries="last30DaysStats" />
+        </div>
       </div>
     </section>
 

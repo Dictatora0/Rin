@@ -109,12 +109,22 @@ function createStore() {
       todayFocusMinutes: 50,
       todayReminderCount: 1,
       studyEvents: [],
+      tasks: [
+        { id: 'task-1', title: '课程复盘', done: true, createdAt: '2026-05-12T08:00:00.000Z', priority: 'high' },
+        { id: 'task-2', title: '整理笔记', done: false, createdAt: '2026-05-12T09:00:00.000Z', priority: 'medium', dueDate: '2026-05-13' },
+        { id: 'task-3', title: '完成演示稿', done: false, createdAt: '2026-05-12T10:00:00.000Z', priority: 'low', dueDate: '2026-05-14' },
+      ],
     },
     isMuted: false,
     demoModeEnabled: false,
     taskTotal: 3,
     taskCompleted: 1,
     taskPending: 2,
+    sortedTasks: [
+      { id: 'task-2', title: '整理笔记', done: false, createdAt: '2026-05-12T09:00:00.000Z', priority: 'medium', dueDate: '2026-05-13' },
+      { id: 'task-3', title: '完成演示稿', done: false, createdAt: '2026-05-12T10:00:00.000Z', priority: 'low', dueDate: '2026-05-14' },
+      { id: 'task-1', title: '课程复盘', done: true, createdAt: '2026-05-12T08:00:00.000Z', priority: 'high' },
+    ],
     focusMinutes: 25,
     breakMinutes: 5,
     todayInterruptCount: 2,
@@ -231,6 +241,27 @@ describe('study settings page', () => {
     expect(text).toContain('最近 14 天')
     expect(text).toContain('最近 30 天')
 
+    expect(container.querySelector('[data-testid="study-history-bar-chart"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="study-history-heatmap"]')).not.toBeNull()
+
+    unmount()
+  })
+
+  it('renders advanced study analytics chart section', async () => {
+    const { container, unmount } = mountPage()
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('学习统计图表')
+    expect(text).toContain('最近 14 天学习趋势')
+    expect(text).toContain('任务完成结构')
+    expect(text).toContain('专注质量概览')
+    expect(text).toContain('任务优先级分布')
+
+    expect(container.querySelector('[data-testid="study-trend-chart"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="study-task-completion-chart"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="study-focus-quality-cards"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="study-task-priority-chart"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-history-bar-chart"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-history-heatmap"]')).not.toBeNull()
 

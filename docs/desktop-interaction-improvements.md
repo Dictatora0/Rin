@@ -293,6 +293,26 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - Help users recover / Help and documentation：
     - 报告导出包含趋势与任务语义字段，便于复盘与展示。
 
+## Study Advanced Analytics Charts（Round 7）
+
+- 学习设置页新增“学习统计图表”区块，用于复盘与课程展示。
+- 新增图表维度：
+  - 最近 14 天学习趋势（折线/面积）
+  - 任务完成结构（完成/未完成/逾期）
+  - 专注质量概览（轮次、分钟、中断、平均每轮）
+  - 任务优先级分布（高/中/低）
+- 保留并复用原有图表：
+  - 最近 7 天专注柱状图
+  - 最近 30 天学习热力图
+- 图表实现策略：
+  - 仅使用 SVG/CSS 轻量实现，不引入重型图表依赖。
+  - 统一卡片风格与空状态表达，保证设置页观感一致。
+- Markdown 报告增强：
+  - 新增 14 天趋势摘要表
+  - 新增任务完成结构表
+  - 新增专注质量概览表
+  - 新增优先级任务分布表
+
 ## Demo steps
 
 1. Run `pnpm dev:tamagotchi`.

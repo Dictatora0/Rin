@@ -146,6 +146,7 @@ export interface StudyCompanionSnapshot {
   events: StudyEventLogEntry[]
   history: {
     last7Days: StudyDailyHistoryEntry[]
+    last14Days: StudyDailyHistoryEntry[]
   }
 }
 
@@ -496,6 +497,63 @@ function formatTaskPriorityForMarkdown(priority: StudyTaskPriority): string {
   return '中'
 }
 
+function getTaskCompletionStatsForMarkdown(snapshot: StudyCompanionSnapshot) {
+  const totalTasks = snapshot.tasks.length
+  const completedTasks = snapshot.tasks.filter(task => task.done).length
+  const pendingTasks = totalTasks - completedTasks
+  const overdueTasks = snapshot.tasks.filter((task) => {
+    if (task.done || !task.dueDate)
+      return false
+    return task.dueDate < snapshot.statsDate
+  }).length
+  const highPriorityPendingTasks = snapshot.tasks.filter(task => !task.done && task.priority === 'high').length
+  const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+  return {
+    totalTasks,
+    completedTasks,
+    pendingTasks,
+    overdueTasks,
+    highPriorityPendingTasks,
+    completionRate,
+  }
+}
+
+function getTaskPriorityStatsForMarkdown(snapshot: StudyCompanionSnapshot) {
+  const rows = [
+    { key: 'high' as const, label: '高优先级' },
+    { key: 'medium' as const, label: '中优先级' },
+    { key: 'low' as const, label: '低优先级' },
+  ].map(({ key, label }) => {
+    const matchedTasks = snapshot.tasks.filter(task => task.priority === key)
+    const completed = matchedTasks.filter(task => task.done).length
+    return {
+      label,
+      total: matchedTasks.length,
+      completed,
+      pending: matchedTasks.length - completed,
+    }
+  })
+
+  return rows
+}
+
+function getFocusQualityStatsForMarkdown(snapshot: StudyCompanionSnapshot) {
+  const totalFocusMinutes = snapshot.history.last14Days.reduce((sum, entry) => sum + entry.focusMinutes, 0)
+  const totalFocusSessions = snapshot.history.last14Days.reduce((sum, entry) => sum + entry.focusSessions, 0)
+  const totalInterruptCount = snapshot.history.last14Days.reduce((sum, entry) => sum + entry.interruptCount, 0)
+  const averageSessionMinutes = totalFocusSessions > 0
+    ? Math.round((totalFocusMinutes / totalFocusSessions) * 10) / 10
+    : 0
+
+  return {
+    totalFocusMinutes,
+    totalFocusSessions,
+    totalInterruptCount,
+    averageSessionMinutes,
+  }
+}
+
 function buildMarkdownReportFilename(statsDate: string): string {
   return `rin-study-report-${statsDate}.md`
 }
@@ -517,6 +575,33 @@ function buildStudyMarkdownReportContent(snapshot: StudyCompanionSnapshot): stri
   const weeklyHistoryRows = snapshot.history.last7Days.length > 0
     ? snapshot.history.last7Days.map(entry => `| ${entry.dayKey} | ${entry.focusMinutes} | ${entry.focusSessions} | ${entry.completedTasks} | ${entry.interruptCount} | ${(entry.focusTaskIds ?? []).join(', ') || '-'} |`)
     : ['| - | 0 | 0 | 0 | 0 | - |']
+
+  const fortnightTrendRows = snapshot.history.last14Days.length > 0
+    ? snapshot.history.last14Days.map(entry => `| ${entry.dayKey} | ${entry.focusMinutes} | ${entry.focusSessions} |`)
+    : ['| - | 0 | 0 |']
+
+  const completionStats = getTaskCompletionStatsForMarkdown(snapshot)
+  const taskCompletionRows = [
+    `| 总任务数 | ${completionStats.totalTasks} |`,
+    `| 已完成 | ${completionStats.completedTasks} |`,
+    `| 未完成 | ${completionStats.pendingTasks} |`,
+    `| 已逾期 | ${completionStats.overdueTasks} |`,
+    `| 高优先级未完成 | ${completionStats.highPriorityPendingTasks} |`,
+    `| 完成率 | ${completionStats.completionRate}% |`,
+  ]
+
+  const focusQualityStats = getFocusQualityStatsForMarkdown(snapshot)
+  const focusQualityRows = [
+    `| 累计专注分钟（14 天） | ${focusQualityStats.totalFocusMinutes} |`,
+    `| 累计专注轮次（14 天） | ${focusQualityStats.totalFocusSessions} |`,
+    `| 累计中断次数（14 天） | ${focusQualityStats.totalInterruptCount} |`,
+    `| 平均每轮时长 | ${focusQualityStats.averageSessionMinutes} 分钟 |`,
+  ]
+
+  const priorityRows = getTaskPriorityStatsForMarkdown(snapshot)
+  const priorityDistributionRows = priorityRows.length > 0
+    ? priorityRows.map(priority => `| ${priority.label} | ${priority.total} | ${priority.completed} | ${priority.pending} |`)
+    : ['| - | 0 | 0 | 0 |']
 
   const recentEvents = [...snapshot.events].slice(-10).reverse()
   const eventRows = recentEvents.length > 0
@@ -546,6 +631,30 @@ function buildStudyMarkdownReportContent(snapshot: StudyCompanionSnapshot): stri
     '| 日期 | 专注分钟 | 专注轮数 | 完成任务 | 中断次数 | 关联任务 |',
     '|---|---|---|---|---|---|',
     ...weeklyHistoryRows,
+    '',
+    '## 最近 14 天趋势摘要',
+    '',
+    '| 日期 | 专注分钟 | 专注轮次 |',
+    '|---|---:|---:|',
+    ...fortnightTrendRows,
+    '',
+    '## 任务完成结构',
+    '',
+    '| 任务状态 | 数量 |',
+    '|---|---:|',
+    ...taskCompletionRows,
+    '',
+    '## 专注质量概览',
+    '',
+    '| 指标 | 数值 |',
+    '|---|---:|',
+    ...focusQualityRows,
+    '',
+    '## 优先级任务分布',
+    '',
+    '| 优先级 | 数量 | 已完成 | 未完成 |',
+    '|---|---:|---:|---:|',
+    ...priorityDistributionRows,
     '',
     '## 最近学习事件（最多 10 条）',
     '',
@@ -1379,6 +1488,10 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
       ...entry,
       focusTaskIds: [...(entry.focusTaskIds ?? [])],
     }))
+    const historyLast14Days = getLast14DaysStats().map(entry => ({
+      ...entry,
+      focusTaskIds: [...(entry.focusTaskIds ?? [])],
+    }))
 
     return {
       schemaVersion: 1,
@@ -1411,6 +1524,7 @@ export const useStudyCompanionStore = defineStore('study-companion', () => {
       events: eventSnapshot,
       history: {
         last7Days: historyLast7Days,
+        last14Days: historyLast14Days,
       },
     }
   }
