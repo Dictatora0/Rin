@@ -12,8 +12,11 @@ export interface WindowClickThroughBlockingStates {
 
 export interface ComputeWindowMouseIgnorePolicyInput {
   isPointerInsideLive2DHitArea: boolean
+  isLive2DFadedForReading: boolean
+  isInsideProtectedControlElement: boolean
   isPointerInsideControls: boolean
   isPointerInsideControlAnchor: boolean
+  controlsPreActivationActive: boolean
   isPointerInsideShortcutGuidePanel: boolean
   isPointerInsideStudyPanel: boolean
   isPointerInsideVisionPanel: boolean
@@ -37,6 +40,7 @@ export interface WindowMouseIgnorePolicyResult {
   shouldIgnoreMouseEvents: boolean
   shouldFadeStage: boolean
   reason:
+    | 'protected-control'
     | 'dragging'
     | 'resizing'
     | 'pointer-down'
@@ -44,12 +48,14 @@ export interface WindowMouseIgnorePolicyResult {
     | 'focused-form'
     | 'controls-hover'
     | 'anchor-hover'
+    | 'controls-preactivation'
     | 'shortcut-guide-hover'
     | 'study-panel-hover'
     | 'vision-panel-hover'
     | 'move-hit-area'
     | 'window-border'
     | 'live2d-hit'
+    | 'live2d-faded-pass-through'
     | 'study-panel-recent-open'
     | 'vision-panel-recent-open'
     | 'default-pass-through'
@@ -93,13 +99,57 @@ export interface BuildLive2DHitAreaDebugPayloadResult {
 }
 
 export interface BuildWindowClickThroughDebugPayloadInput {
+  trigger: WindowClickThroughRefreshTrigger
+  isLive2DFadedForReading: boolean
+  shouldFadeOnCursorWithin: boolean
+  isPointerInsideLive2DHitArea: boolean
+  isPointerInsideProtectedControlElement: boolean
+  isPointerInsideControls: boolean
+  isPointerInsideControlAnchor: boolean
+  controlsPreActivationActive: boolean
+  protectedElementTag?: string | null
+  protectedElementDataset?: string | null
   policy: WindowMouseIgnorePolicyResult
 }
 
 export interface BuildWindowClickThroughDebugPayloadResult {
+  trigger: WindowClickThroughRefreshTrigger
+  isLive2DFadedForReading: boolean
+  shouldFadeOnCursorWithin: boolean
+  isPointerInsideLive2DHitArea: boolean
+  isPointerInsideProtectedControlElement: boolean
+  isPointerInsideControls: boolean
+  isPointerInsideControlAnchor: boolean
+  controlsPreActivationActive: boolean
+  protectedElementTag?: string | null
+  protectedElementDataset?: string | null
   ignoreMouseEvents: boolean
   reason: WindowMouseIgnorePolicyResult['reason']
   blockingStates: WindowClickThroughBlockingStates
+}
+
+export type WindowClickThroughRefreshTrigger
+  = | 'pointer-move'
+    | 'fade-state-changed'
+    | 'panel-state-changed'
+    | 'policy-input-changed'
+
+export interface ResolveWindowMouseIgnoreRefreshInput {
+  trigger: WindowClickThroughRefreshTrigger
+  isLive2DFadedForReading: boolean
+  shouldFadeOnCursorWithin: boolean
+  isPointerInsideLive2DHitArea: boolean
+  isPointerInsideProtectedControlElement: boolean
+  isPointerInsideControls: boolean
+  isPointerInsideControlAnchor: boolean
+  policy: WindowMouseIgnorePolicyResult
+  emitter: WindowMouseIgnoreStateEmitter
+}
+
+export interface ResolveWindowMouseIgnoreRefreshResult {
+  shouldEmitIgnoreMouseEvents: boolean
+  nextIgnoreMouseEvents: boolean
+  debugPayload: BuildWindowClickThroughDebugPayloadResult
 }
 
 /**
@@ -116,74 +166,11 @@ export interface BuildWindowClickThroughDebugPayloadResult {
  * - Ignore decision plus reasoning tag for diagnostics/tests
  */
 export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePolicyInput): WindowMouseIgnorePolicyResult {
-  if (input.isDraggingWindow) {
+  if (input.isInsideProtectedControlElement) {
     return {
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
-      reason: 'dragging',
-      blockingStates: { ...input.blockingStates },
-    }
-  }
-
-  if (input.isResizingWindow) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'resizing',
-      blockingStates: { ...input.blockingStates },
-    }
-  }
-
-  if (input.isPointerDown) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'pointer-down',
-      blockingStates: { ...input.blockingStates },
-    }
-  }
-
-  if (input.controlsAnchorPressProtectionActive) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'controls-anchor-press-protection',
-      blockingStates: { ...input.blockingStates },
-    }
-  }
-
-  if (input.hasFocusedFormField) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'focused-form',
-      blockingStates: { ...input.blockingStates },
-    }
-  }
-
-  if (input.isPointerInsideStudyPanel) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'study-panel-hover',
-      blockingStates: { ...input.blockingStates },
-    }
-  }
-
-  if (input.isPointerInsideShortcutGuidePanel) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'shortcut-guide-hover',
-      blockingStates: { ...input.blockingStates },
-    }
-  }
-
-  if (input.isPointerInsideVisionPanel) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'vision-panel-hover',
+      reason: 'protected-control',
       blockingStates: { ...input.blockingStates },
     }
   }
@@ -206,11 +193,47 @@ export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePo
     }
   }
 
-  if (input.isPointerInsideMoveHitArea) {
+  if (input.controlsPreActivationActive) {
     return {
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
-      reason: 'move-hit-area',
+      reason: 'controls-preactivation',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerInsideStudyPanel) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'study-panel-hover',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerInsideVisionPanel) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'vision-panel-hover',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerInsideShortcutGuidePanel) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'shortcut-guide-hover',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.hasFocusedFormField) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'focused-form',
       blockingStates: { ...input.blockingStates },
     }
   }
@@ -224,7 +247,61 @@ export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePo
     }
   }
 
+  if (input.isDraggingWindow) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'dragging',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isResizingWindow) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'resizing',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerInsideMoveHitArea) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'move-hit-area',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerDown) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'pointer-down',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.controlsAnchorPressProtectionActive) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'controls-anchor-press-protection',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
   if (input.isPointerInsideLive2DHitArea) {
+    if (input.isLive2DFadedForReading) {
+      return {
+        shouldIgnoreMouseEvents: true,
+        shouldFadeStage: true,
+        reason: 'live2d-faded-pass-through',
+        blockingStates: { ...input.blockingStates },
+      }
+    }
+
     return {
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: input.fadeOnHoverEnabled,
@@ -334,8 +411,53 @@ export function buildLive2DHitAreaDebugPayload(input: BuildLive2DHitAreaDebugPay
  */
 export function buildWindowClickThroughDebugPayload(input: BuildWindowClickThroughDebugPayloadInput): BuildWindowClickThroughDebugPayloadResult {
   return {
+    trigger: input.trigger,
+    isLive2DFadedForReading: input.isLive2DFadedForReading,
+    shouldFadeOnCursorWithin: input.shouldFadeOnCursorWithin,
+    isPointerInsideLive2DHitArea: input.isPointerInsideLive2DHitArea,
+    isPointerInsideProtectedControlElement: input.isPointerInsideProtectedControlElement,
+    isPointerInsideControls: input.isPointerInsideControls,
+    isPointerInsideControlAnchor: input.isPointerInsideControlAnchor,
+    controlsPreActivationActive: input.controlsPreActivationActive,
+    protectedElementTag: input.protectedElementTag ?? null,
+    protectedElementDataset: input.protectedElementDataset ?? null,
     ignoreMouseEvents: input.policy.shouldIgnoreMouseEvents,
     reason: input.policy.reason,
     blockingStates: { ...input.policy.blockingStates },
+  }
+}
+
+/**
+ * Resolves whether renderer should emit a new `setIgnoreMouseEvents` call for current policy frame.
+ *
+ * Use when:
+ * - Renderer refreshes click-through state from pointer/fade/panel triggers
+ * - Caller needs both debug payload and deduplicated IPC emission decision
+ *
+ * Expects:
+ * - `emitter` is shared across refresh cycles in the page lifetime
+ *
+ * Returns:
+ * - Stable debug payload plus deduped emit decision for ignore-mouse state
+ */
+export function resolveWindowMouseIgnoreRefresh(input: ResolveWindowMouseIgnoreRefreshInput): ResolveWindowMouseIgnoreRefreshResult {
+  const debugPayload = buildWindowClickThroughDebugPayload({
+    trigger: input.trigger,
+    isLive2DFadedForReading: input.isLive2DFadedForReading,
+    shouldFadeOnCursorWithin: input.shouldFadeOnCursorWithin,
+    isPointerInsideLive2DHitArea: input.isPointerInsideLive2DHitArea,
+    isPointerInsideProtectedControlElement: input.isPointerInsideProtectedControlElement,
+    isPointerInsideControls: input.isPointerInsideControls,
+    isPointerInsideControlAnchor: input.isPointerInsideControlAnchor,
+    policy: input.policy,
+  })
+
+  const nextIgnoreMouseEvents = input.policy.shouldIgnoreMouseEvents
+  const shouldEmitIgnoreMouseEvents = input.emitter.shouldEmit(nextIgnoreMouseEvents)
+
+  return {
+    shouldEmitIgnoreMouseEvents,
+    nextIgnoreMouseEvents,
+    debugPayload,
   }
 }

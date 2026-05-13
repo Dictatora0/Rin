@@ -4,6 +4,7 @@ import {
   buildLive2DHitAreaDebugPayload,
   buildWindowClickThroughDebugPayload,
   computeWindowMouseIgnorePolicy,
+  resolveWindowMouseIgnoreRefresh,
   WindowMouseIgnoreStateEmitter,
 } from './window-click-through-policy'
 
@@ -11,6 +12,7 @@ describe('window click-through policy', () => {
   function createInput(overrides: Partial<Parameters<typeof computeWindowMouseIgnorePolicy>[0]> = {}) {
     return {
       isPointerInsideLive2DHitArea: false,
+      isLive2DFadedForReading: false,
       isPointerInsideControls: false,
       isPointerInsideControlAnchor: false,
       isPointerInsideShortcutGuidePanel: false,
@@ -222,6 +224,141 @@ describe('window click-through policy', () => {
     expect(result.reason).toBe('live2d-hit')
   })
 
+  /** @example faded live2d area should pass-through for zero-disturbance reading */
+  it('passes through when pointer is inside live2d hit area and faded mode is active', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(true)
+    expect(result.shouldFadeStage).toBe(true)
+    expect(result.reason).toBe('live2d-faded-pass-through')
+  })
+
+  /** @example anchor should override faded pass-through for reliable recovery entry */
+  it('keeps mouse events when pointer is inside anchor even if live2d faded is active', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+      isPointerInsideControlAnchor: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('anchor-hover')
+  })
+
+  /** @example controls panel should override faded pass-through */
+  it('keeps mouse events when pointer is inside controls panel even if live2d faded is active', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+      isPointerInsideControls: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('controls-hover')
+  })
+
+  /** @example study panel should override faded pass-through */
+  it('keeps mouse events when pointer is inside study panel even if live2d faded is active', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+      isPointerInsideStudyPanel: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('study-panel-hover')
+  })
+
+  /** @example focused form should override faded pass-through */
+  it('keeps mouse events with focused form field even if live2d faded is active', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+      hasFocusedFormField: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('focused-form')
+  })
+
+  /** @example move mode flag alone should not override faded pass-through without move-hit-area */
+  it('keeps pass-through when move mode enabled but pointer is outside move hit area', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+      blockingStates: {
+        stagePaused: false,
+        visionCameraRunning: false,
+        studyTimerRunning: false,
+        controlsPanelExpanded: false,
+        studyPanelOpen: false,
+        visionPanelOpen: false,
+        moveModeEnabled: true,
+      },
+      isPointerInsideMoveHitArea: false,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(true)
+    expect(result.reason).toBe('live2d-faded-pass-through')
+  })
+
+  /** @example move hit area should still receive mouse in move mode */
+  it('keeps mouse events when pointer is inside move hit area even if live2d faded is active', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+      isPointerInsideMoveHitArea: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(false)
+    expect(result.reason).toBe('move-hit-area')
+  })
+
+  /** @example vision camera running should not override faded pass-through */
+  it('keeps faded pass-through when vision camera is running', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+      blockingStates: {
+        stagePaused: false,
+        visionCameraRunning: true,
+        studyTimerRunning: false,
+        controlsPanelExpanded: false,
+        studyPanelOpen: false,
+        visionPanelOpen: false,
+        moveModeEnabled: false,
+      },
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(true)
+    expect(result.reason).toBe('live2d-faded-pass-through')
+    expect(result.blockingStates.visionCameraRunning).toBe(true)
+  })
+
+  /** @example study timer running should not override faded pass-through */
+  it('keeps faded pass-through when study timer is running', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+      blockingStates: {
+        stagePaused: false,
+        visionCameraRunning: false,
+        studyTimerRunning: true,
+        controlsPanelExpanded: false,
+        studyPanelOpen: false,
+        visionPanelOpen: false,
+        moveModeEnabled: false,
+      },
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(true)
+    expect(result.reason).toBe('live2d-faded-pass-through')
+    expect(result.blockingStates.studyTimerRunning).toBe(true)
+  })
+
   /** @example focused text input must override click-through to keep typing stable */
   it('keeps mouse events when any form field is focused', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
@@ -299,6 +436,26 @@ describe('window click-through policy', () => {
     expect(emitter.shouldEmit(false)).toBe(true)
   })
 
+  /** @example fade transition should emit only on ignore-state changes */
+  it('emits state transition only when faded pass-through toggles ignore state', () => {
+    const emitter = new WindowMouseIgnoreStateEmitter()
+    const normalHit = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: false,
+    }))
+    const fadedHit = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+    }))
+
+    expect(normalHit.shouldIgnoreMouseEvents).toBe(false)
+    expect(fadedHit.shouldIgnoreMouseEvents).toBe(true)
+    expect(emitter.shouldEmit(normalHit.shouldIgnoreMouseEvents)).toBe(true)
+    expect(emitter.shouldEmit(normalHit.shouldIgnoreMouseEvents)).toBe(false)
+    expect(emitter.shouldEmit(fadedHit.shouldIgnoreMouseEvents)).toBe(true)
+    expect(emitter.shouldEmit(fadedHit.shouldIgnoreMouseEvents)).toBe(false)
+  })
+
   /** @example debug payload should remain plain and stable for logging */
   it('builds serializable hit-area debug payload', () => {
     const payload = buildLive2DHitAreaDebugPayload({
@@ -339,11 +496,129 @@ describe('window click-through policy', () => {
         moveModeEnabled: true,
       },
     }))
-    const payload = buildWindowClickThroughDebugPayload({ policy })
+    const payload = buildWindowClickThroughDebugPayload({
+      trigger: 'policy-input-changed',
+      isLive2DFadedForReading: false,
+      shouldFadeOnCursorWithin: false,
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideProtectedControlElement: false,
+      isPointerInsideControls: true,
+      isPointerInsideControlAnchor: false,
+      policy,
+    })
 
+    expect(payload.trigger).toBe('policy-input-changed')
+    expect(payload.isLive2DFadedForReading).toBe(false)
     expect(payload.ignoreMouseEvents).toBe(false)
     expect(payload.reason).toBe('controls-hover')
     expect(payload.blockingStates.visionCameraRunning).toBe(true)
     expect(payload.blockingStates.studyTimerRunning).toBe(true)
+  })
+
+  /** @example debug payload should expose faded pass-through reason for diagnostics */
+  it('builds debug payload with live2d-faded-pass-through reason', () => {
+    const policy = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+    }))
+    const payload = buildWindowClickThroughDebugPayload({
+      trigger: 'fade-state-changed',
+      isLive2DFadedForReading: true,
+      shouldFadeOnCursorWithin: true,
+      isPointerInsideLive2DHitArea: true,
+      isPointerInsideProtectedControlElement: false,
+      isPointerInsideControls: false,
+      isPointerInsideControlAnchor: false,
+      policy,
+    })
+
+    expect(payload.trigger).toBe('fade-state-changed')
+    expect(payload.isLive2DFadedForReading).toBe(true)
+    expect(payload.ignoreMouseEvents).toBe(true)
+    expect(payload.reason).toBe('live2d-faded-pass-through')
+  })
+
+  /** @example fade-state refresh should emit pass-through even when pointer does not move */
+  it('emits ignore=true on fade-state-changed while pointer stays inside live2d hit area', () => {
+    const emitter = new WindowMouseIgnoreStateEmitter()
+    const live2dHitPolicy = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: false,
+    }))
+    const fadedPolicy = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+    }))
+
+    const firstRefresh = resolveWindowMouseIgnoreRefresh({
+      trigger: 'pointer-move',
+      isLive2DFadedForReading: false,
+      shouldFadeOnCursorWithin: false,
+      isPointerInsideLive2DHitArea: true,
+      isPointerInsideProtectedControlElement: false,
+      isPointerInsideControls: false,
+      isPointerInsideControlAnchor: false,
+      policy: live2dHitPolicy,
+      emitter,
+    })
+    const fadeRefresh = resolveWindowMouseIgnoreRefresh({
+      trigger: 'fade-state-changed',
+      isLive2DFadedForReading: true,
+      shouldFadeOnCursorWithin: true,
+      isPointerInsideLive2DHitArea: true,
+      isPointerInsideProtectedControlElement: false,
+      isPointerInsideControls: false,
+      isPointerInsideControlAnchor: false,
+      policy: fadedPolicy,
+      emitter,
+    })
+
+    expect(firstRefresh.shouldEmitIgnoreMouseEvents).toBe(true)
+    expect(firstRefresh.nextIgnoreMouseEvents).toBe(false)
+    expect(firstRefresh.debugPayload.reason).toBe('live2d-hit')
+    expect(firstRefresh.debugPayload.trigger).toBe('pointer-move')
+    expect(fadeRefresh.shouldEmitIgnoreMouseEvents).toBe(true)
+    expect(fadeRefresh.nextIgnoreMouseEvents).toBe(true)
+    expect(fadeRefresh.debugPayload.reason).toBe('live2d-faded-pass-through')
+    expect(fadeRefresh.debugPayload.trigger).toBe('fade-state-changed')
+
+    const duplicateFadeRefresh = resolveWindowMouseIgnoreRefresh({
+      trigger: 'fade-state-changed',
+      isLive2DFadedForReading: true,
+      shouldFadeOnCursorWithin: true,
+      isPointerInsideLive2DHitArea: true,
+      isPointerInsideProtectedControlElement: false,
+      isPointerInsideControls: false,
+      isPointerInsideControlAnchor: false,
+      policy: fadedPolicy,
+      emitter,
+    })
+    expect(duplicateFadeRefresh.shouldEmitIgnoreMouseEvents).toBe(false)
+  })
+
+  /** @example protected controls should override faded pass-through in refresh layer */
+  it('keeps receive-mouse when protected controls are hovered even in faded state', () => {
+    const emitter = new WindowMouseIgnoreStateEmitter()
+    const policy = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: true,
+      isLive2DFadedForReading: true,
+      isPointerInsideControls: true,
+    }))
+
+    const refresh = resolveWindowMouseIgnoreRefresh({
+      trigger: 'panel-state-changed',
+      isLive2DFadedForReading: true,
+      shouldFadeOnCursorWithin: true,
+      isPointerInsideLive2DHitArea: true,
+      isPointerInsideProtectedControlElement: true,
+      isPointerInsideControls: true,
+      isPointerInsideControlAnchor: false,
+      policy,
+      emitter,
+    })
+
+    expect(refresh.debugPayload.reason).toBe('controls-hover')
+    expect(refresh.nextIgnoreMouseEvents).toBe(false)
+    expect(refresh.shouldEmitIgnoreMouseEvents).toBe(true)
   })
 })

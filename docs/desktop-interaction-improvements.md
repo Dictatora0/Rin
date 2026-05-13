@@ -408,6 +408,43 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - Study/Vision 浮动面板、Controls Island、输入框聚焦、窗口边缘 resize 区、Move Mode 等状态优先保持可交互，不会被错误切回全局穿透。
   - 透明背景默认穿透，不再持续拦截背后应用点击。
 
+### Round 6.2：靠近淡出时命中区也穿透（滚轮/点击不再被吃掉）
+
+- 问题根因：
+  - 之前策略在“鼠标命中 Live2D 区域”时总是优先接收鼠标，即使角色已进入靠近淡出状态。
+  - 结果是视觉上看起来已淡出，但系统层透明窗口仍拦截滚轮和点击。
+
+- 最小修复：
+  - 在点击穿透策略中新增淡出态输入 `isLive2DFadedForReading`。
+  - 当 `isPointerInsideLive2DHitArea=true` 且 `isLive2DFadedForReading=true` 时，策略返回：
+    - `shouldIgnoreMouseEvents=true`
+    - `reason=live2d-faded-pass-through`
+  - 这样会触发 `setIgnoreMouseEvents(true, { forward: true })`，滚轮/点击/拖拽转交给背后应用。
+
+- 交互例外（仍可点击）：
+  - Controls Anchor
+  - Controls Island
+  - Shortcut Guide / Study / Vision 浮动面板
+  - 输入焦点、窗口 resize 区、Move Mode 拖拽热区
+
+- 设计结果：
+  - 靠近淡出模式从“只做视觉淡出”升级为“视觉淡出 + 系统级鼠标穿透”，实现更接近 0 打扰阅读体验。
+
+### Round 6.3：淡出状态变化主动刷新穿透（不依赖鼠标继续移动）
+
+- 问题：
+  - 实机上存在“先进入角色命中区并接收鼠标，再淡出，但鼠标未移动时状态未刷新”的窗口。
+  - 结果是视觉已经淡出，窗口仍保持接收鼠标，滚轮不能穿透到后方页面。
+
+- 修复：
+  - 将 click-through 计算收敛为统一刷新函数，并按触发源标记 `trigger`（`pointer-move` / `fade-state-changed` / `panel-state-changed` / `policy-input-changed`）。
+  - 在 `shouldFadeOnCursorWithin`、面板开关、指针位置和其他策略输入变化时主动刷新。
+  - 保留去重 emitter，只有 `ignoreMouseEvents` 实际变化时才发送 IPC。
+
+- 结果：
+  - 鼠标停在人物区域不动，只要 fade 从 `false -> true`，也会立即切换到 `setIgnoreMouseEvents(true, { forward: true })`。
+  - 后方网页/PDF 的滚轮与点击可恢复。
+
 ### Round 6.1：点击穿透策略收紧
 
 - 策略从“面板开关/后台状态驱动”收紧为“区域级命中驱动”：
@@ -433,3 +470,32 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - `reason`
   - `blockingStates`
   用于实机定位“为什么当前帧接收/穿透鼠标”。
+
+## Study 截止日期提醒（Round 9）
+
+- 学习任务新增“截止提醒”能力，核心原则是低打扰与可控：
+  - 推荐规则不是固定 `7/3/1`，而是根据“当前时间到截止日期”的剩余时长动态生成 1~3 条提醒。
+  - 推荐规则带有明确标识：`Rin 推荐`。
+  - 用户可以在任务提醒区对规则进行新增、删除、启用/停用、修改（修改后转为自定义规则）。
+
+- 风险控制与迁移策略：
+  - 不对历史旧任务批量写入 reminders。
+  - 只有在以下场景才初始化或更新推荐规则：
+    - 用户新设置/修改任务 `dueDate`
+    - 用户主动展开该任务“截止提醒”编辑区
+  - 避免迁移后突然出现大量提醒导致惊扰。
+
+- 调度与投递：
+  - 仅在 Rin 运行期间执行轮询检查（每 60 秒）。
+  - renderer 负责提醒到期计算，main 进程只负责系统通知展示。
+  - 通知发送成功后才记录 `reminderDeliveries`，发送失败不记投递，防止漏提醒。
+  - 已完成任务（`done=true`）绝不触发截止提醒。
+  - 同一 reminder 只通知一次（由 `reminderDeliveries` 去重）。
+
+- 用户可见配置：
+  - 学习设置页新增“截止日期提醒”总开关（默认开启）。
+  - 文案明确说明：
+    - Rin 会根据截止日期推荐提醒
+    - 可在任务详情自定义提醒数量和时间
+    - 依赖 macOS 系统通知权限
+    - 仅在 Rin 运行期间检查提醒

@@ -52,6 +52,7 @@ import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-sett
 import { useStageKeyboardShortcuts } from '../composables/use-stage-keyboard-shortcuts'
 import { useStudyCompanionBubble } from '../composables/use-study-companion-bubble'
 import { useStudyStageFeedback } from '../composables/use-study-stage-feedback'
+import { useStudyTaskReminders } from '../composables/use-study-task-reminders'
 import { useChatSyncStore } from '../stores/chat-sync'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
@@ -63,8 +64,8 @@ import {
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
 import { applyTrayCommand } from '../utils/tray-commands'
 import {
-  buildWindowClickThroughDebugPayload,
   computeWindowMouseIgnorePolicy,
+  resolveWindowMouseIgnoreRefresh,
   WindowMouseIgnoreStateEmitter,
 } from '../utils/window-click-through-policy'
 
@@ -86,6 +87,7 @@ const shouldFadeOnCursorWithin = ref(false)
 
 const onboardingStore = useOnboardingStore()
 const studyCompanionStore = useStudyCompanionStore()
+const studyTaskReminderScheduler = useStudyTaskReminders()
 const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
 const eventaContext = useElectronEventaContext()
 const isLinux = useElectronEventaInvoke(electron.app.isLinux)
@@ -212,6 +214,27 @@ const hasFocusedFormField = computed(() => {
     return true
 
   return element.isContentEditable
+})
+const isInsideProtectedControlElement = computed(() => {
+  const pointerX = Number(relativeMouseX.value)
+  const pointerY = Number(relativeMouseY.value)
+  if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY))
+    return false
+
+  const hovered = document.elementFromPoint(pointerX, pointerY)
+  if (!(hovered instanceof HTMLElement))
+    return false
+
+  if (hovered.closest('[data-testid="controls-anchor"]'))
+    return true
+
+  if (hovered.closest('[data-testid="controls-panel"]'))
+    return true
+
+  if (hovered.closest('[data-testid="stage-floating-panel"]'))
+    return true
+
+  return false
 })
 const live2dCharacterHit = computed(() => {
   if (stageModelRenderer.value !== 'live2d' || componentStateStage.value !== 'mounted' || stagePaused.value)
@@ -464,35 +487,13 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
   })
 })
 
-watch([
-  isControlsPanelHovering,
-  isInsideControlAnchor,
-  isStudyPanelHovering,
-  isVisionPanelHovering,
-  isShortcutGuidePanelHovering,
-  isInsideMoveHitArea,
-  isAroundWindowBorderFor250Ms,
-  isTransparent,
-  studyPanelOpen,
-  visionPanelOpen,
-  visionCameraRunning,
-  fadeOnHoverEnabled,
-  moveModeEnabled,
-  controlsPanelExpanded,
-  stagePaused,
-  hasFocusedFormField,
-  live2dCharacterHit,
-  isPointerDown,
-  isDraggingWindow,
-  controlsAnchorPressProtectionActive,
-  hasRecentStudyPanelOpenProtection,
-  hasRecentVisionPanelOpenProtection,
-], () => {
+function refreshWindowMouseIgnorePolicy(trigger: 'pointer-move' | 'fade-state-changed' | 'panel-state-changed' | 'policy-input-changed') {
   const nearBorder = isAroundWindowBorderFor250Ms.value
 
   const policy = computeWindowMouseIgnorePolicy({
     isPointerInsideLive2DHitArea: live2dCharacterHit.value,
-    isPointerInsideControls: isControlsPanelHovering.value,
+    isLive2DFadedForReading: shouldFadeOnCursorWithin.value,
+    isPointerInsideControls: isControlsPanelHovering.value || isInsideProtectedControlElement.value,
     isPointerInsideControlAnchor: isInsideControlAnchor.value,
     isPointerInsideShortcutGuidePanel: isShortcutGuidePanelHovering.value,
     isPointerInsideStudyPanel: isStudyPanelHovering.value,
@@ -518,23 +519,82 @@ watch([
     fadeOnHoverEnabled: fadeOnHoverEnabled.value,
   })
 
-  const policyDebugPayload = buildWindowClickThroughDebugPayload({ policy })
+  const refreshResult = resolveWindowMouseIgnoreRefresh({
+    trigger,
+    isLive2DFadedForReading: shouldFadeOnCursorWithin.value,
+    shouldFadeOnCursorWithin: shouldFadeOnCursorWithin.value,
+    isPointerInsideLive2DHitArea: live2dCharacterHit.value,
+    isPointerInsideProtectedControlElement: isInsideProtectedControlElement.value,
+    isPointerInsideControls: isControlsPanelHovering.value,
+    isPointerInsideControlAnchor: isInsideControlAnchor.value,
+    policy,
+    emitter: live2DMouseIgnoreEmitter,
+  })
   if (import.meta.env.DEV)
-    console.debug('[window-click-through-policy]', policyDebugPayload)
+    console.debug('[window-click-through-policy]', refreshResult.debugPayload)
 
   isIgnoringMouseEvents.value = policy.shouldIgnoreMouseEvents
   shouldFadeOnCursorWithin.value = policy.shouldFadeStage
     && !isControlsPanelHovering.value
     && !isTransparent.value
 
-  if (live2DMouseIgnoreEmitter.shouldEmit(policy.shouldIgnoreMouseEvents)) {
-    setIgnoreMouseEvents([policy.shouldIgnoreMouseEvents, { forward: true }])
+  if (refreshResult.shouldEmitIgnoreMouseEvents) {
+    setIgnoreMouseEvents([refreshResult.nextIgnoreMouseEvents, { forward: true }])
   }
 
   if (shouldFadeOnCursorWithin.value)
     resume()
   else
     pause()
+}
+
+watch([
+  isControlsPanelHovering,
+  isInsideControlAnchor,
+  isInsideProtectedControlElement,
+  isStudyPanelHovering,
+  isVisionPanelHovering,
+  isShortcutGuidePanelHovering,
+  isInsideMoveHitArea,
+  isAroundWindowBorderFor250Ms,
+  isTransparent,
+  studyPanelOpen,
+  visionPanelOpen,
+  visionCameraRunning,
+  fadeOnHoverEnabled,
+  moveModeEnabled,
+  controlsPanelExpanded,
+  stagePaused,
+  hasFocusedFormField,
+  live2dCharacterHit,
+  isPointerDown,
+  isDraggingWindow,
+  controlsAnchorPressProtectionActive,
+  hasRecentStudyPanelOpenProtection,
+  hasRecentVisionPanelOpenProtection,
+], () => {
+  refreshWindowMouseIgnorePolicy('policy-input-changed')
+}, { immediate: true })
+
+watch([
+  shouldFadeOnCursorWithin,
+], () => {
+  refreshWindowMouseIgnorePolicy('fade-state-changed')
+})
+
+watch([
+  relativeMouseX,
+  relativeMouseY,
+], () => {
+  refreshWindowMouseIgnorePolicy('pointer-move')
+})
+
+watch([
+  studyPanelOpen,
+  visionPanelOpen,
+  shortcutGuidePanelOpen,
+], () => {
+  refreshWindowMouseIgnorePolicy('panel-state-changed')
 })
 
 // Emit runtime snapshot on change and on request from settings panel
@@ -771,6 +831,7 @@ onMounted(() => {
     setIgnoreMouseEvents([true, { forward: true }])
 
   emitTrayRendererStateSnapshot()
+  studyTaskReminderScheduler.start()
 
   chatSyncStore.initialize('authority')
   if (onboardingStore.needsOnboarding) {
@@ -794,6 +855,7 @@ onUnmounted(() => {
     })
   })
   stopAudioInteraction()
+  studyTaskReminderScheduler.stop()
   chatSyncStore.dispose()
 })
 
