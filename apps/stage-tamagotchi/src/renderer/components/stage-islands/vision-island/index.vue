@@ -51,6 +51,9 @@ const {
   mediaPipeStatus,
   facePresence,
   faceCenter,
+  subjectNeutralCenter,
+  subjectNeutralCenterUpdatedAt,
+  directionDistribution,
   subjectPosition,
   lastStableSubjectPosition,
   subjectPositionChangedAt,
@@ -121,6 +124,8 @@ const {
   setFaceGateEnabled,
   setGestureControlsEnabled,
   setExpressionSignalsEnabled,
+  calibrateSubjectNeutralCenter,
+  resetSubjectNeutralCenter,
   setMaxInferenceStallMs,
   setRememberFaceProfileOnDevice,
   unlockFaceProfile,
@@ -224,6 +229,19 @@ const faceCenterText = computed(() => {
     return '未知'
   return `x=${faceCenter.value.x.toFixed(2)}, y=${faceCenter.value.y.toFixed(2)}`
 })
+const neutralCenterText = computed(() => {
+  if (!subjectNeutralCenter.value)
+    return '默认中心'
+  return `x=${subjectNeutralCenter.value.x.toFixed(2)}, y=${subjectNeutralCenter.value.y.toFixed(2)}`
+})
+const neutralCenterStatusText = computed(() => {
+  return subjectNeutralCenter.value ? '已校准' : '默认中心'
+})
+const neutralCenterUpdatedText = computed(() => {
+  if (!subjectNeutralCenterUpdatedAt.value)
+    return '无'
+  return new Date(subjectNeutralCenterUpdatedAt.value).toLocaleTimeString()
+})
 
 const lastInferenceText = computed(() => {
   if (!lastInferenceAt.value)
@@ -269,20 +287,20 @@ const showAdvancedGestureDiagnostics = computed(() => {
 })
 const gestureCalibrationHint = computed(() => {
   if (!gestureControlsEnabled.value)
-    return 'Enable experimental gesture controls to view diagnostics.'
+    return '开启实验手势控制后可查看诊断。'
   if (releaseRequired.value)
-    return 'Release your hand to trigger again.'
+    return '请先放下手，再触发下一次。'
   if (gestureQualityState.value === 'too_far')
-    return 'Move your hand closer.'
+    return '请把手靠近一些。'
   if (gestureQualityState.value === 'out_of_frame')
-    return 'Keep your hand inside the guide area.'
+    return '请把手保持在引导区域内。'
   if (gestureQualityState.value === 'too_fast')
-    return 'Hold the gesture steady.'
+    return '请保持手势更稳定。'
   if (gestureQualityState.value === 'low_confidence')
-    return 'Better lighting may help.'
+    return '建议补充光线。'
   if (gestureState.value === 'candidate' || gestureState.value === 'stable')
-    return 'Hold the gesture steady.'
-  return 'Gesture input looks good.'
+    return '请保持手势稳定。'
+  return '手势输入状态良好。'
 })
 
 const profileStatusText = computed(() => {
@@ -347,11 +365,11 @@ const totalTimingText = computed(() => formatTiming(startTiming.value.totalMs))
 const readyForPreviewTimingText = computed(() => formatTiming(startTiming.value.readyForPreviewMs))
 const petFeedbackStateText = computed(() => {
   const map: Record<string, string> = {
-    idle: 'idle',
-    quiet: 'quiet',
-    celebrating: 'celebrating',
-    acknowledged: 'acknowledged',
-    gated: 'gated',
+    idle: '空闲',
+    quiet: '安静模式',
+    celebrating: '庆祝中',
+    acknowledged: '已确认',
+    gated: '门控拦截',
   }
   return map[petFeedbackState.value] ?? petFeedbackState.value
 })
@@ -369,6 +387,16 @@ const shouldShowPetFeedbackGatedHint = computed(() => {
 const subjectPositionText = computed(() => {
   if (facePresence.value === 'absent')
     return '无主体'
+  if (subjectPosition.value === 'left')
+    return '画面中偏左'
+  if (subjectPosition.value === 'right')
+    return '画面中偏右'
+  if (subjectPosition.value === 'up')
+    return '画面中偏上'
+  if (subjectPosition.value === 'down')
+    return '画面中偏下'
+  if (subjectPosition.value === 'center')
+    return '画面居中'
   return formatFaceDirection(subjectPosition.value, statusLocale.value)
 })
 const stableSubjectPositionText = computed(() => {
@@ -491,6 +519,10 @@ const visionDiagnosticsLastError = computed(() => {
   if (openCvFaceQuality.errorMessage.value)
     return openCvFaceQuality.errorMessage.value
   return 'none'
+})
+const directionDistributionText = computed(() => {
+  const distribution = directionDistribution.value
+  return `居中 ${distribution.center} / 偏左 ${distribution.left} / 偏右 ${distribution.right} / 偏上 ${distribution.up} / 偏下 ${distribution.down} / 不确定 ${distribution.ambiguous}`
 })
 const rootClasses = computed(() => {
   if (props.embedded) {
@@ -750,6 +782,20 @@ function toggleCamera() {
     return
   }
   void start()
+}
+
+function handleCalibrateSubjectNeutralCenter() {
+  const result = calibrateSubjectNeutralCenter()
+  if (!result.ok) {
+    toast.message('请先让摄像头检测到你。')
+    return
+  }
+  toast.success('已校准当前坐姿。')
+}
+
+function handleResetSubjectNeutralCenter() {
+  resetSubjectNeutralCenter()
+  toast.message('已恢复默认中心。')
 }
 
 function toggleGate() {
@@ -1238,7 +1284,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             variant="ghost"
             @click="advancedDiagnosticsExpanded = !advancedDiagnosticsExpanded"
           >
-            {{ advancedDiagnosticsExpanded ? '收起 Advanced / Diagnostics' : '展开 Advanced / Diagnostics' }}
+            {{ advancedDiagnosticsExpanded ? '收起高级诊断' : '展开高级诊断' }}
           </Button>
         </div>
 
@@ -1249,6 +1295,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           <div>{{ formatVisionFieldLabel('cameraState', statusLocale) }}：{{ cameraStateText }}</div>
           <div>{{ formatVisionFieldLabel('facePresence', statusLocale) }}：{{ facePresenceText }}</div>
           <div>{{ formatVisionFieldLabel('faceGate', statusLocale) }}：{{ gateSummaryText }}</div>
+          <div>当前基准：{{ neutralCenterStatusText }}</div>
           <div>最近反馈：{{ recentFeedbackSummary }}</div>
           <div>Rin 响应：{{ canRespondCurrentSubject ? '可响应' : '暂不可响应' }}</div>
         </div>
@@ -1288,6 +1335,28 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             </Button>
           </div>
         </section>
+
+        <div
+          :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']"
+        >
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            主体位置校准
+          </div>
+          <div>当前基准：{{ neutralCenterStatusText }}</div>
+          <div>基准坐标：{{ neutralCenterText }}</div>
+          <div>最近校准：{{ neutralCenterUpdatedText }}</div>
+          <div :class="['mt-2 flex flex-wrap items-center gap-2']">
+            <Button size="sm" variant="ghost" @click="handleCalibrateSubjectNeutralCenter">
+              校准当前坐姿
+            </Button>
+            <Button size="sm" variant="ghost" @click="handleResetSubjectNeutralCenter">
+              重置校准
+            </Button>
+          </div>
+          <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
+            这是基于画面中主体位置的反馈，不是眼球方向测量。
+          </div>
+        </div>
 
         <div
           v-if="isExpertMode && advancedDiagnosticsExpanded"
@@ -1346,7 +1415,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             Rin 只会响应已匹配的主体。
           </div>
           <div :class="['text-neutral-500 dark:text-neutral-400']">
-            这是基于主体位置的类视线反馈，不是严格视线测量。
+            这是基于画面中主体位置的反馈，不是眼球追踪。
           </div>
           <div :class="['text-neutral-500 dark:text-neutral-400']">
             {{ subjectResponseGateHintText }}
@@ -1449,37 +1518,37 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           :class="['rounded-xl border border-neutral-200/80 bg-neutral-50/85 p-2 text-xs dark:border-neutral-700/70 dark:bg-neutral-900/55']"
         >
           <div :class="['mb-2 font-600 text-neutral-700 dark:text-neutral-200']">
-            Advanced / Diagnostics
+            高级诊断
           </div>
 
           <div :class="['mb-2 flex flex-wrap items-center gap-2']">
             <Button size="sm" variant="ghost" :disabled="prewarming" @click="handlePrewarmVision">
-              {{ prewarming ? '处理中...' : '预加载/重试 Runtime' }}
+              {{ prewarming ? '处理中...' : '预加载/重试视觉运行环境' }}
             </Button>
             <Button size="sm" variant="ghost" :disabled="prewarming" @click="handleRetryRuntime">
-              Retry Runtime
+              重试视觉运行环境
             </Button>
             <Button size="sm" variant="ghost" :disabled="prewarming" @click="handleResetRuntime">
-              Reset Runtime
+              重置视觉运行环境
             </Button>
           </div>
 
           <div :class="['rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
             <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-              Vision Runtime
+              视觉运行环境
             </div>
-            <div>status: {{ runtimeStatusText }}</div>
-            <div>warmupDuration: {{ runtimeWarmupDurationText }}</div>
-            <div>retryCount: {{ runtimeRetryCount }}</div>
-            <div>lastError: {{ runtimeLastError || 'none' }}</div>
+            <div>状态：{{ runtimeStatusText }}</div>
+            <div>预热耗时：{{ runtimeWarmupDurationText }}</div>
+            <div>重试次数：{{ runtimeRetryCount }}</div>
+            <div>最近错误：{{ runtimeLastError || '无' }}</div>
             <div :class="['mt-1 text-neutral-500 dark:text-neutral-400']">
-              First startup may take a moment.
+              首次启动可能需要稍等。
             </div>
             <div :class="['text-neutral-500 dark:text-neutral-400']">
-              Models are reused after warmup.
+              模型预热后会复用。
             </div>
             <div :class="['text-neutral-500 dark:text-neutral-400']">
-              Stop Camera releases camera only; models stay ready.
+              关闭摄像头只会释放摄像头，模型仍保持就绪。
             </div>
           </div>
 
@@ -1494,7 +1563,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 
           <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
             <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-              Vision Diagnostics
+              视觉诊断详情
             </div>
             <div>运行时状态：{{ runtimeStatusText }}</div>
             <div>{{ formatVisionFieldLabel('cameraState', statusLocale) }}：{{ cameraStateText }}</div>
@@ -1504,6 +1573,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             <div>人脸档案：{{ profileStatus }}</div>
             <div>{{ formatVisionFieldLabel('faceGate', statusLocale) }}：{{ gateStateText }} / {{ gateProfileStatusText }}</div>
             <div>最近错误：{{ visionDiagnosticsLastError }}</div>
+            <div>最近方向分布：{{ directionDistributionText }}</div>
           </div>
 
           <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
@@ -1543,7 +1613,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 
           <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
             <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-              Contextual feedback diagnostics
+              反馈诊断
             </div>
             <label :class="['mb-2 flex items-center gap-2']">
               <span>Locale:</span>
@@ -1585,27 +1655,27 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
                 </option>
               </select>
             </label>
-            <div>lastFeedbackType: {{ lastContextualFeedbackTypeText }}</div>
-            <div>resolvedFeedbackEventType: {{ resolvedFeedbackEventTypeText }}</div>
-            <div>transitionFeedback: {{ transitionFeedbackBadgeText }}</div>
-            <div>feedbackLevel: {{ contextualFeedbackLevelText }}</div>
-            <div>feedbackPriority: {{ contextualFeedbackPriorityText }}</div>
+            <div>最近反馈类型：{{ lastContextualFeedbackTypeText }}</div>
+            <div>解析后事件：{{ resolvedFeedbackEventTypeText }}</div>
+            <div>过渡反馈：{{ transitionFeedbackBadgeText }}</div>
+            <div>反馈等级：{{ contextualFeedbackLevelText }}</div>
+            <div>反馈优先级：{{ contextualFeedbackPriorityText }}</div>
             <div>反馈通道：{{ contextualFeedbackChannelsText }}</div>
             <div>模板 ID：{{ contextualFeedbackTemplateIdText }}</div>
-            <div>activeBubbleLevel: {{ activeBubbleLevelText }}</div>
-            <div>activeBubbleEventType: {{ activeBubbleEventTypeText }}</div>
+            <div>气泡等级：{{ activeBubbleLevelText }}</div>
+            <div>气泡事件类型：{{ activeBubbleEventTypeText }}</div>
             <div>气泡模板 ID：{{ activeBubbleTemplateIdText }}</div>
-            <div>bubbleVisibleUntil: {{ bubbleVisibleUntil }}</div>
-            <div>bubbleRemainingSec: {{ bubbleRemainingSeconds }}</div>
+            <div>气泡可见截止：{{ bubbleVisibleUntil }}</div>
+            <div>气泡剩余秒数：{{ bubbleRemainingSeconds }}</div>
             <div>反馈冷却：{{ nextAllowedFeedbackSeconds }} 秒</div>
-            <div>dwellStatus: {{ dwellStatusText }}</div>
-            <div>subjectResponseCooldownSec: {{ subjectResponseCooldownSeconds }}</div>
-            <div>subjectPositionChangedAt: {{ subjectPositionChangedText }}</div>
+            <div>停留状态：{{ dwellStatusText }}</div>
+            <div>位置反馈冷却秒数：{{ subjectResponseCooldownSeconds }}</div>
+            <div>位置变化时间：{{ subjectPositionChangedText }}</div>
           </div>
 
           <div :class="['mt-2 rounded-xl bg-neutral-100/80 p-2 text-xs dark:bg-neutral-800/60']">
             <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
-              Advanced / Experimental Gesture Controls
+              手势控制诊断
             </div>
             <label :class="['mb-2 flex items-center gap-2']">
               <input
@@ -1614,7 +1684,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
                 :checked="gestureControlsEnabled"
                 @change="toggleGestureControls"
               >
-              <span>Enable experimental gesture controls</span>
+              <span>启用实验手势控制</span>
             </label>
             <div>gestureEnabled: {{ gestureControlsEnabled ? 'true' : 'false' }}</div>
             <Button
@@ -1623,7 +1693,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
               variant="ghost"
               @click="gestureDiagnosticsExpanded = !gestureDiagnosticsExpanded"
             >
-              {{ gestureDiagnosticsExpanded ? 'Hide gesture diagnostics' : 'Show gesture diagnostics' }}
+              {{ gestureDiagnosticsExpanded ? '收起手势诊断' : '展开手势诊断' }}
             </Button>
             <div v-if="showAdvancedGestureDiagnostics" :class="['mt-2']">
               <div>candidateGesture: {{ candidateGesture }}</div>
@@ -1642,26 +1712,26 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
                 {{ gestureCalibrationHint }}
               </div>
               <div :class="['text-neutral-500 dark:text-neutral-400']">
-                Move your hand closer.
+                请把手靠近一些。
               </div>
               <div :class="['text-neutral-500 dark:text-neutral-400']">
-                Keep your hand inside the guide area.
+                请把手保持在引导区域内。
               </div>
               <div :class="['text-neutral-500 dark:text-neutral-400']">
-                Hold the gesture steady.
+                请保持手势稳定。
               </div>
               <div :class="['text-neutral-500 dark:text-neutral-400']">
-                Release your hand to trigger again.
+                请先放下手，再触发下一次。
               </div>
               <div :class="['text-neutral-500 dark:text-neutral-400']">
-                Better lighting may help.
+                建议补充光线。
               </div>
             </div>
             <div
               v-else
               :class="['mt-1 text-neutral-500 dark:text-neutral-400']"
             >
-              Gesture diagnostics are collapsed by default.
+              手势诊断默认折叠。
             </div>
           </div>
 

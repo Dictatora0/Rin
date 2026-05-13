@@ -176,6 +176,28 @@
 - `lastSubjectResponseEvent`
 - `subjectResponseCooldownUntil`
 
+### 中立位置校准（Round 11）
+- 新增“主体位置校准”入口：
+- 在 Vision Island 可点击“校准当前坐姿”，将当前 `faceCenter` 记为 `subjectNeutralCenter`。
+- 校准状态会本地持久化，重启后仍可复用；未校准时回退默认中心 `{ x: 0.5, y: 0.5 }`。
+- 无人脸时会拒绝校准并提示“请先让摄像头检测到你。”。
+
+### 方向判定算法（Round 11）
+- 不再仅使用固定画面中心做方向判定，改为基于校准中心的相对偏移：
+- `dx = faceCenter.x - neutralCenter.x`
+- `dy = faceCenter.y - neutralCenter.y`
+- 引入 enter/exit hysteresis 阈值与轴向优势比：
+- `directionEnterThresholdX/Y`
+- `directionExitThresholdX/Y`
+- `directionAxisDominanceRatio`
+- 当 `dx/dy` 两轴都接近且优势不足时标记为 `ambiguous`，不触发强反馈，避免方向抖动。
+- 输出诊断数据 `directionScores`（`scoreX/scoreY/confidence/ambiguous`）用于调参。
+
+### 最近方向分布（Round 11）
+- 新增最近窗口方向统计（默认 60 秒）：
+- 居中 / 偏左 / 偏右 / 偏上 / 偏下 / 不确定
+- 在高级诊断中可查看，用于确认是否存在长期偏向 `left/down`。
+
 ### 灵敏度调优（第二轮）
 - 主体位置 dead zone 调整为更灵敏：
 - `directionDeadZoneX: 0.09`
@@ -193,8 +215,8 @@
 - `subjectPosition` 与 `lastStableSubjectPosition` 回到 `unknown`，避免继续显示旧 `left/right/down`。
 
 ### 为什么不是严格视线测量
-- 模块仅根据主体在人脸框中的相对位置做 gaze-like feedback。
-- 不做瞳孔级别或视线向量级别估计。
+- 模块仅根据主体在人脸框中的相对位置做“主体位置反馈”。
+- 不做瞳孔级别或视线向量级别估计，不做 eye tracking。
 - 目标是自然交互演示，而非严格视线测量。
 
 ### Contextual Vision Feedback Engine
@@ -253,6 +275,8 @@
 
 ### 模板去重与选择规则
 - 同一 eventType 连续触发会避免相同 `templateId`；仅当候选唯一时允许重复。
+- 支持 `recentTemplateIds` 最近窗口去重，不只避免上一条模板。
+- `use-vision-pet-feedback` 会维护最近模板队列（默认 6 条），连续触发同类反馈时优先换模板。
 - 支持 `displayName` 时优先 `namedText`，无名字回退 `text`，不会残留 `{name}` 占位符。
 - 支持 `allowedChannels` 与 `preferredLevel` 过滤；若强度不允许则自动降级 level。
 - 选择失败时回退到安全模板，不抛异常。

@@ -153,6 +153,13 @@ function createFaceAt(centerX: number, centerY: number): NormalizedLandmark[] {
   ]
 }
 
+function assertCalibrateOk(
+  result: ReturnType<ReturnType<typeof useVisionInteraction>['calibrateSubjectNeutralCenter']>,
+): asserts result is { ok: true, center: { x: number, y: number } } {
+  if (!result.ok)
+    throw new Error('expected calibration to succeed')
+}
+
 function createSmileBlendshapeCategories(options?: {
   left?: number
   right?: number
@@ -451,6 +458,11 @@ async function setupInteractionHarness(
         subjectPositionStableFrames: options?.subjectPositionStableFrames ?? 3,
         subjectDirectionDeadZoneX: options?.subjectDirectionDeadZoneX ?? 0.12,
         subjectDirectionDeadZoneY: options?.subjectDirectionDeadZoneY ?? 0.12,
+        directionEnterThresholdX: options?.directionEnterThresholdX,
+        directionEnterThresholdY: options?.directionEnterThresholdY,
+        directionExitThresholdX: options?.directionExitThresholdX,
+        directionExitThresholdY: options?.directionExitThresholdY,
+        directionAxisDominanceRatio: options?.directionAxisDominanceRatio,
         gestureStableFrames: options?.gestureStableFrames ?? 3,
         gestureInferenceIntervalMs: options?.gestureInferenceIntervalMs ?? 180,
         loopIntervalMs: options?.loopIntervalMs ?? 120,
@@ -485,6 +497,7 @@ describe('useVisionInteraction behavior locks', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(1_000))
     localStorage.removeItem('airi.vision-experiment.expression-signals-enabled.v1')
+    localStorage.removeItem('airi.vision-experiment.subject-neutral-center.v1')
     resetInteractionMocks()
     await useVisionRuntime().resetVisionRuntime()
     vi.stubGlobal('requestAnimationFrame', vi.fn((cb: FrameRequestCallback) => {
@@ -731,7 +744,7 @@ describe('useVisionInteraction behavior locks', () => {
     app.unmount()
   })
 
-  it('maps face direction with stable frames and falls back to unknown when no face', async () => {
+  it('maps subject direction with stable frames and falls back to unknown when no face', async () => {
     const { interaction, videoElement, app } = await setupInteractionHarness()
 
     queueFrames({ gesture: 'None', face: [createFaceAt(0.8, 0.5)], count: 3 })
@@ -789,6 +802,159 @@ describe('useVisionInteraction behavior locks', () => {
     expect(interaction.faceDirection.value).toBe('left')
     expect(interaction.subjectPosition.value).toBe('left')
     expect(interaction.lastEvent.value?.type).toBe('user_moved_left')
+    expect(interaction.lastEvent.value?.message).toBe('你稍微偏到画面左侧。')
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('uses calibrated neutral center for subject direction', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+      subjectPositionStableFrames: 2,
+      subjectDirectionDeadZoneX: 0.09,
+      subjectDirectionDeadZoneY: 0.1,
+      directionEnterThresholdX: 0.09,
+      directionEnterThresholdY: 0.1,
+    })
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.58, 0.62)],
+      count: 2,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
+    expect(interaction.faceDirection.value).toBe('down')
+
+    const calibration = interaction.calibrateSubjectNeutralCenter()
+    assertCalibrateOk(calibration)
+    expect(interaction.subjectNeutralCenter.value).toEqual(calibration.center)
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.58, 0.62)],
+      count: 2,
+      startNowMs: 800,
+      startTimeSeconds: 3,
+    })
+    expect(interaction.faceDirection.value).toBe('center')
+    expect(interaction.lastEvent.value?.type).toBe('user_centered')
+    expect(interaction.lastEvent.value?.message).toBe('已回到画面中心。')
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('returns no-face when calibrating without detected face center', async () => {
+    const { interaction, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+    })
+    const result = interaction.calibrateSubjectNeutralCenter()
+    expect(result).toEqual({ ok: false, reason: 'no face' })
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('uses hysteresis thresholds to recover center near boundary', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+      subjectPositionStableFrames: 2,
+      directionEnterThresholdX: 0.1,
+      directionEnterThresholdY: 0.1,
+      directionExitThresholdX: 0.07,
+      directionExitThresholdY: 0.07,
+      directionAxisDominanceRatio: 1.2,
+    })
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.66, 0.5)],
+      count: 2,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
+    expect(interaction.faceDirection.value).toBe('left')
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.53, 0.5)],
+      count: 2,
+      startNowMs: 700,
+      startTimeSeconds: 3,
+    })
+    expect(interaction.faceDirection.value).toBe('center')
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('keeps stable direction when axis scores are ambiguous', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+      subjectPositionStableFrames: 2,
+      directionEnterThresholdX: 0.1,
+      directionEnterThresholdY: 0.1,
+      directionAxisDominanceRatio: 1.2,
+    })
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.65, 0.5)],
+      count: 2,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
+    expect(interaction.faceDirection.value).toBe('left')
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.62, 0.62)],
+      count: 2,
+      startNowMs: 700,
+      startTimeSeconds: 3,
+    })
+    expect(interaction.faceDirection.value).toBe('left')
+    expect(interaction.directionScores.value.ambiguous).toBe(true)
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('updates direction distribution counters while frames are processed', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      gestureControlsEnabled: false,
+      subjectPositionStableFrames: 2,
+    })
+
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 2,
+      startNowMs: 200,
+      startTimeSeconds: 1,
+    })
+    await runQueuedFrames({
+      video: videoElement,
+      gesture: 'None',
+      face: [createFaceAt(0.7, 0.5)],
+      count: 2,
+      startNowMs: 700,
+      startTimeSeconds: 3,
+    })
+
+    expect(interaction.directionDistribution.value.total).toBeGreaterThan(0)
+    expect(interaction.directionDistribution.value.center).toBeGreaterThan(0)
+    expect(interaction.directionDistribution.value.left).toBeGreaterThan(0)
+    expect(interaction.directionDistribution.value.windowMs).toBe(60_000)
 
     await interaction.stop()
     app.unmount()
@@ -935,7 +1101,7 @@ describe('useVisionInteraction behavior locks', () => {
       startTimeSeconds: 1,
       blendshapeCategories: [],
     })
-    expect(interaction.lastEvent.value?.type).toBe('user_moved_left')
+    expect(interaction.faceDirection.value).toBe('left')
 
     await runQueuedFrames({
       video: videoElement,
@@ -948,7 +1114,6 @@ describe('useVisionInteraction behavior locks', () => {
     })
 
     expect(interaction.faceDirection.value).toBe('right')
-    expect(interaction.lastEvent.value?.type).toBe('user_moved_right')
     expect(interaction.lastEvent.value?.type).not.toBe('expression_looking_away_detected')
 
     await interaction.stop()

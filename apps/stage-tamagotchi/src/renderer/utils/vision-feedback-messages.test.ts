@@ -186,6 +186,33 @@ describe('vision feedback templates v2', () => {
     expect(fallbackFirst.text).toBe(fallbackSecond.text)
   })
 
+  it('skips recently used templates when recentTemplateIds is provided', () => {
+    const first = selectVisionFeedbackMessage('subject_position_left', {
+      intensity: 'balanced',
+      random: () => 0,
+    })
+    const second = selectVisionFeedbackMessage('subject_position_left', {
+      intensity: 'balanced',
+      random: () => 0,
+      recentTemplateIds: [first.templateId],
+    })
+
+    expect(first.templateId).not.toBe(second.templateId)
+  })
+
+  it('falls back safely when recentTemplateIds excludes all candidates', () => {
+    const templates = listVisionFeedbackTemplatesForEvent('subject_position_right')
+    const blockedTemplateIds = templates.map(template => template.id)
+    const selected = selectVisionFeedbackMessage('subject_position_right', {
+      intensity: 'balanced',
+      random: () => 0,
+      recentTemplateIds: blockedTemplateIds,
+    })
+
+    expect(blockedTemplateIds.includes(selected.templateId)).toBe(true)
+    expect(selected.text.length).toBeGreaterThan(0)
+  })
+
   it('supports displayName interpolation and safely falls back without unresolved placeholders', () => {
     const withName = selectVisionFeedbackMessage('subject_returned', {
       intensity: 'balanced',
@@ -226,7 +253,7 @@ describe('vision feedback templates v2', () => {
     expect(zhCentered.text).toBe('Rin，你又回到中心位置。')
     expect(zhCentered.selectedTextSource).toBe('locale')
     expect(zhCentered.locale).toBe('zh-CN')
-    expect(zhFallbackUp.text).toBe('Rin, looking up?')
+    expect(zhFallbackUp.text).toBe('Rin, you moved slightly toward the top of frame.')
     expect(zhFallbackUp.selectedTextSource).toBe('default')
     expect(zhFallbackUp.text.includes('{name}')).toBe(false)
   })
@@ -253,6 +280,22 @@ describe('vision feedback templates v2', () => {
     expect(enLookingAway.text).toBe('Lying, the visual signal is not stable yet.')
     expect(enLookingAway.text.includes('{name}')).toBe(false)
     expect(enLookingAway.text.includes('away-from-center')).toBe(false)
+  })
+
+  it('does not use gaze-tracking wording in default directional templates', () => {
+    const up = selectVisionFeedbackMessage('subject_position_up', {
+      intensity: 'balanced',
+      random: () => 0,
+    })
+    const down = selectVisionFeedbackMessage('subject_position_down', {
+      intensity: 'balanced',
+      random: () => 0,
+    })
+
+    expect(up.text.toLowerCase().includes('look')).toBe(false)
+    expect(up.text.toLowerCase().includes('gaze')).toBe(false)
+    expect(down.text.toLowerCase().includes('look')).toBe(false)
+    expect(down.text.toLowerCase().includes('gaze')).toBe(false)
   })
 
   it('prefers requested variant and falls back to default variant when requested one is unavailable', () => {

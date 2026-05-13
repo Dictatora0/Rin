@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   setFaceGateEnabled: vi.fn(() => {}),
   setGestureControlsEnabled: vi.fn(() => {}),
   setExpressionSignalsEnabled: vi.fn(() => {}),
+  calibrateSubjectNeutralCenter: vi.fn(() => ({ ok: true as const, center: { x: 0.5, y: 0.5 } })),
+  resetSubjectNeutralCenter: vi.fn(() => {}),
   setMaxInferenceStallMs: vi.fn(() => {}),
   setRememberFaceProfileOnDevice: vi.fn(async () => true),
   unlockFaceProfile: vi.fn(async () => ({ ok: true as const, profile: null as never })),
@@ -51,6 +53,27 @@ function createInteractionState() {
     mediaPipeStatus: ref<'idle' | 'loading' | 'ready' | 'failed'>('idle'),
     facePresence: ref<'present' | 'absent' | 'unknown'>('unknown'),
     faceCenter: ref<{ x: number, y: number } | null>(null),
+    subjectNeutralCenter: ref<{ x: number, y: number } | null>(null),
+    subjectNeutralCenterUpdatedAt: ref<string | null>(null),
+    directionScores: ref({
+      dx: 0,
+      dy: 0,
+      scoreX: 0,
+      scoreY: 0,
+      confidence: 0,
+      dominantAxis: 'none' as const,
+      ambiguous: false,
+    }),
+    directionDistribution: ref({
+      windowMs: 60_000,
+      total: 0,
+      center: 0,
+      left: 0,
+      right: 0,
+      up: 0,
+      down: 0,
+      ambiguous: 0,
+    }),
     faceDirection: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
     subjectPosition: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
     lastStableSubjectPosition: ref<'left' | 'center' | 'right' | 'up' | 'down' | 'unknown'>('unknown'),
@@ -134,6 +157,8 @@ function createInteractionState() {
     setFaceGateEnabled: mocks.setFaceGateEnabled,
     setGestureControlsEnabled: mocks.setGestureControlsEnabled,
     setExpressionSignalsEnabled: mocks.setExpressionSignalsEnabled,
+    calibrateSubjectNeutralCenter: mocks.calibrateSubjectNeutralCenter,
+    resetSubjectNeutralCenter: mocks.resetSubjectNeutralCenter,
     setMaxInferenceStallMs: mocks.setMaxInferenceStallMs,
     setRememberFaceProfileOnDevice: mocks.setRememberFaceProfileOnDevice,
     unlockFaceProfile: mocks.unlockFaceProfile,
@@ -280,6 +305,9 @@ describe('vision island usability pass', () => {
     mocks.setFaceGateEnabled.mockReset()
     mocks.setGestureControlsEnabled.mockReset()
     mocks.setExpressionSignalsEnabled.mockReset()
+    mocks.calibrateSubjectNeutralCenter.mockReset()
+    mocks.calibrateSubjectNeutralCenter.mockReturnValue({ ok: true, center: { x: 0.5, y: 0.5 } })
+    mocks.resetSubjectNeutralCenter.mockReset()
     mocks.setMaxInferenceStallMs.mockReset()
     mocks.setRememberFaceProfileOnDevice.mockReset()
     mocks.unlockFaceProfile.mockReset()
@@ -306,7 +334,7 @@ describe('vision island usability pass', () => {
   })
 
   it('shows simplified default panel with core status and controls', async () => {
-    const { container, unmount } = mountVisionIsland('novice')
+    const { container, unmount } = mountVisionIsland('expert')
     await nextTick()
 
     const text = container.textContent ?? ''
@@ -318,12 +346,14 @@ describe('vision island usability pass', () => {
     expect(text).toContain('人脸门控：未启用')
     expect(text).toContain('最近反馈')
     expect(text).toContain('为什么 Rin 没响应？')
+    expect(text).toContain('主体位置校准')
+    expect(text).toContain('当前基准：默认中心')
 
     unmount()
   })
 
   it('does not render raw debug keys in default view', async () => {
-    const { container, unmount } = mountVisionIsland('novice')
+    const { container, unmount } = mountVisionIsland('expert')
     await nextTick()
 
     const text = container.textContent ?? ''
@@ -333,6 +363,42 @@ describe('vision island usability pass', () => {
     expect(text.includes('templateId')).toBe(false)
     expect(text.includes('channels')).toBe(false)
     expect(text.includes('variant')).toBe(false)
+    expect(text.toLowerCase().includes('gaze')).toBe(false)
+    expect(text.toLowerCase().includes('eye tracking')).toBe(false)
+    expect(text.toLowerCase().includes('look down')).toBe(false)
+
+    unmount()
+  })
+
+  it('calibrates subject neutral center and shows toast feedback', async () => {
+    mocks.interactionState.faceCenter.value = { x: 0.55, y: 0.62 }
+    mocks.interactionState.subjectNeutralCenter.value = { x: 0.55, y: 0.62 }
+    mocks.interactionState.subjectNeutralCenterUpdatedAt.value = '2026-05-13T08:00:00.000Z'
+
+    const { container, unmount } = mountVisionIsland('expert')
+    await nextTick()
+
+    await clickButton(container, '校准当前坐姿')
+    expect(mocks.calibrateSubjectNeutralCenter).toHaveBeenCalledTimes(1)
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('已校准当前坐姿。')
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('当前基准：已校准')
+    expect(text).toContain('基准坐标：x=0.55, y=0.62')
+
+    unmount()
+  })
+
+  it('shows warning when calibrating without detected face', async () => {
+    mocks.interactionState.faceCenter.value = null
+    mocks.calibrateSubjectNeutralCenter.mockImplementationOnce(() => ({ ok: false, reason: 'no face' } as any))
+
+    const { container, unmount } = mountVisionIsland('novice')
+    await nextTick()
+
+    await clickButton(container, '校准当前坐姿')
+    expect(mocks.calibrateSubjectNeutralCenter).toHaveBeenCalledTimes(1)
+    expect(mocks.toastMessage).toHaveBeenCalledWith('请先让摄像头检测到你。')
 
     unmount()
   })
@@ -370,6 +436,16 @@ describe('vision island usability pass', () => {
     mocks.interactionState.expressionSignalConfidence.value = 0.73
     mocks.interactionState.expressionSignalSource.value = 'blendshape'
     mocks.interactionState.expressionSignalReason.value = 'smile-like signal'
+    mocks.interactionState.directionDistribution.value = {
+      windowMs: 60_000,
+      total: 24,
+      center: 8,
+      left: 5,
+      right: 4,
+      up: 3,
+      down: 2,
+      ambiguous: 2,
+    }
 
     const { container, unmount } = mountVisionIsland('expert')
     await nextTick()
@@ -394,6 +470,8 @@ describe('vision island usability pass', () => {
     expect(diagnosticsText).toContain('信号置信度')
     expect(diagnosticsText).toContain('信号来源')
     expect(diagnosticsText).toContain('信号原因')
+    expect(diagnosticsText).toContain('最近方向分布')
+    expect(diagnosticsText).toContain('居中 8 / 偏左 5 / 偏右 4 / 偏上 3 / 偏下 2 / 不确定 2')
 
     unmount()
   })
@@ -480,12 +558,13 @@ describe('vision island usability pass', () => {
     mocks.interactionState.runtimeStatus.value = 'failed'
     mocks.interactionState.runtimeLastError.value = 'runtime exploded'
 
-    const { container, unmount } = mountVisionIsland('novice')
+    const { container, unmount } = mountVisionIsland('expert')
     await nextTick()
 
     const text = container.textContent ?? ''
     expect(text).toContain('视觉模型加载失败')
     expect(text).toContain('点击重试，或关闭视觉功能继续使用桌宠')
+    await openAdvancedDiagnostics(container)
     await clickButton(container, '重试视觉运行时')
     expect(mocks.retryVisionRuntime).toHaveBeenCalledTimes(1)
 

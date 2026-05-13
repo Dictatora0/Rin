@@ -41,6 +41,7 @@ export type VisionFaceDirection = 'left' | 'center' | 'right' | 'up' | 'down' | 
 export type VisionGesture = 'none' | 'open_palm' | 'victory' | 'thumbs_up' | 'unknown'
 export type VisionGestureQualityState = GestureQualityState
 export type VisionSubjectResponseState = 'idle' | 'following_left' | 'following_right' | 'looking_up' | 'looking_down' | 'centered' | 'gated'
+type VisionFaceDirectionDecision = VisionFaceDirection | 'ambiguous'
 export type { VisionExpressionSignal }
 export type { VisionExpressionSignalSource }
 
@@ -90,6 +91,11 @@ export interface VisionInteractionOptions {
   subjectPositionStableFrames?: number
   subjectDirectionDeadZoneX?: number
   subjectDirectionDeadZoneY?: number
+  directionEnterThresholdX?: number
+  directionEnterThresholdY?: number
+  directionExitThresholdX?: number
+  directionExitThresholdY?: number
+  directionAxisDominanceRatio?: number
   gestureStableFrames?: number
   gestureInferenceIntervalMs?: number
   gestureScoreThreshold?: number
@@ -131,6 +137,27 @@ export interface VisionCameraDiagnosticsSnapshot {
   lastInferenceErrorMessage: string
 }
 
+export interface VisionDirectionScoresSnapshot {
+  dx: number
+  dy: number
+  scoreX: number
+  scoreY: number
+  confidence: number
+  dominantAxis: 'x' | 'y' | 'none'
+  ambiguous: boolean
+}
+
+export interface VisionDirectionDistributionSnapshot {
+  windowMs: number
+  total: number
+  center: number
+  left: number
+  right: number
+  up: number
+  down: number
+  ambiguous: number
+}
+
 interface EmitEventOptions {
   type: VisionInteractionEventType
   message: string
@@ -156,6 +183,11 @@ const DEFAULT_OPTIONS: Required<VisionInteractionOptions> = {
   subjectPositionStableFrames: 2,
   subjectDirectionDeadZoneX: 0.09,
   subjectDirectionDeadZoneY: 0.1,
+  directionEnterThresholdX: 0.1,
+  directionEnterThresholdY: 0.1,
+  directionExitThresholdX: 0.07,
+  directionExitThresholdY: 0.07,
+  directionAxisDominanceRatio: 1.2,
   gestureStableFrames: 2,
   gestureInferenceIntervalMs: 90,
   gestureScoreThreshold: 0.35,
@@ -174,6 +206,7 @@ const DISPLAY_NAME_LOCAL_STORAGE_KEY = 'airi.vision-experiment.display-name'
 const GATE_ENABLED_STORAGE_KEY = 'airi.vision-experiment.local-face-gate-enabled.v1'
 const GESTURE_CONTROLS_ENABLED_STORAGE_KEY = 'airi.vision-experiment.gesture-controls-enabled.v1'
 const EXPRESSION_SIGNALS_ENABLED_STORAGE_KEY = 'airi.vision-experiment.expression-signals-enabled.v1'
+const SUBJECT_NEUTRAL_CENTER_STORAGE_KEY = 'airi.vision-experiment.subject-neutral-center.v1'
 const INFERENCE_ERROR_LOG_COOLDOWN_MS = 1_500
 const TIMESTAMP_MISMATCH_RECOVERY_COOLDOWN_MS = 3_000
 const QUALITY_EVALUATION_INTERVAL_MS = 400
@@ -191,6 +224,7 @@ const EXPRESSION_SIGNAL_COOLDOWN_MS: Record<VisionExpressionSignal, number> = {
 const FACE_PROFILE_AUTO_UNLOCK_STORE_KEY = 'vision.face-profile.auto-unlock.passphrase.v1'
 const ENABLE_VISION_VERBOSE_DEBUG_LOGS = import.meta.env.DEV
   && import.meta.env.VITE_VISION_DEBUG_LOGS === 'true'
+const DIRECTION_DISTRIBUTION_WINDOW_MS = 60_000
 
 const CAMERA_VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   width: { ideal: 960, max: 1280 },
@@ -205,6 +239,36 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     ...DEFAULT_OPTIONS,
     ...options,
   }
+  const normalizeNumericOption = (value: unknown, fallback: number) => {
+    return Number.isFinite(value) ? Number(value) : fallback
+  }
+  const directionAxisDominanceRatio = normalizeNumericOption(
+    runtimeOptions.directionAxisDominanceRatio,
+    DEFAULT_OPTIONS.directionAxisDominanceRatio,
+  )
+  const subjectDirectionEnterThresholdX = normalizeNumericOption(
+    options?.directionEnterThresholdX
+    ?? options?.subjectDirectionDeadZoneX
+    ?? runtimeOptions.directionEnterThresholdX,
+    DEFAULT_OPTIONS.directionEnterThresholdX,
+  )
+  const subjectDirectionEnterThresholdY = normalizeNumericOption(
+    options?.directionEnterThresholdY
+    ?? options?.subjectDirectionDeadZoneY
+    ?? runtimeOptions.directionEnterThresholdY,
+    DEFAULT_OPTIONS.directionEnterThresholdY,
+  )
+  const subjectDirectionExitThresholdX = options?.directionExitThresholdX
+    ?? Math.min(subjectDirectionEnterThresholdX, normalizeNumericOption(
+      runtimeOptions.directionExitThresholdX,
+      DEFAULT_OPTIONS.directionExitThresholdX,
+    ))
+  const subjectDirectionExitThresholdY = options?.directionExitThresholdY
+    ?? Math.min(subjectDirectionEnterThresholdY, normalizeNumericOption(
+      runtimeOptions.directionExitThresholdY,
+      DEFAULT_OPTIONS.directionExitThresholdY,
+    ))
+  const initialSubjectNeutralCenterState = loadSubjectNeutralCenterState()
   const effectiveGestureInferenceIntervalMs = Math.max(40, Math.round(runtimeOptions.gestureInferenceIntervalMs))
   const effectiveGestureScoreThreshold = Math.min(0.9, Math.max(0.05, runtimeOptions.gestureScoreThreshold))
   const visionRuntime = useVisionRuntime()
@@ -216,6 +280,27 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
   const facePresence = ref<VisionFacePresence>('unknown')
   const faceDirection = ref<VisionFaceDirection>('unknown')
   const faceCenter = ref<{ x: number, y: number } | null>(null)
+  const subjectNeutralCenter = ref<{ x: number, y: number } | null>(initialSubjectNeutralCenterState.center)
+  const subjectNeutralCenterUpdatedAt = ref<string | null>(initialSubjectNeutralCenterState.updatedAt)
+  const directionScores = ref<VisionDirectionScoresSnapshot>({
+    dx: 0,
+    dy: 0,
+    scoreX: 0,
+    scoreY: 0,
+    confidence: 0,
+    dominantAxis: 'none',
+    ambiguous: false,
+  })
+  const directionDistribution = ref<VisionDirectionDistributionSnapshot>({
+    windowMs: DIRECTION_DISTRIBUTION_WINDOW_MS,
+    total: 0,
+    center: 0,
+    left: 0,
+    right: 0,
+    up: 0,
+    down: 0,
+    ambiguous: 0,
+  })
   const subjectPosition = ref<VisionFaceDirection>('unknown')
   const lastStableSubjectPosition = ref<VisionFaceDirection>('unknown')
   const subjectPositionChangedAt = ref<number | null>(null)
@@ -362,10 +447,12 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
   let candidateDirection: VisionFaceDirection = 'unknown'
   let candidateDirectionFrames = 0
+  let lastDirectionDecision: VisionFaceDirectionDecision = 'unknown'
   let expressionSignalCandidateFrames = 0
   let centeredDirectionStartedAt: number | null = null
   let awayDirectionStartedAt: number | null = null
   let awayDirectionCandidate: Exclude<VisionFaceDirection, 'unknown' | 'center'> | null = null
+  const directionHistory: Array<{ at: number, direction: VisionFaceDirectionDecision }> = []
 
   let previousGestureHandCenter: GestureQualityPoint | null = null
   let previousGestureHandTimestampMs: number | null = null
@@ -573,6 +660,105 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     catch {
       return false
     }
+  }
+
+  function normalizeCenterValue(value: unknown) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric))
+      return null
+    return Math.min(1, Math.max(0, numeric))
+  }
+
+  function loadSubjectNeutralCenterState() {
+    if (typeof localStorage === 'undefined') {
+      return {
+        center: null as { x: number, y: number } | null,
+        updatedAt: null as string | null,
+      }
+    }
+
+    try {
+      const raw = localStorage.getItem(SUBJECT_NEUTRAL_CENTER_STORAGE_KEY)
+      if (!raw) {
+        return {
+          center: null,
+          updatedAt: null,
+        }
+      }
+      const parsed = JSON.parse(raw) as { x?: unknown, y?: unknown, updatedAt?: unknown } | null
+      const x = normalizeCenterValue(parsed?.x)
+      const y = normalizeCenterValue(parsed?.y)
+      if (x === null || y === null) {
+        return {
+          center: null,
+          updatedAt: null,
+        }
+      }
+      const updatedAt = typeof parsed?.updatedAt === 'string' && parsed.updatedAt.trim().length > 0
+        ? parsed.updatedAt
+        : null
+      return {
+        center: { x, y },
+        updatedAt,
+      }
+    }
+    catch {
+      return {
+        center: null,
+        updatedAt: null,
+      }
+    }
+  }
+
+  function persistSubjectNeutralCenter(
+    center: { x: number, y: number } | null,
+    updatedAt: string | null,
+  ) {
+    if (typeof localStorage === 'undefined')
+      return
+
+    try {
+      if (!center) {
+        localStorage.removeItem(SUBJECT_NEUTRAL_CENTER_STORAGE_KEY)
+        return
+      }
+      localStorage.setItem(SUBJECT_NEUTRAL_CENTER_STORAGE_KEY, JSON.stringify({
+        x: center.x,
+        y: center.y,
+        updatedAt,
+      }))
+    }
+    catch {
+      // ignore storage write failures
+    }
+  }
+
+  function calibrateSubjectNeutralCenter() {
+    if (!faceCenter.value) {
+      return {
+        ok: false as const,
+        reason: 'no face',
+      }
+    }
+
+    const calibrated = {
+      x: Math.min(1, Math.max(0, faceCenter.value.x)),
+      y: Math.min(1, Math.max(0, faceCenter.value.y)),
+    }
+    const updatedAt = new Date().toISOString()
+    subjectNeutralCenter.value = calibrated
+    subjectNeutralCenterUpdatedAt.value = updatedAt
+    persistSubjectNeutralCenter(calibrated, updatedAt)
+    return {
+      ok: true as const,
+      center: calibrated,
+    }
+  }
+
+  function resetSubjectNeutralCenter() {
+    subjectNeutralCenter.value = null
+    subjectNeutralCenterUpdatedAt.value = null
+    persistSubjectNeutralCenter(null, null)
   }
 
   function persistGateEnabled(enabled: boolean) {
@@ -934,6 +1120,27 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
 
     candidateDirection = 'unknown'
     candidateDirectionFrames = 0
+    lastDirectionDecision = 'unknown'
+    directionHistory.length = 0
+    directionDistribution.value = {
+      windowMs: DIRECTION_DISTRIBUTION_WINDOW_MS,
+      total: 0,
+      center: 0,
+      left: 0,
+      right: 0,
+      up: 0,
+      down: 0,
+      ambiguous: 0,
+    }
+    directionScores.value = {
+      dx: 0,
+      dy: 0,
+      scoreX: 0,
+      scoreY: 0,
+      confidence: 0,
+      dominantAxis: 'none',
+      ambiguous: false,
+    }
     lastStableFaceDirection.value = 'unknown'
     subjectPosition.value = 'unknown'
     lastStableSubjectPosition.value = 'unknown'
@@ -1202,18 +1409,106 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     }
   }
 
-  function directionFromFaceCenter(center: { x: number, y: number } | null): VisionFaceDirection {
-    if (!center)
+  function getNeutralCenter() {
+    return subjectNeutralCenter.value ?? { x: 0.5, y: 0.5 }
+  }
+
+  function isDirectionalValue(
+    direction: VisionFaceDirectionDecision,
+  ): direction is Exclude<VisionFaceDirection, 'unknown' | 'center'> {
+    return direction === 'left' || direction === 'right' || direction === 'up' || direction === 'down'
+  }
+
+  function pushDirectionHistory(direction: VisionFaceDirectionDecision, nowMs: number) {
+    directionHistory.push({ at: nowMs, direction })
+    const cutoff = nowMs - DIRECTION_DISTRIBUTION_WINDOW_MS
+    while (directionHistory.length > 0 && directionHistory[0]!.at < cutoff)
+      directionHistory.shift()
+
+    const distribution: VisionDirectionDistributionSnapshot = {
+      windowMs: DIRECTION_DISTRIBUTION_WINDOW_MS,
+      total: directionHistory.length,
+      center: 0,
+      left: 0,
+      right: 0,
+      up: 0,
+      down: 0,
+      ambiguous: 0,
+    }
+    for (const item of directionHistory) {
+      if (item.direction === 'center')
+        distribution.center += 1
+      else if (item.direction === 'left')
+        distribution.left += 1
+      else if (item.direction === 'right')
+        distribution.right += 1
+      else if (item.direction === 'up')
+        distribution.up += 1
+      else if (item.direction === 'down')
+        distribution.down += 1
+      else if (item.direction === 'ambiguous')
+        distribution.ambiguous += 1
+    }
+    directionDistribution.value = distribution
+  }
+
+  function computeDirectionDecision(center: { x: number, y: number } | null): VisionFaceDirectionDecision {
+    if (!center) {
+      directionScores.value = {
+        dx: 0,
+        dy: 0,
+        scoreX: 0,
+        scoreY: 0,
+        confidence: 0,
+        dominantAxis: 'none',
+        ambiguous: false,
+      }
       return 'unknown'
-    const dx = center.x - 0.5
-    const dy = center.y - 0.5
+    }
+    const neutralCenter = getNeutralCenter()
+    const dx = center.x - neutralCenter.x
+    const dy = center.y - neutralCenter.y
     const absX = Math.abs(dx)
     const absY = Math.abs(dy)
-    const deadZoneX = runtimeOptions.subjectDirectionDeadZoneX
-    const deadZoneY = runtimeOptions.subjectDirectionDeadZoneY
-    if (absX <= deadZoneX && absY <= deadZoneY)
+    const hasDirectionalState = isDirectionalValue(lastDirectionDecision)
+    const thresholdX = hasDirectionalState ? subjectDirectionExitThresholdX : subjectDirectionEnterThresholdX
+    const thresholdY = hasDirectionalState ? subjectDirectionExitThresholdY : subjectDirectionEnterThresholdY
+    const scoreX = thresholdX > 0 ? absX / thresholdX : 0
+    const scoreY = thresholdY > 0 ? absY / thresholdY : 0
+    const maxScore = Math.max(scoreX, scoreY)
+    const minScore = Math.min(scoreX, scoreY)
+    const dominance = minScore > 0 ? maxScore / minScore : Number.POSITIVE_INFINITY
+    const dominantAxis = scoreX > scoreY ? 'x' : scoreY > scoreX ? 'y' : 'none'
+
+    if (scoreX < 1 && scoreY < 1) {
+      directionScores.value = {
+        dx,
+        dy,
+        scoreX,
+        scoreY,
+        confidence: Math.min(1, maxScore),
+        dominantAxis,
+        ambiguous: false,
+      }
       return 'center'
-    if (absX >= absY)
+    }
+
+    const isAmbiguous = scoreX >= 1
+      && scoreY >= 1
+      && dominance < directionAxisDominanceRatio
+    directionScores.value = {
+      dx,
+      dy,
+      scoreX,
+      scoreY,
+      confidence: Math.min(1, Math.max(0, maxScore - 1)),
+      dominantAxis,
+      ambiguous: isAmbiguous,
+    }
+    if (isAmbiguous)
+      return 'ambiguous'
+
+    if (scoreX >= scoreY)
       return dx < 0 ? 'right' : 'left'
     return dy < 0 ? 'up' : 'down'
   }
@@ -1244,7 +1539,13 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     gateBlockingActive: boolean
   }) {
     faceCenter.value = center
-    const rawDirection = directionFromFaceCenter(center)
+    const directionDecision = computeDirectionDecision(center)
+    pushDirectionHistory(directionDecision, nowMs)
+    if (directionDecision === 'ambiguous')
+      return
+
+    const rawDirection = directionDecision
+    lastDirectionDecision = directionDecision
     if (rawDirection === candidateDirection) {
       candidateDirectionFrames += 1
     }
@@ -1304,22 +1605,22 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
       return
 
     let eventType: VisionInteractionEventType = 'user_centered'
-    let eventMessage = 'Back to center.'
+    let eventMessage = '已回到画面中心。'
     if (rawDirection === 'left') {
       eventType = 'user_moved_left'
-      eventMessage = 'I noticed you moved left.'
+      eventMessage = '你稍微偏到画面左侧。'
     }
     else if (rawDirection === 'right') {
       eventType = 'user_moved_right'
-      eventMessage = 'I noticed you moved right.'
+      eventMessage = '你稍微偏到画面右侧。'
     }
     else if (rawDirection === 'up') {
       eventType = 'user_moved_up'
-      eventMessage = 'Looking up?'
+      eventMessage = '你稍微偏到画面上方。'
     }
     else if (rawDirection === 'down') {
       eventType = 'user_moved_down'
-      eventMessage = 'Looking down?'
+      eventMessage = '你稍微偏到画面下方。'
     }
 
     if (rawDirection === previousDirection)
@@ -1367,7 +1668,7 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     if (signal === 'stable_face_signal')
       return 'Stable face signal detected.'
     if (signal === 'looking_away_signal')
-      return 'Face position away from center detected.'
+      return '检测到主体位置偏离中心。'
     return 'Visual signal is unclear.'
   }
 
@@ -2574,6 +2875,10 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     profileStatus,
     rememberFaceProfileOnDevice,
     secureStoreAvailable,
+    subjectNeutralCenter,
+    subjectNeutralCenterUpdatedAt,
+    directionScores,
+    directionDistribution,
     localFaceGate,
     encryptedProfile,
     openCvFaceQuality,
@@ -2586,6 +2891,8 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
     setFaceGateEnabled,
     setGestureControlsEnabled,
     setExpressionSignalsEnabled,
+    calibrateSubjectNeutralCenter,
+    resetSubjectNeutralCenter,
     setMaxInferenceStallMs,
     enrollLocalFaceProfile,
     unlockFaceProfile,

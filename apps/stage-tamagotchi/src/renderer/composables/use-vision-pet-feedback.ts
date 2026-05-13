@@ -218,6 +218,7 @@ const DEFAULT_OPTIONS: Required<UseVisionPetFeedbackOptions> = {
 const FEEDBACK_INTENSITY_STORAGE_KEY = 'airi.vision-experiment.feedback-intensity.v1'
 const FEEDBACK_LOCALE_STORAGE_KEY = 'airi.vision-experiment.feedback-locale.v1'
 const FEEDBACK_VARIANT_STORAGE_KEY = 'airi.vision-experiment.feedback-variant.v1'
+const RECENT_TEMPLATE_IDS_LIMIT = 6
 
 function normalizeFeedbackIntensity(value: string | null): VisionFeedbackIntensity {
   if (value === 'minimal' || value === 'balanced' || value === 'expressive')
@@ -377,6 +378,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
   const lastMotionTriggeredAt = ref(Number.NEGATIVE_INFINITY)
   const contextualLastTriggeredAt = ref<Map<VisionFeedbackEventType, number>>(new Map())
   const previousMessageByEventType = ref<Map<VisionFeedbackEventType, { text: string, templateId: string }>>(new Map())
+  const recentTemplateIds = ref<string[]>([])
   let stateResetTimer: ReturnType<typeof setTimeout> | null = null
   let quietTickerId: ReturnType<typeof setInterval> | null = null
   let bubbleTickerId: ReturnType<typeof setInterval> | null = null
@@ -1102,6 +1104,16 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     return nowMs - lastAt < cooldownMs
   }
 
+  function recordRecentTemplateId(templateId: string) {
+    if (!templateId || templateId === 'manual-summary')
+      return
+    const next = recentTemplateIds.value.filter(id => id !== templateId)
+    next.push(templateId)
+    if (next.length > RECENT_TEMPLATE_IDS_LIMIT)
+      next.splice(0, next.length - RECENT_TEMPLATE_IDS_LIMIT)
+    recentTemplateIds.value = next
+  }
+
   function triggerContextualVisionFeedback(
     eventType: VisionContextualFeedbackEventType,
     options?: TriggerContextualVisionFeedbackOptions,
@@ -1162,6 +1174,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
           displayName: options?.displayName,
           previousText: previousSelection?.text ?? null,
           previousTemplateId: previousSelection?.templateId ?? null,
+          recentTemplateIds: recentTemplateIds.value,
           random: runtimeOptions.random,
           preferredLevel: feedbackLevel ?? undefined,
           allowedChannels: options?.allowedChannels,
@@ -1171,6 +1184,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
       text: selectedMessage.text,
       templateId: selectedMessage.templateId,
     })
+    recordRecentTemplateId(selectedMessage.templateId)
 
     const suppressedByQuiet = isQuietVisualMode.value || feedbackLevel === null
     feedbackSuppressedByQuiet.value = isQuietVisualMode.value
@@ -1553,6 +1567,7 @@ export function useVisionPetFeedback(options?: UseVisionPetFeedbackOptions) {
     currentPresence.value = 'unknown'
     contextualLastTriggeredAt.value.clear()
     previousMessageByEventType.value.clear()
+    recentTemplateIds.value = []
     lastDirectionalToastAt.value = Number.NEGATIVE_INFINITY
     highPriorityToastUntil.value = Number.NEGATIVE_INFINITY
     celebrationCount.value = 0

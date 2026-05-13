@@ -124,6 +124,7 @@ export interface SelectVisionFeedbackMessageOptions {
   displayName?: string
   previousText?: string | null
   previousTemplateId?: string | null
+  recentTemplateIds?: string[]
   random?: () => number
   preferredLevel?: VisionFeedbackLevel
   allowedChannels?: VisionFeedbackChannel[]
@@ -222,14 +223,14 @@ const MESSAGE_TEMPLATES: Record<VisionFeedbackEventType, VisionFeedbackTemplate[
   ],
   subject_position_up: [
     { id: 'up-min-1', text: 'Upper position noted.', intensities: ['minimal'], level: 'subtle', channels: ['ui'], tags: ['direction'] },
-    { id: 'up-bal-1', text: 'Looking up?', namedText: '{name}, looking up?', intensities: ['balanced', 'expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['direction'] },
+    { id: 'up-bal-1', text: 'You moved slightly toward the top of frame.', namedText: '{name}, you moved slightly toward the top of frame.', intensities: ['balanced', 'expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['direction'] },
     { id: 'up-bal-2', text: 'You moved higher in frame.', namedText: '{name}, you moved higher in frame.', intensities: ['balanced', 'expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['direction'] },
     { id: 'up-exp-1', text: 'Upper position looks steady.', namedText: '{name}, upper position looks steady.', intensities: ['expressive'], level: 'strong', channels: ['ui', 'toast', 'motion', 'bubble'], tags: ['direction'] },
     { id: 'up-subtle-2', text: 'Head moved upward.', namedText: '{name}, your head moved upward.', intensities: ['minimal', 'balanced'], level: 'subtle', channels: ['ui'], tags: ['direction'] },
   ],
   subject_position_down: [
     { id: 'down-min-1', text: 'Lower position noted.', intensities: ['minimal'], level: 'subtle', channels: ['ui'], tags: ['direction'] },
-    { id: 'down-bal-1', text: 'Looking down?', namedText: '{name}, looking down?', intensities: ['balanced', 'expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['direction'] },
+    { id: 'down-bal-1', text: 'You moved slightly toward the bottom of frame.', namedText: '{name}, you moved slightly toward the bottom of frame.', intensities: ['balanced', 'expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['direction'] },
     { id: 'down-bal-2', text: 'You moved lower in frame.', namedText: '{name}, you moved lower in frame.', intensities: ['balanced', 'expressive'], level: 'normal', channels: ['ui', 'toast'], tags: ['direction'] },
     { id: 'down-exp-1', text: 'Lower position looks steady.', namedText: '{name}, lower position looks steady.', intensities: ['expressive'], level: 'strong', channels: ['ui', 'toast', 'motion', 'bubble'], tags: ['direction'] },
     { id: 'down-subtle-2', text: 'Head moved downward.', namedText: '{name}, your head moved downward.', intensities: ['minimal', 'balanced'], level: 'subtle', channels: ['ui'], tags: ['direction'] },
@@ -761,6 +762,16 @@ function resolveVariantCandidates(
   return [...preferredTemplates, ...defaultTemplates, ...remainingTemplates]
 }
 
+function pickLeastRecentTemplates(
+  templates: VisionFeedbackTemplate[],
+  recentTemplateIds: Set<string>,
+) {
+  const templatesNotInRecent = templates.filter(template => !recentTemplateIds.has(template.id))
+  if (templatesNotInRecent.length > 0)
+    return templatesNotInRecent
+  return templates
+}
+
 function normalizeTransitionSnapshot(snapshot?: VisionFeedbackTransitionSnapshot | null) {
   return {
     presence: snapshot?.presence ?? 'unknown',
@@ -842,6 +853,7 @@ export function selectVisionFeedbackMessage(
   const displayName = normalizeDisplayName(options?.displayName)
   const previousText = options?.previousText ?? null
   const previousTemplateId = options?.previousTemplateId ?? null
+  const recentTemplateIds = new Set(options?.recentTemplateIds ?? [])
   const random = options?.random ?? DEFAULT_RANDOM
   const allowedChannels = options?.allowedChannels ?? []
   const requestedLocale = normalizeLocale(options?.locale)
@@ -869,6 +881,8 @@ export function selectVisionFeedbackMessage(
   const variantCandidates = resolveVariantCandidates(rankedCandidates, requestedVariant)
 
   const nonRepeatingCandidates = variantCandidates.filter((template) => {
+    if (recentTemplateIds.has(template.id) && variantCandidates.length > 1)
+      return false
     if (previousTemplateId && template.id === previousTemplateId && variantCandidates.length > 1)
       return false
     if (!previousText)
@@ -882,7 +896,7 @@ export function selectVisionFeedbackMessage(
   const selectedTemplate = pickFromTemplates(
     nonRepeatingCandidates.length > 0
       ? nonRepeatingCandidates
-      : (variantCandidates.length > 0 ? variantCandidates : [FALLBACK_TEMPLATE]),
+      : (variantCandidates.length > 0 ? pickLeastRecentTemplates(variantCandidates, recentTemplateIds) : [FALLBACK_TEMPLATE]),
     random,
   )
 

@@ -983,9 +983,39 @@ describe('useVisionPetFeedback', () => {
     })
     expect(upFallbackDefaultText).toBe(true)
     expect(feedback.lastFeedbackTemplateId.value).toBe('up-bal-1')
-    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('Rin, looking up?')
+    expect(feedback.lastSubjectResponseEvent.value?.summary).toBe('Rin, you moved slightly toward the top of frame.')
     expect(localStorage.getItem('airi.vision-experiment.feedback-locale.v1')).toBe('zh-CN')
     expect(localStorage.getItem('airi.vision-experiment.feedback-variant.v1')).toBe('a')
+    unmount()
+  })
+
+  it('avoids repeating recent templates during rapid same-event triggers', () => {
+    const { feedback, unmount } = createFeedbackHarness({
+      feedbackMessageCooldownMs: 0,
+      subjectResponseCooldownMs: 0,
+      random: () => 0,
+    })
+
+    const first = feedback.triggerContextualVisionFeedback('subject_moved_left', {
+      allowVisualFeedback: true,
+      direction: 'left',
+      force: true,
+    })
+    expect(first).toBe(true)
+    const firstTemplateId = feedback.lastFeedbackTemplateId.value
+
+    const second = feedback.triggerContextualVisionFeedback('subject_moved_left', {
+      allowVisualFeedback: true,
+      direction: 'left',
+      force: true,
+    })
+    expect(second).toBe(true)
+    const secondTemplateId = feedback.lastFeedbackTemplateId.value
+
+    expect(firstTemplateId).not.toBeNull()
+    expect(secondTemplateId).not.toBeNull()
+    expect(secondTemplateId).not.toBe(firstTemplateId)
+
     unmount()
   })
 })
