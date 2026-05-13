@@ -1,16 +1,33 @@
 import type { Live2DResolvedFitMode } from '@proj-airi/stage-ui-live2d/utils/live2d-fit-layout'
 
-export interface ComputeWindowMouseIgnorePolicyInput {
+export interface WindowClickThroughBlockingStates {
   stagePaused: boolean
-  moveModeEnabled: boolean
+  visionCameraRunning: boolean
+  studyTimerRunning: boolean
   controlsPanelExpanded: boolean
-  hearingDialogOpen: boolean
-  studyPanelPinned: boolean
-  visionPanelPinned: boolean
-  hasFocusedFormField: boolean
-  isPointerInsideControls: boolean
-  isNearWindowBorder: boolean
+  studyPanelOpen: boolean
+  visionPanelOpen: boolean
+  moveModeEnabled: boolean
+}
+
+export interface ComputeWindowMouseIgnorePolicyInput {
   isPointerInsideLive2DHitArea: boolean
+  isPointerInsideControls: boolean
+  isPointerInsideControlAnchor: boolean
+  isPointerInsideStudyPanel: boolean
+  isPointerInsideVisionPanel: boolean
+  isPointerInsideMoveHitArea: boolean
+  isNearWindowBorder: boolean
+
+  hasFocusedFormField: boolean
+  isDraggingWindow: boolean
+  isResizingWindow: boolean
+  isPointerDown: boolean
+
+  recentlyOpenedStudyPanel: boolean
+  recentlyOpenedVisionPanel: boolean
+
+  blockingStates: WindowClickThroughBlockingStates
   fadeOnHoverEnabled: boolean
 }
 
@@ -18,17 +35,21 @@ export interface WindowMouseIgnorePolicyResult {
   shouldIgnoreMouseEvents: boolean
   shouldFadeStage: boolean
   reason:
-    | 'paused'
-    | 'move-mode'
-    | 'controls-panel'
-    | 'dialog-open'
-    | 'study-panel'
-    | 'vision-panel'
-    | 'input-focused'
+    | 'dragging'
+    | 'resizing'
+    | 'pointer-down'
+    | 'focused-form'
     | 'controls-hover'
+    | 'anchor-hover'
+    | 'study-panel-hover'
+    | 'vision-panel-hover'
+    | 'move-hit-area'
     | 'window-border'
-    | 'character-hit-area'
-    | 'fallback-click-through'
+    | 'live2d-hit'
+    | 'study-panel-recent-open'
+    | 'vision-panel-recent-open'
+    | 'default-pass-through'
+  blockingStates: WindowClickThroughBlockingStates
 }
 
 export interface BuildLive2DHitAreaDebugPayloadInput {
@@ -67,6 +88,16 @@ export interface BuildLive2DHitAreaDebugPayloadResult {
   }
 }
 
+export interface BuildWindowClickThroughDebugPayloadInput {
+  policy: WindowMouseIgnorePolicyResult
+}
+
+export interface BuildWindowClickThroughDebugPayloadResult {
+  ignoreMouseEvents: boolean
+  reason: WindowMouseIgnorePolicyResult['reason']
+  blockingStates: WindowClickThroughBlockingStates
+}
+
 /**
  * Resolves whether the transparent stage window should ignore mouse events.
  *
@@ -81,51 +112,30 @@ export interface BuildLive2DHitAreaDebugPayloadResult {
  * - Ignore decision plus reasoning tag for diagnostics/tests
  */
 export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePolicyInput): WindowMouseIgnorePolicyResult {
-  if (input.stagePaused) {
+  if (input.isDraggingWindow) {
     return {
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
-      reason: 'paused',
+      reason: 'dragging',
+      blockingStates: { ...input.blockingStates },
     }
   }
 
-  if (input.moveModeEnabled) {
+  if (input.isResizingWindow) {
     return {
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
-      reason: 'move-mode',
+      reason: 'resizing',
+      blockingStates: { ...input.blockingStates },
     }
   }
 
-  if (input.controlsPanelExpanded) {
+  if (input.isPointerDown) {
     return {
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
-      reason: 'controls-panel',
-    }
-  }
-
-  if (input.hearingDialogOpen) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'dialog-open',
-    }
-  }
-
-  if (input.studyPanelPinned) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'study-panel',
-    }
-  }
-
-  if (input.visionPanelPinned) {
-    return {
-      shouldIgnoreMouseEvents: false,
-      shouldFadeStage: false,
-      reason: 'vision-panel',
+      reason: 'pointer-down',
+      blockingStates: { ...input.blockingStates },
     }
   }
 
@@ -133,7 +143,35 @@ export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePo
     return {
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
-      reason: 'input-focused',
+      reason: 'focused-form',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerInsideStudyPanel) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'study-panel-hover',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerInsideVisionPanel) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'vision-panel-hover',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerInsideControlAnchor) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'anchor-hover',
+      blockingStates: { ...input.blockingStates },
     }
   }
 
@@ -142,6 +180,16 @@ export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePo
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
       reason: 'controls-hover',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.isPointerInsideMoveHitArea) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'move-hit-area',
+      blockingStates: { ...input.blockingStates },
     }
   }
 
@@ -150,6 +198,7 @@ export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePo
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: false,
       reason: 'window-border',
+      blockingStates: { ...input.blockingStates },
     }
   }
 
@@ -157,14 +206,34 @@ export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePo
     return {
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: input.fadeOnHoverEnabled,
-      reason: 'character-hit-area',
+      reason: 'live2d-hit',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.recentlyOpenedStudyPanel) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'study-panel-recent-open',
+      blockingStates: { ...input.blockingStates },
+    }
+  }
+
+  if (input.recentlyOpenedVisionPanel) {
+    return {
+      shouldIgnoreMouseEvents: false,
+      shouldFadeStage: false,
+      reason: 'vision-panel-recent-open',
+      blockingStates: { ...input.blockingStates },
     }
   }
 
   return {
     shouldIgnoreMouseEvents: true,
     shouldFadeStage: input.fadeOnHoverEnabled,
-    reason: 'fallback-click-through',
+    reason: 'default-pass-through',
+    blockingStates: { ...input.blockingStates },
   }
 }
 
@@ -226,5 +295,25 @@ export function buildLive2DHitAreaDebugPayload(input: BuildLive2DHitAreaDebugPay
       y: input.pointer.y,
       inside: input.pointer.inside,
     },
+  }
+}
+
+/**
+ * Builds a plain debug payload for click-through diagnostics.
+ *
+ * Use when:
+ * - Real-device behavior needs concrete reason/state traces
+ *
+ * Expects:
+ * - `policy` is the latest resolved click-through decision
+ *
+ * Returns:
+ * - Serializable payload with reason and non-decisive blocking states
+ */
+export function buildWindowClickThroughDebugPayload(input: BuildWindowClickThroughDebugPayloadInput): BuildWindowClickThroughDebugPayloadResult {
+  return {
+    ignoreMouseEvents: input.policy.shouldIgnoreMouseEvents,
+    reason: input.policy.reason,
+    blockingStates: { ...input.policy.blockingStates },
   }
 }

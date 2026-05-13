@@ -43,9 +43,9 @@ const HIT_ZONE_PRESET_PROFILE: Record<Live2DHitZonePreset, HitAreaRatioProfile> 
     bottomInsetRatio: 0.1,
   },
   normal: {
-    widthRatio: 0.5,
-    topInsetRatio: 0.1,
-    bottomInsetRatio: 0.08,
+    widthRatio: 0.46,
+    topInsetRatio: 0.11,
+    bottomInsetRatio: 0.1,
   },
   loose: {
     widthRatio: 0.58,

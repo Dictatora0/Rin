@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
+import type { ComponentPublicInstance } from 'vue'
 
 import type { ModelSettingsRuntimeChannelEvent } from '../../shared/model-settings-runtime'
 
@@ -13,7 +14,6 @@ import {
   useElectronEventaInvoke,
   useElectronMouseAroundWindowBorder,
   useElectronMouseInElement,
-  useElectronMouseInWindow,
   useElectronRelativeMouse,
 } from '@proj-airi/electron-vueuse'
 import { useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
@@ -58,6 +58,7 @@ import {
 } from '../utils/live2d-hit-area'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
 import {
+  buildWindowClickThroughDebugPayload,
   computeWindowMouseIgnorePolicy,
   WindowMouseIgnoreStateEmitter,
 } from '../utils/window-click-through-policy'
@@ -65,6 +66,8 @@ import {
 const controlsIslandRef = ref<InstanceType<typeof ControlsIsland>>()
 const statusIslandRef = ref<InstanceType<typeof StatusIsland>>()
 const widgetStageRef = ref<InstanceType<typeof WidgetStage>>()
+const studyFloatingPanelElementRef = ref<HTMLElement | null>(null)
+const visionFloatingPanelElementRef = ref<HTMLElement | null>(null)
 const stageCanvas = toRef(() => widgetStageRef.value?.canvasElement())
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 const stageMounted = computed(() => componentStateStage.value === 'mounted')
@@ -76,16 +79,20 @@ const isIgnoringMouseEvents = ref(false)
 const shouldFadeOnCursorWithin = ref(false)
 
 const onboardingStore = useOnboardingStore()
+const studyCompanionStore = useStudyCompanionStore()
 const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
 const eventaContext = useElectronEventaContext()
 const isLinux = useElectronEventaInvoke(electron.app.isLinux)
 const { state: isLinuxRef } = useAsyncState(() => isLinux(), false)
 
-const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const { isOutside } = useElectronMouseInElement(controlsIslandRef)
 const { isOutside: isOutsideStatusIsland } = useElectronMouseInElement(statusIslandRef)
+const { isOutside: isOutsideStudyPanel } = useElectronMouseInElement(studyFloatingPanelElementRef)
+const { isOutside: isOutsideVisionPanel } = useElectronMouseInElement(visionFloatingPanelElementRef)
 const isOutsideFor250Ms = refDebounced(isOutside, 250)
 const isOutsideStatusIslandFor250Ms = refDebounced(isOutsideStatusIsland, 250)
+const isOutsideStudyPanelFor16Ms = refDebounced(isOutsideStudyPanel, 16)
+const isOutsideVisionPanelFor16Ms = refDebounced(isOutsideVisionPanel, 16)
 const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
 // NOTICE: In real-world use cases of Fade on Hover feature, the cursor may move around the edge of the
 // model rapidly, causing flickering effects when checking pixel transparency strictly.
@@ -121,6 +128,10 @@ const {
 const studyPanelInteractionLocked = ref(false)
 const studyPanelActivated = ref(false)
 const visionPanelActivated = ref(false)
+const studyPanelOpenedAt = ref<number>(0)
+const visionPanelOpenedAt = ref<number>(0)
+const isPointerDown = ref(false)
+const isDraggingWindow = ref(false)
 const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
 const { data: modelSettingsRuntimeChannelEvent, post: postModelSettingsRuntimeChannelEvent } = useBroadcastChannel<ModelSettingsRuntimeChannelEvent, ModelSettingsRuntimeChannelEvent>({ name: modelSettingsRuntimeSnapshotChannelName })
 const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransparency({
@@ -152,6 +163,7 @@ const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMo
 const startDraggingWindow = defineInvoke(eventaContext.value, electronStartDraggingWindow)
 
 function handleMoveOverlayDragStart() {
+  isDraggingWindow.value = true
   if (!isLinuxRef.value) {
     startDraggingWindow()
   }
@@ -214,22 +226,77 @@ const { pause, resume } = watch(isTransparent, (transparent) => {
   shouldFadeOnCursorWithin.value = fadeOnHoverEnabled.value && !transparent
 }, { immediate: true })
 
-const hearingDialogOpen = computed(() => controlsIslandRef.value?.hearingDialogOpen ?? false)
-const studyPanelPinned = computed(() => {
-  return studyPanelOpen.value || studyPanelInteractionLocked.value
-})
 const studyPanelInputActive = computed(() => studyPanelInteractionLocked.value)
+const isStudyPanelHovering = computed(() => studyPanelOpen.value && !isOutsideStudyPanelFor16Ms.value)
+const isVisionPanelHovering = computed(() => visionPanelOpen.value && !isOutsideVisionPanelFor16Ms.value)
+const isControlsPanelHovering = computed(() => !isOutsideFor250Ms.value || !isOutsideStatusIslandFor250Ms.value)
+const isInsideControlAnchor = computed(() => {
+  const controlsRoot = document.querySelector('[data-testid="controls-island-root"]')
+  if (!controlsRoot)
+    return false
+
+  const anchor = controlsRoot.querySelector('[data-testid="controls-anchor"]') as HTMLElement | null
+  if (!anchor)
+    return false
+
+  const pointerX = Number(relativeMouseX.value)
+  const pointerY = Number(relativeMouseY.value)
+  if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY))
+    return false
+
+  const anchorRect = anchor.getBoundingClientRect()
+  return pointerX >= anchorRect.left
+    && pointerX <= anchorRect.right
+    && pointerY >= anchorRect.top
+    && pointerY <= anchorRect.bottom
+})
+const isInsideMoveHitArea = computed(() => {
+  if (!moveModeEnabled.value || isLoading.value)
+    return false
+
+  const hitArea = document.querySelector('[data-testid="stage-move-hit-area"]') as HTMLElement | null
+  if (!hitArea)
+    return false
+
+  const pointerX = Number(relativeMouseX.value)
+  const pointerY = Number(relativeMouseY.value)
+  if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY))
+    return false
+
+  const rect = hitArea.getBoundingClientRect()
+  return pointerX >= rect.left
+    && pointerX <= rect.right
+    && pointerY >= rect.top
+    && pointerY <= rect.bottom
+})
+const hasRecentStudyPanelOpenProtection = computed(() => {
+  if (!studyPanelOpen.value || !studyPanelOpenedAt.value)
+    return false
+
+  return (Date.now() - studyPanelOpenedAt.value) <= 400
+})
+const hasRecentVisionPanelOpenProtection = computed(() => {
+  if (!visionPanelOpen.value || !visionPanelOpenedAt.value)
+    return false
+
+  return (Date.now() - visionPanelOpenedAt.value) <= 400
+})
+const studyTimerRunning = computed(() => studyCompanionStore.isRunning)
 
 watch(studyPanelOpen, (open) => {
-  if (open)
+  if (open) {
     studyPanelActivated.value = true
+    studyPanelOpenedAt.value = Date.now()
+  }
   if (!open)
     studyPanelInteractionLocked.value = false
 }, { immediate: true })
 
 watch(visionPanelOpen, (open) => {
-  if (open)
+  if (open) {
     visionPanelActivated.value = true
+    visionPanelOpenedAt.value = Date.now()
+  }
 }, { immediate: true })
 
 function handleStudyPanelInteractionLock(locked: boolean) {
@@ -247,6 +314,24 @@ function closeVisionFloatingPanel() {
 
 function handleVisionCameraRunningChange(running: boolean) {
   controlsIslandStore.setVisionCameraRunning(running)
+}
+
+function resolveElementFromRefTarget(target: Element | ComponentPublicInstance | null): HTMLElement | null {
+  if (!target)
+    return null
+  if (target instanceof HTMLElement)
+    return target
+
+  const componentRoot = (target as ComponentPublicInstance).$el
+  return componentRoot instanceof HTMLElement ? componentRoot : null
+}
+
+function bindStudyFloatingPanelRef(target: Element | ComponentPublicInstance | null) {
+  studyFloatingPanelElementRef.value = resolveElementFromRefTarget(target)
+}
+
+function bindVisionFloatingPanelRef(target: Element | ComponentPublicInstance | null) {
+  visionFloatingPanelElementRef.value = resolveElementFromRefTarget(target)
 }
 
 const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() => {
@@ -299,13 +384,14 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
 })
 
 watch([
-  isOutsideFor250Ms,
-  isOutsideStatusIslandFor250Ms,
+  isControlsPanelHovering,
+  isInsideControlAnchor,
+  isStudyPanelHovering,
+  isVisionPanelHovering,
+  isInsideMoveHitArea,
   isAroundWindowBorderFor250Ms,
-  isOutsideWindow,
   isTransparent,
-  hearingDialogOpen,
-  studyPanelPinned,
+  studyPanelOpen,
   visionPanelOpen,
   visionCameraRunning,
   fadeOnHoverEnabled,
@@ -314,28 +400,46 @@ watch([
   stagePaused,
   hasFocusedFormField,
   live2dCharacterHit,
+  isPointerDown,
+  isDraggingWindow,
+  hasRecentStudyPanelOpenProtection,
+  hasRecentVisionPanelOpenProtection,
 ], () => {
-  const insideControls = !isOutsideFor250Ms.value || !isOutsideStatusIslandFor250Ms.value
   const nearBorder = isAroundWindowBorderFor250Ms.value
-  const shouldPinVisionPanel = visionPanelOpen.value || visionCameraRunning.value
 
   const policy = computeWindowMouseIgnorePolicy({
-    stagePaused: stagePaused.value,
-    moveModeEnabled: moveModeEnabled.value,
-    controlsPanelExpanded: controlsPanelExpanded.value,
-    hearingDialogOpen: hearingDialogOpen.value,
-    studyPanelPinned: studyPanelPinned.value,
-    visionPanelPinned: shouldPinVisionPanel,
-    hasFocusedFormField: hasFocusedFormField.value,
-    isPointerInsideControls: insideControls,
-    isNearWindowBorder: nearBorder,
     isPointerInsideLive2DHitArea: live2dCharacterHit.value,
+    isPointerInsideControls: isControlsPanelHovering.value,
+    isPointerInsideControlAnchor: isInsideControlAnchor.value,
+    isPointerInsideStudyPanel: isStudyPanelHovering.value,
+    isPointerInsideVisionPanel: isVisionPanelHovering.value,
+    isPointerInsideMoveHitArea: isInsideMoveHitArea.value,
+    isNearWindowBorder: nearBorder,
+    hasFocusedFormField: hasFocusedFormField.value,
+    isDraggingWindow: isDraggingWindow.value,
+    isResizingWindow: nearBorder,
+    isPointerDown: isPointerDown.value,
+    recentlyOpenedStudyPanel: hasRecentStudyPanelOpenProtection.value,
+    recentlyOpenedVisionPanel: hasRecentVisionPanelOpenProtection.value,
+    blockingStates: {
+      stagePaused: stagePaused.value,
+      visionCameraRunning: visionCameraRunning.value,
+      studyTimerRunning: studyTimerRunning.value,
+      controlsPanelExpanded: controlsPanelExpanded.value,
+      studyPanelOpen: studyPanelOpen.value,
+      visionPanelOpen: visionPanelOpen.value,
+      moveModeEnabled: moveModeEnabled.value,
+    },
     fadeOnHoverEnabled: fadeOnHoverEnabled.value,
   })
 
+  const policyDebugPayload = buildWindowClickThroughDebugPayload({ policy })
+  if (import.meta.env.DEV)
+    console.debug('[window-click-through-policy]', policyDebugPayload)
+
   isIgnoringMouseEvents.value = policy.shouldIgnoreMouseEvents
   shouldFadeOnCursorWithin.value = policy.shouldFadeStage
-    && !insideControls
+    && !isControlsPanelHovering.value
     && !isTransparent.value
 
   if (live2DMouseIgnoreEmitter.shouldEmit(policy.shouldIgnoreMouseEvents)) {
@@ -390,7 +494,7 @@ type CaptionChannelEvent
 const { post: postCaption } = useBroadcastChannel<CaptionChannelEvent, CaptionChannelEvent>({ name: 'airi-caption-overlay' })
 function handleVisibilityChange() {
   if (!document.hidden) {
-    useStudyCompanionStore().syncFromWallClock()
+    studyCompanionStore.syncFromWallClock()
   }
 }
 
@@ -548,7 +652,20 @@ watch(enabled, async (val) => {
   }
 }, { immediate: true })
 
+function handlePointerDown() {
+  isPointerDown.value = true
+}
+
+function handlePointerUp() {
+  isPointerDown.value = false
+  isDraggingWindow.value = false
+}
+
 onMounted(() => {
+  window.addEventListener('pointerdown', handlePointerDown, true)
+  window.addEventListener('pointerup', handlePointerUp, true)
+  window.addEventListener('pointercancel', handlePointerUp, true)
+
   if (live2DMouseIgnoreEmitter.shouldEmit(true))
     setIgnoreMouseEvents([true, { forward: true }])
 
@@ -561,6 +678,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   live2DMouseIgnoreEmitter.reset()
+  window.removeEventListener('pointerdown', handlePointerDown, true)
+  window.removeEventListener('pointerup', handlePointerUp, true)
+  window.removeEventListener('pointercancel', handlePointerUp, true)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   tryCatch(() => {
     postModelSettingsRuntimeChannelEvent({
@@ -690,6 +810,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     <StageFloatingPanel
       v-if="studyPanelActivated"
       v-show="studyPanelOpen"
+      :ref="bindStudyFloatingPanelRef"
       panel-kind="study"
       title="学习陪伴"
       @close="closeStudyFloatingPanel"
@@ -703,6 +824,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     <StageFloatingPanel
       v-if="visionPanelActivated"
       v-show="visionPanelOpen"
+      :ref="bindVisionFloatingPanelRef"
       panel-kind="vision"
       title="视觉感知"
       @close="closeVisionFloatingPanel"

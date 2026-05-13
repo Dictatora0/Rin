@@ -316,3 +316,29 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
 - 交互保障：
   - Study/Vision 浮动面板、Controls Island、输入框聚焦、窗口边缘 resize 区、Move Mode 等状态优先保持可交互，不会被错误切回全局穿透。
   - 透明背景默认穿透，不再持续拦截背后应用点击。
+
+### Round 6.1：点击穿透策略收紧
+
+- 策略从“面板开关/后台状态驱动”收紧为“区域级命中驱动”：
+  - 仅在以下区域或连续交互状态下接收鼠标：
+    - Live2D 角色 hit area
+    - Controls 面板区域 / Anchor 区域
+    - Study / Vision 浮动面板区域
+    - Move Mode 拖拽热区
+    - 窗口边缘 resize 区
+    - 输入聚焦、按压中、拖拽中
+  - 默认走 `default-pass-through`，即整窗穿透。
+
+- 后台状态仅用于诊断，不再单独阻塞点击：
+  - `visionCameraRunning`
+  - `studyTimerRunning`
+  - `controlsPanelExpanded`
+  - `studyPanelOpen`
+  - `visionPanelOpen`
+  - `moveModeEnabled`
+
+- 增加策略调试输出：
+  - `ignoreMouseEvents`
+  - `reason`
+  - `blockingStates`
+  用于实机定位“为什么当前帧接收/穿透鼠标”。

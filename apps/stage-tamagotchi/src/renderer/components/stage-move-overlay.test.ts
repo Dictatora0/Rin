@@ -62,6 +62,7 @@ describe('stage move overlay', () => {
     expect(overlay?.className).toContain('z-30')
     expect(hitArea?.className).toContain('pointer-events-auto')
     expect(hitArea?.className).toContain('stage-move-hit-area')
+    expect(hitArea?.className).toContain('cursor-move')
     expect(hitArea?.className).not.toContain('drag-region')
     expect(container.textContent).not.toContain('Move mode: drag the stage to reposition Rin')
     expect(container.textContent).not.toContain('移动模式：拖动舞台可重新放置 Rin')

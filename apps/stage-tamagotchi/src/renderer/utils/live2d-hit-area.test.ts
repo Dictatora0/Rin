@@ -53,6 +53,26 @@ describe('live2d hit area geometry', () => {
     expect(precise.area.width).toBeLessThan(loose.area.width)
   })
 
+  /** @example normal preset should remain conservative to avoid transparent-window over-capture */
+  it('keeps normal preset narrower than the previous broad default baseline', () => {
+    const result = computeLive2DHitArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'auto',
+      userScale: 1,
+      zonePreset: 'normal',
+    })
+
+    // NOTICE:
+    // Prior default profile produced roughly 0.5 * projected width (~336px in this fixture),
+    // which was too broad for click-through in transparent areas.
+    // After tightening, width should stay below this baseline.
+    expect(result.area.width).toBeLessThan(320)
+    expect(result.area.width).toBeLessThan(450)
+  })
+
   /** @example point-in-rect checks should be deterministic for click-through decisions */
   it('checks whether a point is inside the computed hit area', () => {
     const { area } = computeLive2DHitArea({
