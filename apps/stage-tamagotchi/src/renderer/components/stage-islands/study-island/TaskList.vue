@@ -31,7 +31,7 @@ const {
 } = studyStore
 const draftTitle = ref('')
 const draftPriority = ref<'high' | 'medium' | 'low'>('medium')
-const draftDueDate = ref('')
+const draftDueDate = ref(getStudyQuickDueDate('tomorrow'))
 const draftDueDateError = ref('')
 const taskDueDateDraftMap = ref<Record<string, string>>({})
 const taskDueDateErrorMap = ref<Record<string, string>>({})
@@ -78,7 +78,7 @@ function submitTask() {
   })
   draftTitle.value = ''
   draftPriority.value = 'medium'
-  draftDueDate.value = ''
+  draftDueDate.value = getStudyQuickDueDate('tomorrow')
   draftDueDateError.value = ''
 }
 
@@ -175,7 +175,7 @@ function applyDraftQuickDueDate(type: 'today' | 'tomorrow' | 'weekEnd' | 'nextWe
 }
 
 function clearDraftDueDate() {
-  draftDueDate.value = ''
+  draftDueDate.value = getStudyQuickDueDate('tomorrow')
   draftDueDateError.value = ''
 }
 

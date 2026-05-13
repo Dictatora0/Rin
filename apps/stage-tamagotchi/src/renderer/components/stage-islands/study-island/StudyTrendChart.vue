@@ -5,6 +5,8 @@ import { computed } from 'vue'
 
 import { buildStudyTrendSeries } from '../../../utils/study-chart-data'
 
+import './study-chart-theme.css'
+
 const props = withDefaults(defineProps<{
   entries: StudyDailyHistoryEntry[]
   days?: number
@@ -84,6 +86,15 @@ const gridRows = computed(() => {
     return topPadding + chartGeometry.value.drawHeight * ratio
   })
 })
+
+const trendSummary = computed(() => {
+  const totalMinutes = trendPoints.value.reduce((sum, point) => sum + point.focusMinutes, 0)
+  const highestMinutes = Math.max(0, ...trendPoints.value.map(point => point.focusMinutes))
+  return {
+    totalMinutes,
+    highestMinutes,
+  }
+})
 </script>
 
 <template>
@@ -91,15 +102,19 @@ const gridRows = computed(() => {
     data-testid="study-trend-chart"
     :class="[
       'study-chart-card',
-      'rounded-xl border border-neutral-200/80 bg-white px-3 py-3',
-      'dark:border-neutral-700/70 dark:bg-neutral-900/70',
+      'px-3 py-3',
     ]"
   >
-    <div :class="['flex items-center justify-between gap-2']">
-      <h3 :class="['text-sm font-semibold text-neutral-700 dark:text-neutral-100']">
-        最近 14 天学习趋势
-      </h3>
-      <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+    <div class="study-chart-header">
+      <div>
+        <h3 class="study-chart-title">
+          最近 14 天学习趋势
+        </h3>
+        <p class="study-chart-subtitle">
+          用连续趋势理解专注投入变化
+        </p>
+      </div>
+      <span class="study-chart-subtitle">
         单位：分钟
       </span>
     </div>
@@ -107,17 +122,14 @@ const gridRows = computed(() => {
     <div
       v-if="!hasHistoryData"
       data-testid="study-trend-empty"
-      :class="[
-        'mt-3 rounded-lg border border-dashed border-neutral-300/70 px-3 py-4 text-xs text-neutral-500',
-        'dark:border-neutral-700/70 dark:text-neutral-400',
-      ]"
+      class="study-chart-empty"
     >
       还没有足够的历史数据
     </div>
 
     <div
       v-else
-      :class="['mt-3']"
+      class="study-chart-body"
     >
       <svg
         data-testid="study-trend-svg"
@@ -140,8 +152,7 @@ const gridRows = computed(() => {
           :y1="y"
           :x2="chartWidth"
           :y2="y"
-          stroke="rgb(148 163 184 / 0.28)"
-          stroke-width="1"
+          class="study-chart-grid-line"
         />
 
         <polygon
@@ -199,6 +210,18 @@ const gridRows = computed(() => {
           {{ point.label }}
         </span>
       </div>
+
+      <div class="study-chart-legend">
+        <span :class="['inline-flex items-center gap-1']">
+          <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-primary)' }" />
+          专注分钟
+        </span>
+      </div>
+
+      <p class="study-chart-caption">
+        近 14 天累计 <span class="study-chart-value">{{ trendSummary.totalMinutes }}</span> 分钟，最高单日
+        <span class="study-chart-value">{{ trendSummary.highestMinutes }}</span> 分钟
+      </p>
     </div>
   </section>
 </template>

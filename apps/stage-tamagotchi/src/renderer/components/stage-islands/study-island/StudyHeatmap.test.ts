@@ -43,7 +43,9 @@ describe('studyHeatmap', () => {
     await nextTick()
 
     expect(container.textContent).toContain('暂无历史数据')
+    expect(container.textContent).toContain('颜色越深，专注投入越高')
     expect(container.querySelector('[data-testid="study-history-heatmap"]')).toBeNull()
+    expect(container.querySelector('.study-chart-card')).not.toBeNull()
 
     unmount()
   })
@@ -67,6 +69,9 @@ describe('studyHeatmap', () => {
 
     expect(heatmap.querySelectorAll('div[title]').length).toBe(7)
     expect(container.textContent).toContain('学习热力图')
+    expect(container.textContent).toContain('少')
+    expect(container.textContent).toContain('多')
+    expect(container.querySelectorAll('.study-chart-legend-dot').length).toBe(4)
 
     unmount()
   })

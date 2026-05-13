@@ -374,22 +374,63 @@ function handleClearTodayStats() {
       <h3 :class="['mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200']">
         学习统计图表
       </h3>
+      <p :class="['mb-3 text-xs text-neutral-500 dark:text-neutral-400']">
+        用趋势、任务和专注质量理解你的学习节奏
+      </p>
 
       <div :class="['grid grid-cols-1 gap-3']">
-        <StudyTrendChart :entries="last14DaysStats" :days="14" />
-        <div :class="['grid grid-cols-1 gap-3 lg:grid-cols-2']">
-          <StudyTaskCompletionChart :tasks="sortedTasks" />
-          <StudyTaskPriorityChart :tasks="sortedTasks" />
-        </div>
-        <div :class="['grid grid-cols-1 gap-3 lg:grid-cols-2']">
-          <StudyFocusQualityCards
-            :entries="last14DaysStats"
-            :today-focus-minutes="studyCompanion.persisted.todayFocusMinutes"
-            :today-focus-sessions="studyCompanion.persisted.todayFocusSessions"
-            :today-interrupt-count="studyCompanion.todayInterruptCount"
-          />
-          <StudyHeatmap :entries="last30DaysStats" />
-        </div>
+        <section
+          data-testid="study-analytics-section-trend"
+          :class="[
+            'rounded-xl border border-neutral-200/70 bg-neutral-50/60 p-3',
+            'dark:border-neutral-700/60 dark:bg-neutral-800/40',
+          ]"
+        >
+          <h4 :class="['text-sm font-semibold text-neutral-700 dark:text-neutral-200']">
+            趋势分析
+          </h4>
+          <div :class="['mt-2 grid grid-cols-1 gap-3 xl:grid-cols-2']">
+            <StudyTrendChart :entries="last14DaysStats" :days="14" />
+            <StudyHistoryChart :entries="last7DaysStats" />
+          </div>
+        </section>
+
+        <section
+          data-testid="study-analytics-section-task"
+          :class="[
+            'rounded-xl border border-neutral-200/70 bg-neutral-50/60 p-3',
+            'dark:border-neutral-700/60 dark:bg-neutral-800/40',
+          ]"
+        >
+          <h4 :class="['text-sm font-semibold text-neutral-700 dark:text-neutral-200']">
+            任务分析
+          </h4>
+          <div :class="['mt-2 grid grid-cols-1 gap-3 lg:grid-cols-2']">
+            <StudyTaskCompletionChart :tasks="sortedTasks" />
+            <StudyTaskPriorityChart :tasks="sortedTasks" />
+          </div>
+        </section>
+
+        <section
+          data-testid="study-analytics-section-quality"
+          :class="[
+            'rounded-xl border border-neutral-200/70 bg-neutral-50/60 p-3',
+            'dark:border-neutral-700/60 dark:bg-neutral-800/40',
+          ]"
+        >
+          <h4 :class="['text-sm font-semibold text-neutral-700 dark:text-neutral-200']">
+            质量与历史
+          </h4>
+          <div :class="['mt-2 grid grid-cols-1 gap-3 lg:grid-cols-2']">
+            <StudyFocusQualityCards
+              :entries="last14DaysStats"
+              :today-focus-minutes="studyCompanion.persisted.todayFocusMinutes"
+              :today-focus-sessions="studyCompanion.persisted.todayFocusSessions"
+              :today-interrupt-count="studyCompanion.todayInterruptCount"
+            />
+            <StudyHeatmap :entries="last30DaysStats" />
+          </div>
+        </section>
       </div>
     </section>
 

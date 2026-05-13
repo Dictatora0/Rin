@@ -48,11 +48,14 @@ describe('studyFocusQualityCards', () => {
     await nextTick()
 
     expect(container.textContent).toContain('专注质量概览')
+    expect(container.textContent).toContain('从轮次、时长和中断理解专注连续性')
     expect(container.textContent).toContain('完成轮次')
     expect(container.textContent).toContain('累计分钟')
     expect(container.textContent).toContain('今日中断')
     expect(container.textContent).toContain('平均每轮')
     expect(container.textContent).toContain('2')
+    expect(container.querySelectorAll('.study-focus-quality-item').length).toBe(4)
+    expect(container.querySelector('.study-chart-card')).not.toBeNull()
 
     unmount()
   })

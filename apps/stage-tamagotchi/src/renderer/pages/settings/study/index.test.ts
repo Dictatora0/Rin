@@ -253,17 +253,28 @@ describe('study settings page', () => {
 
     const text = container.textContent ?? ''
     expect(text).toContain('学习统计图表')
+    expect(text).toContain('用趋势、任务和专注质量理解你的学习节奏')
+    expect(text).toContain('趋势分析')
+    expect(text).toContain('任务分析')
+    expect(text).toContain('质量与历史')
     expect(text).toContain('最近 14 天学习趋势')
     expect(text).toContain('任务完成结构')
     expect(text).toContain('专注质量概览')
     expect(text).toContain('任务优先级分布')
 
+    expect(container.querySelector('[data-testid="study-analytics-section-trend"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="study-analytics-section-task"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="study-analytics-section-quality"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-trend-chart"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-task-completion-chart"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-focus-quality-cards"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-task-priority-chart"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-history-bar-chart"]')).not.toBeNull()
     expect(container.querySelector('[data-testid="study-history-heatmap"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="study-trend-chart"]')?.className.includes('study-chart-card')).toBe(true)
+    expect(container.textContent).toContain('导出 JSON')
+    expect(container.textContent).toContain('导出 Markdown 报告')
+    expect(container.innerHTML.includes('overflow-x-auto')).toBe(false)
 
     unmount()
   })

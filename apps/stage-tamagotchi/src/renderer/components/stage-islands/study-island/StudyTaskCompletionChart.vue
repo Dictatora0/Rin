@@ -5,6 +5,8 @@ import { computed } from 'vue'
 
 import { buildTaskCompletionStats } from '../../../utils/study-chart-data'
 
+import './study-chart-theme.css'
+
 const props = defineProps<{
   tasks: StudyTask[]
 }>()
@@ -23,9 +25,9 @@ const donutStyle = computed(() => {
   const pendingPercent = Math.round((completedRatio + pendingRatio) * 100)
   return {
     background: `conic-gradient(
-      rgb(34 197 94) 0 ${completedPercent}%,
-      rgb(59 130 246 / 0.85) ${completedPercent}% ${pendingPercent}%,
-      rgb(248 113 113 / 0.85) ${pendingPercent}% 100%
+      var(--study-chart-success) 0 ${completedPercent}%,
+      var(--study-chart-primary) ${completedPercent}% ${pendingPercent}%,
+      var(--study-chart-danger) ${pendingPercent}% 100%
     )`,
   }
 })
@@ -36,28 +38,31 @@ const donutStyle = computed(() => {
     data-testid="study-task-completion-chart"
     :class="[
       'study-chart-card',
-      'rounded-xl border border-neutral-200/80 bg-white px-3 py-3',
-      'dark:border-neutral-700/70 dark:bg-neutral-900/70',
+      'px-3 py-3',
     ]"
   >
-    <h3 :class="['text-sm font-semibold text-neutral-700 dark:text-neutral-100']">
-      任务完成结构
-    </h3>
+    <div class="study-chart-header">
+      <div>
+        <h3 class="study-chart-title">
+          任务完成结构
+        </h3>
+        <p class="study-chart-subtitle">
+          用完成率和逾期分布观察任务推进情况
+        </p>
+      </div>
+    </div>
 
     <div
       v-if="!hasTaskData"
       data-testid="study-task-completion-empty"
-      :class="[
-        'mt-3 rounded-lg border border-dashed border-neutral-300/70 px-3 py-4 text-xs text-neutral-500',
-        'dark:border-neutral-700/70 dark:text-neutral-400',
-      ]"
+      class="study-chart-empty"
     >
       还没有任务数据
     </div>
 
     <div
       v-else
-      :class="['mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr]']"
+      :class="['study-chart-body grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr]']"
     >
       <div :class="['flex items-center justify-center']">
         <div
@@ -83,15 +88,15 @@ const donutStyle = computed(() => {
 
       <div :class="['grid grid-cols-1 gap-2']">
         <div :class="['flex items-center justify-between text-xs']">
-          <span :class="['text-neutral-600 dark:text-neutral-300']">已完成</span>
+          <span class="study-chart-muted">已完成</span>
           <span :class="['font-medium text-emerald-600 dark:text-emerald-300']">{{ completionStats.completedTasks }}</span>
         </div>
         <div :class="['flex items-center justify-between text-xs']">
-          <span :class="['text-neutral-600 dark:text-neutral-300']">未完成</span>
+          <span class="study-chart-muted">未完成</span>
           <span :class="['font-medium text-sky-600 dark:text-sky-300']">{{ completionStats.pendingTasks }}</span>
         </div>
         <div :class="['flex items-center justify-between text-xs']">
-          <span :class="['text-neutral-600 dark:text-neutral-300']">已逾期</span>
+          <span class="study-chart-muted">已逾期</span>
           <span :class="['font-medium text-rose-600 dark:text-rose-300']">{{ completionStats.overdueTasks }}</span>
         </div>
         <div
@@ -103,6 +108,21 @@ const donutStyle = computed(() => {
         >
           高优先级未完成：{{ completionStats.highPriorityPendingTasks }} 项
         </div>
+      </div>
+
+      <div class="study-chart-legend sm:col-span-2">
+        <span :class="['inline-flex items-center gap-1']">
+          <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-success)' }" />
+          已完成
+        </span>
+        <span :class="['inline-flex items-center gap-1']">
+          <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-primary)' }" />
+          未完成
+        </span>
+        <span :class="['inline-flex items-center gap-1']">
+          <span class="study-chart-legend-dot" :style="{ backgroundColor: 'var(--study-chart-danger)' }" />
+          已逾期
+        </span>
       </div>
     </div>
   </section>

@@ -3,6 +3,8 @@ import type { StudyDailyHistoryEntry } from '@proj-airi/stage-ui/stores/modules/
 
 import { computed } from 'vue'
 
+import './study-chart-theme.css'
+
 const props = defineProps<{
   entries: StudyDailyHistoryEntry[]
 }>()
@@ -18,7 +20,7 @@ const hasHistoryData = computed(() => {
 
 const chartRows = computed(() => {
   const maxMinutes = maxFocusMinutes.value
-  return props.entries.map((entry) => {
+  return props.entries.map((entry, index) => {
     const ratio = maxMinutes > 0 ? entry.focusMinutes / maxMinutes : 0
     const heightPercent = entry.focusMinutes > 0
       ? `${Math.max(8, Math.round(ratio * 100))}%`
@@ -30,6 +32,7 @@ const chartRows = computed(() => {
       focusMinutes: entry.focusMinutes,
       focusSessions: entry.focusSessions,
       heightPercent,
+      isToday: index === props.entries.length - 1,
     }
   })
 })
@@ -38,18 +41,22 @@ const chartRows = computed(() => {
 <template>
   <section
     :class="[
-      'rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2',
-      'dark:border-neutral-700/70 dark:bg-neutral-800/70',
+      'study-chart-card',
+      'px-2.5 py-2',
     ]"
   >
-    <div :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-200']">
-      最近 7 天专注
+    <div class="study-chart-header">
+      <div>
+        <h3 class="study-chart-title">
+          最近 7 天专注
+        </h3>
+      </div>
     </div>
 
     <div
       v-if="!hasHistoryData"
       data-testid="study-history-empty"
-      :class="['mt-2 rounded-md border border-dashed border-neutral-300/70 px-2 py-2 text-xs text-neutral-500 dark:border-neutral-700/70 dark:text-neutral-400']"
+      class="study-chart-empty"
     >
       还没有足够的历史数据
     </div>
@@ -57,7 +64,7 @@ const chartRows = computed(() => {
     <div
       v-else
       data-testid="study-history-bar-chart"
-      :class="['mt-2 grid grid-cols-7 items-end gap-1.5']"
+      :class="['study-chart-body grid grid-cols-7 items-end gap-1.5']"
     >
       <div
         v-for="entry in chartRows"
@@ -70,7 +77,10 @@ const chartRows = computed(() => {
         <div
           :title="`${entry.dayKey}：${entry.focusMinutes} 分钟（${entry.focusSessions} 轮）`"
           :class="[
-            'w-full rounded-sm bg-primary-300/85 transition-all dark:bg-primary-500/70',
+            'w-full rounded-sm transition-all',
+            entry.isToday
+              ? 'bg-sky-400 dark:bg-sky-300'
+              : 'bg-primary-300/85 dark:bg-primary-500/70',
             'min-h-1',
           ]"
           :style="{ height: entry.heightPercent }"
@@ -79,6 +89,20 @@ const chartRows = computed(() => {
           {{ entry.dayLabel }}
         </div>
       </div>
+    </div>
+
+    <div
+      v-if="hasHistoryData"
+      class="study-chart-legend"
+    >
+      <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-dot" :class="['bg-primary-400 dark:bg-primary-300']" />
+        专注分钟
+      </span>
+      <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-dot" :class="['bg-sky-400 dark:bg-sky-300']" />
+        今日
+      </span>
     </div>
   </section>
 </template>

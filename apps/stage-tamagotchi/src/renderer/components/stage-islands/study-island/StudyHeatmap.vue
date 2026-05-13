@@ -3,6 +3,8 @@ import type { StudyDailyHistoryEntry } from '@proj-airi/stage-ui/stores/modules/
 
 import { computed } from 'vue'
 
+import './study-chart-theme.css'
+
 const props = defineProps<{
   entries: StudyDailyHistoryEntry[]
 }>()
@@ -58,23 +60,28 @@ function resolveHeatClass(heatLevel: number) {
 <template>
   <section
     :class="[
-      'rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2',
-      'dark:border-neutral-700/70 dark:bg-neutral-800/70',
+      'study-chart-card',
+      'px-2.5 py-2',
     ]"
   >
-    <div :class="['flex items-center justify-between gap-2']">
-      <div :class="['text-xs font-semibold text-neutral-700 dark:text-neutral-200']">
-        学习热力图
+    <div class="study-chart-header">
+      <div>
+        <h3 class="study-chart-title">
+          学习热力图
+        </h3>
+        <p class="study-chart-subtitle">
+          颜色越深，专注投入越高
+        </p>
       </div>
-      <div :class="['text-[11px] text-neutral-500 dark:text-neutral-400']">
+      <span class="study-chart-subtitle">
         最近 {{ entries.length }} 天
-      </div>
+      </span>
     </div>
 
     <div
       v-if="!hasHistoryData"
       data-testid="study-heatmap-empty"
-      :class="['mt-2 rounded-md border border-dashed border-neutral-300/70 px-2 py-2 text-xs text-neutral-500 dark:border-neutral-700/70 dark:text-neutral-400']"
+      class="study-chart-empty"
     >
       暂无历史数据
     </div>
@@ -82,21 +89,37 @@ function resolveHeatClass(heatLevel: number) {
     <div
       v-else
       data-testid="study-history-heatmap"
-      :class="['mt-2 grid grid-cols-7 gap-1.5']"
+      :class="['study-chart-body grid grid-cols-7 gap-1.5']"
     >
       <div
         v-for="cell in heatmapCells"
         :key="cell.dayKey"
         :title="`${cell.dayKey}：${cell.focusMinutes} 分钟（${cell.focusSessions} 轮）`"
         :class="[
-          'h-4 rounded-sm transition-colors',
+          'h-4 rounded-md transition-colors',
           resolveHeatClass(cell.heatLevel),
         ]"
       />
     </div>
 
-    <div :class="['mt-2 text-[11px] text-neutral-500 dark:text-neutral-400']">
-      颜色越深，专注量越高
+    <div
+      v-if="hasHistoryData"
+      class="study-chart-legend"
+    >
+      <span>少</span>
+      <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-dot bg-primary-200/80 dark:bg-primary-500/35" />
+      </span>
+      <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-dot bg-primary-300/85 dark:bg-primary-500/60" />
+      </span>
+      <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-dot bg-primary-400/90 dark:bg-primary-500/80" />
+      </span>
+      <span :class="['inline-flex items-center gap-1']">
+        <span class="study-chart-legend-dot bg-primary-500 dark:bg-primary-400" />
+      </span>
+      <span>多</span>
     </div>
   </section>
 </template>

@@ -5,12 +5,15 @@ import { computed } from 'vue'
 
 import { buildTaskPriorityStats } from '../../../utils/study-chart-data'
 
+import './study-chart-theme.css'
+
 const props = defineProps<{
   tasks: StudyTask[]
 }>()
 
 const priorityStats = computed(() => buildTaskPriorityStats(props.tasks))
 const maxRowCount = computed(() => Math.max(1, ...priorityStats.value.rows.map(row => row.total)))
+const highPriorityPending = computed(() => priorityStats.value.rows.find(row => row.priority === 'high')?.pending ?? 0)
 </script>
 
 <template>
@@ -18,35 +21,38 @@ const maxRowCount = computed(() => Math.max(1, ...priorityStats.value.rows.map(r
     data-testid="study-task-priority-chart"
     :class="[
       'study-chart-card',
-      'rounded-xl border border-neutral-200/80 bg-white px-3 py-3',
-      'dark:border-neutral-700/70 dark:bg-neutral-900/70',
+      'px-3 py-3',
     ]"
   >
-    <h3 :class="['text-sm font-semibold text-neutral-700 dark:text-neutral-100']">
-      任务优先级分布
-    </h3>
+    <div class="study-chart-header">
+      <div>
+        <h3 class="study-chart-title">
+          任务优先级分布
+        </h3>
+        <p class="study-chart-subtitle">
+          观察高/中/低优先级任务的完成进度
+        </p>
+      </div>
+    </div>
 
     <div
       v-if="priorityStats.totalTasks === 0"
       data-testid="study-task-priority-empty"
-      :class="[
-        'mt-3 rounded-lg border border-dashed border-neutral-300/70 px-3 py-4 text-xs text-neutral-500',
-        'dark:border-neutral-700/70 dark:text-neutral-400',
-      ]"
+      class="study-chart-empty"
     >
       还没有任务数据
     </div>
 
     <div
       v-else
-      :class="['mt-3 grid grid-cols-1 gap-2']"
+      :class="['study-chart-body grid grid-cols-1 gap-2']"
     >
       <article
         v-for="row in priorityStats.rows"
         :key="row.priority"
       >
         <div :class="['mb-1 flex items-center justify-between text-xs']">
-          <span :class="['text-neutral-600 dark:text-neutral-300']">{{ row.label }}</span>
+          <span class="study-chart-muted">{{ row.label }}</span>
           <span :class="['text-neutral-500 dark:text-neutral-400']">{{ row.total }} 项</span>
         </div>
         <div :class="['h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700']">
@@ -55,10 +61,10 @@ const maxRowCount = computed(() => Math.max(1, ...priorityStats.value.rows.map(r
             :class="[
               'h-full rounded-full',
               row.priority === 'high'
-                ? 'bg-rose-400'
+                ? 'bg-orange-400'
                 : row.priority === 'medium'
                   ? 'bg-amber-400'
-                  : 'bg-sky-400',
+                  : 'bg-sky-400/90',
             ]"
             :style="{ width: `${Math.max(8, Math.round((row.total / maxRowCount) * 100))}%` }"
           />
@@ -67,6 +73,29 @@ const maxRowCount = computed(() => Math.max(1, ...priorityStats.value.rows.map(r
           已完成 {{ row.completed }} · 未完成 {{ row.pending }}
         </div>
       </article>
+
+      <div class="study-chart-legend">
+        <span :class="['inline-flex items-center gap-1']">
+          <span class="study-chart-legend-dot" :class="['bg-orange-400']" />
+          高优先级
+        </span>
+        <span :class="['inline-flex items-center gap-1']">
+          <span class="study-chart-legend-dot" :class="['bg-amber-400']" />
+          中优先级
+        </span>
+        <span :class="['inline-flex items-center gap-1']">
+          <span class="study-chart-legend-dot" :class="['bg-sky-400/90']" />
+          低优先级
+        </span>
+      </div>
+
+      <p
+        v-if="highPriorityPending > 0"
+        data-testid="study-task-priority-high-pending"
+        class="study-chart-caption"
+      >
+        还有 <span class="study-chart-value">{{ highPriorityPending }}</span> 个高优先级任务
+      </p>
     </div>
   </section>
 </template>

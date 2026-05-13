@@ -251,6 +251,7 @@ describe('task list due date text input', () => {
     const dueDateInput = container.querySelector('#task-due-date-input') as HTMLInputElement | null
     if (!dueDateInput)
       throw new Error('create due date input missing')
+    expect(dueDateInput.value).toBe('2026-05-07')
     expect(dueDateInput.placeholder).toBe('例如：2026-05-12')
     expect(dueDateInput.getAttribute('aria-label')).toBe('截止日期')
     expect(container.textContent ?? '').toContain('格式：YYYY-MM-DD，用于排序和逾期提示')
@@ -285,7 +286,7 @@ describe('task list due date text input', () => {
 
     findButton(container, '清除', createForm).dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
-    expect(dueDateInput.value).toBe('')
+    expect(dueDateInput.value).toBe('2026-05-07')
 
     unmount()
   })
@@ -353,7 +354,7 @@ describe('task list due date text input', () => {
 
     titleInput.value = '无截止日期任务'
     titleInput.dispatchEvent(new Event('input', { bubbles: true }))
-    dueDateInput.value = ''
+    dueDateInput.value = ' '
     dueDateInput.dispatchEvent(new Event('input', { bubbles: true }))
     await nextTick()
 

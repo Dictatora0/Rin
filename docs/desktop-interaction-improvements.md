@@ -313,6 +313,31 @@ The first Move Mode iteration used a visible centered panel. Real-device validat
   - 新增专注质量概览表
   - 新增优先级任务分布表
 
+## Study Analytics Presentation Polish（Round 8）
+
+- 不新增图表数量，继续使用 6 个既有学习图表：
+  - 最近 7 天专注柱状图
+  - 学习热力图
+  - 最近 14 天学习趋势
+  - 任务完成结构
+  - 专注质量概览
+  - 任务优先级分布
+- 图表视觉语言统一：
+  - 统一 `study-chart-card / header / title / subtitle / body / empty / legend / caption` 样式结构。
+  - 统一浅色/深色可读性与间距节奏，增强课程展示截图质量。
+- 配色语义统一（轻量 CSS 变量，无重依赖）：
+  - primary：专注趋势与时长
+  - success：任务完成
+  - warning：提醒与中优先级
+  - danger：逾期与中断（小面积）
+  - muted：网格与辅助文本
+- 设置页图表区改为三分区：
+  - 趋势分析
+  - 任务分析
+  - 质量与历史
+- 保持 Study Floating Panel 轻量，不把全部重图表塞入浮动面板。
+- 继续使用轻量 SVG/CSS 实现，不引入重型图表库，兼顾性能与维护成本。
+
 ## Demo steps
 
 1. Run `pnpm dev:tamagotchi`.

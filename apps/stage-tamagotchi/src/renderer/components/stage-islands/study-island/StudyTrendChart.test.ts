@@ -43,8 +43,10 @@ describe('studyTrendChart', () => {
     await nextTick()
 
     expect(container.textContent).toContain('最近 14 天学习趋势')
+    expect(container.textContent).toContain('用连续趋势理解专注投入变化')
     expect(container.textContent).toContain('还没有足够的历史数据')
     expect(container.querySelector('[data-testid="study-trend-svg"]')).toBeNull()
+    expect(container.querySelector('.study-chart-card')).not.toBeNull()
 
     unmount()
   })
@@ -69,6 +71,10 @@ describe('studyTrendChart', () => {
     expect(svg.querySelectorAll('polyline').length).toBe(1)
     expect(svg.querySelectorAll('polygon').length).toBe(1)
     expect(svg.querySelectorAll('circle').length).toBeGreaterThan(0)
+    expect(svg.getAttribute('aria-label')).toBe('最近 14 天学习趋势图')
+    expect(container.textContent).toContain('专注分钟')
+    expect(container.textContent).toContain('近 14 天累计')
+    expect(container.querySelector('.study-chart-card')).not.toBeNull()
 
     unmount()
   })
