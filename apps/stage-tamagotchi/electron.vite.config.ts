@@ -88,279 +88,294 @@ function verifyLocalVisionAssetsPlugin() {
   }
 }
 
-export default defineConfig({
-  main: {
-    build: {
-      externalizeDeps: {
-        include: [
-          'electron-click-drag-plugin',
-        ],
+export default defineConfig(({ command }) => {
+  const isServe = command === 'serve'
+
+  return {
+    main: {
+      build: {
+        externalizeDeps: {
+          include: [
+            'electron-click-drag-plugin',
+          ],
+        },
+        // NOTICE:
+        // Electron dev mode needs file watching for main/preload rebuilds, but production
+        // `electron-vite build` is a one-shot compilation. Leaving `build.watch` enabled
+        // during build keeps Rollup/Chokidar watchers alive and contributes to EMFILE on
+        // larger monorepos before renderer compilation even starts.
+        // Removal condition: safe to remove once electron-vite exposes a build-only watch
+        // boundary or this project stops sharing one config between serve/build.
+        watch: isServe
+          ? {
+              exclude: [
+                '**/node_modules/**',
+                '**/.git/**',
+                '**/out/**',
+                '**/dist/**',
+                '**/coverage/**',
+                '**/.turbo/**',
+                '**/.vite/**',
+              ],
+            }
+          : undefined,
       },
-      watch: {
-        exclude: [
-          '**/node_modules/**',
-          '**/.git/**',
-          '**/out/**',
-          '**/dist/**',
-          '**/coverage/**',
-          '**/.turbo/**',
-          '**/.vite/**',
-        ],
-      },
-    },
-    plugins: [
-      {
+      plugins: [
+        {
         // To replace `build.rolldownOptions`, as electron-vite still uses the deprecated
         // `rollupOptions`, using `rollupOptions` and `rolldownOptions` at the same
         // time may lead to unexpected merge results. Using `rollupOptions` to manipulate
         // `manualChunks` also did not work. Therefore, it was transformed into a plugin
         // declaration with the recommended `codeSplitting` option.
-        name: 'manual-chunks',
-        outputOptions(options) {
-          options.codeSplitting = {
-            groups: [
-              {
-                name(moduleId) {
+          name: 'manual-chunks',
+          outputOptions(options) {
+            options.codeSplitting = {
+              groups: [
+                {
+                  name(moduleId) {
                   // https://github.com/lobehub/lobehub/blob/6ecba929b738e1259e15d17e7643941e015324ee/apps/desktop/electron.vite.config.ts#L54
                   // Prevent debug package from being bundled into index.js to avoid side-effect pollution
-                  if (moduleId.includes('node_modules/debug')) {
-                    return 'vendor-debug'
-                  }
+                    if (moduleId.includes('node_modules/debug')) {
+                      return 'vendor-debug'
+                    }
+                  },
                 },
-              },
-              {
-                name(moduleId) {
+                {
+                  name(moduleId) {
                   // https://github.com/lobehub/lobehub/blob/6ecba929b738e1259e15d17e7643941e015324ee/apps/desktop/electron.vite.config.ts#L54
                   // Prevent debug package from being bundled into index.js to avoid side-effect pollution
-                  if (moduleId.includes('node_modules/h3')) {
-                    return 'vendor-h3'
-                  }
+                    if (moduleId.includes('node_modules/h3')) {
+                      return 'vendor-h3'
+                    }
+                  },
                 },
-              },
-            ],
-          }
+              ],
+            }
 
-          return options
+            return options
+          },
+        },
+        Info(),
+      ],
+
+      resolve: {
+        alias: {
+          '@proj-airi/i18n': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src')),
         },
       },
-      Info(),
-    ],
-
-    resolve: {
-      alias: {
-        '@proj-airi/i18n': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src')),
-      },
     },
-  },
 
-  preload: {
-    build: {
-      watch: {
+    preload: {
+      build: {
+        watch: isServe
+          ? {
+              exclude: [
+                '**/node_modules/**',
+                '**/.git/**',
+                '**/out/**',
+                '**/dist/**',
+                '**/coverage/**',
+                '**/.turbo/**',
+                '**/.vite/**',
+              ],
+            }
+          : undefined,
+        lib: {
+          entry: {
+            'index': resolve(join(import.meta.dirname, 'src', 'preload', 'index.ts')),
+            'beat-sync': resolve(join(import.meta.dirname, 'src', 'preload', 'beat-sync.ts')),
+          },
+        },
+      },
+
+      plugins: [],
+    },
+
+    renderer: {
+      // Thanks to [@Maqsyo](https://github.com/Maqsyo)
+      // https://github.com/alex8088/electron-vite/issues/99#issuecomment-1862671727
+      base: './',
+
+      build: {
+        rolldownOptions: {
+          input: {
+            'main': resolve(join(import.meta.dirname, 'src', 'renderer', 'index.html')),
+            'beat-sync': resolve(join(import.meta.dirname, 'src', 'renderer', 'beat-sync.html')),
+          },
+        },
+      },
+
+      optimizeDeps: {
         exclude: [
-          '**/node_modules/**',
-          '**/.git/**',
-          '**/out/**',
-          '**/dist/**',
-          '**/coverage/**',
-          '**/.turbo/**',
-          '**/.vite/**',
+        // Internal Packages
+          '@proj-airi/stage-ui/*',
+          '@proj-airi/drizzle-duckdb-wasm',
+          '@proj-airi/drizzle-duckdb-wasm/*',
+          '@proj-airi/electron-screen-capture',
+
+          // Static Assets: Models, Images, etc.
+          'src/renderer/public/assets/*',
+
+          // Live2D SDK
+          '@framework/live2dcubismframework',
+          '@framework/math/cubismmatrix44',
+          '@framework/type/csmvector',
+          '@framework/math/cubismviewmatrix',
+          '@framework/cubismdefaultparameterid',
+          '@framework/cubismmodelsettingjson',
+          '@framework/effect/cubismbreath',
+          '@framework/effect/cubismeyeblink',
+          '@framework/model/cubismusermodel',
+          '@framework/motion/acubismmotion',
+          '@framework/motion/cubismmotionqueuemanager',
+          '@framework/type/csmmap',
+          '@framework/utils/cubismdebug',
+          '@framework/model/cubismmoc',
         ],
       },
-      lib: {
-        entry: {
-          'index': resolve(join(import.meta.dirname, 'src', 'preload', 'index.ts')),
-          'beat-sync': resolve(join(import.meta.dirname, 'src', 'preload', 'beat-sync.ts')),
+
+      resolve: {
+        alias: {
+          '@proj-airi/server-sdk': resolve(join(import.meta.dirname, '..', '..', 'packages', 'server-sdk', 'src')),
+          '@proj-airi/i18n': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src')),
+          // NOTICE: the @proj-airi/stage-ui alias resolves to a directory; rolldown
+          // concatenates sub-paths without a file extension, so bare .ts files at the
+          // stores/ root (e.g. mcp-tool-bridge.ts) are not found.  Add explicit aliases
+          // for each such file that the renderer imports from @proj-airi/stage-ui.
+          '@proj-airi/stage-ui/stores/mcp-tool-bridge': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src', 'stores', 'mcp-tool-bridge.ts')),
+          '@proj-airi/stage-ui': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src')),
+          '@proj-airi/stage-pages': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src')),
+          '@proj-airi/stage-shared': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-shared', 'src')),
         },
       },
-    },
 
-    plugins: [],
-  },
-
-  renderer: {
-    // Thanks to [@Maqsyo](https://github.com/Maqsyo)
-    // https://github.com/alex8088/electron-vite/issues/99#issuecomment-1862671727
-    base: './',
-
-    build: {
-      rolldownOptions: {
-        input: {
-          'main': resolve(join(import.meta.dirname, 'src', 'renderer', 'index.html')),
-          'beat-sync': resolve(join(import.meta.dirname, 'src', 'renderer', 'beat-sync.html')),
-        },
-      },
-    },
-
-    optimizeDeps: {
-      exclude: [
-        // Internal Packages
-        '@proj-airi/stage-ui/*',
-        '@proj-airi/drizzle-duckdb-wasm',
-        '@proj-airi/drizzle-duckdb-wasm/*',
-        '@proj-airi/electron-screen-capture',
-
-        // Static Assets: Models, Images, etc.
-        'src/renderer/public/assets/*',
-
-        // Live2D SDK
-        '@framework/live2dcubismframework',
-        '@framework/math/cubismmatrix44',
-        '@framework/type/csmvector',
-        '@framework/math/cubismviewmatrix',
-        '@framework/cubismdefaultparameterid',
-        '@framework/cubismmodelsettingjson',
-        '@framework/effect/cubismbreath',
-        '@framework/effect/cubismeyeblink',
-        '@framework/model/cubismusermodel',
-        '@framework/motion/acubismmotion',
-        '@framework/motion/cubismmotionqueuemanager',
-        '@framework/type/csmmap',
-        '@framework/utils/cubismdebug',
-        '@framework/model/cubismmoc',
-      ],
-    },
-
-    resolve: {
-      alias: {
-        '@proj-airi/server-sdk': resolve(join(import.meta.dirname, '..', '..', 'packages', 'server-sdk', 'src')),
-        '@proj-airi/i18n': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src')),
-        // NOTICE: the @proj-airi/stage-ui alias resolves to a directory; rolldown
-        // concatenates sub-paths without a file extension, so bare .ts files at the
-        // stores/ root (e.g. mcp-tool-bridge.ts) are not found.  Add explicit aliases
-        // for each such file that the renderer imports from @proj-airi/stage-ui.
-        '@proj-airi/stage-ui/stores/mcp-tool-bridge': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src', 'stores', 'mcp-tool-bridge.ts')),
-        '@proj-airi/stage-ui': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src')),
-        '@proj-airi/stage-pages': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src')),
-        '@proj-airi/stage-shared': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-shared', 'src')),
-      },
-    },
-
-    server: {
-      fs: {
+      server: {
+        fs: {
         // To mute errors like:
         //   The request id ".../node_modules/@fontsource/sniglet/files/sniglet-latin-400-normal.woff" is outside of Vite serving allow list.
         //
         // See: https://vite.dev/config/server-options#server-fs-strict
-        strict: false,
-      },
-      watch: {
-        ignored: [
-          '**/node_modules/**',
-          '**/.git/**',
-          '**/out/**',
-          '**/dist/**',
-          '**/coverage/**',
-          '**/.turbo/**',
-          '**/.vite/**',
-        ],
-      },
-      warmup: {
-        clientFiles: [
-          `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src'))}/*.vue`,
-          `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src'))}/*.vue`,
-        ],
-      },
-      watch: {
-        // NOTICE:
-        // Renderer dev mode can hit EMFILE in monorepo environments with aggressive file watching.
-        // Keep watching focused on directories required by stage-tamagotchi runtime editing.
-        // Source/context: repeated `EMFILE: too many open files, watch` during `pnpm dev:tamagotchi`.
-        ignored: tamagotchiDevWatchIgnored,
-      },
-    },
-
-    worker: {
-      format: 'es',
-      rollupOptions: {
-        output: {
-          inlineDynamicImports: false,
+          strict: false,
         },
-      },
-    },
-
-    plugins: [
-      Info(),
-
-      {
-        name: 'proj-airi:defines',
-        config(ctx) {
-          const define: Record<string, any> = {
-            'import.meta.env.RUNTIME_ENVIRONMENT': '\'electron\'',
-          }
-          if (ctx.mode === 'development') {
-            define['import.meta.env.URL_MODE'] = '\'server\''
-          }
-          if (ctx.mode === 'production') {
-            define['import.meta.env.URL_MODE'] = '\'file\''
-          }
-
-          return { define }
+        warmup: {
+          clientFiles: [
+            `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src'))}/*.vue`,
+            `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src'))}/*.vue`,
+          ],
         },
+        watch: isServe
+          ? {
+              // NOTICE:
+              // Renderer dev mode can hit EMFILE in monorepo environments with aggressive file watching.
+              // Keep watching focused on directories required by stage-tamagotchi runtime editing.
+              // Source/context: repeated `EMFILE: too many open files, watch` during `pnpm dev:tamagotchi`.
+              ignored: [
+                ...tamagotchiDevWatchIgnored,
+                '**/.vite/**',
+              ],
+            }
+          : undefined,
       },
 
-      Inspect(),
-
-      Yaml(),
-
-      VueMacros({
-        plugins: {
-          vue: Vue({
-            include: [/\.vue$/, /\.md$/],
-            ...templateCompilerOptions,
-          }),
-          vueJsx: false,
-        },
-        betterDefine: false,
-      }),
-
-      VueRouter({
-        dts: resolve(import.meta.dirname, 'src/renderer/typed-router.d.ts'),
-        routesFolder: [
-          {
-            src: resolve(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src', 'pages'),
-            exclude: base => [
-              ...base,
-              '**/settings/account/index.vue',
-              '**/settings/connection/index.vue',
-              '**/settings/data/index.vue',
-              '**/settings/models/index.vue',
-              '**/settings/system/general.vue',
-              '**/settings/modules/mcp.vue',
-              '**/devtools/index.vue',
-              '**/settings/index.vue',
-            ],
+      worker: {
+        format: 'es',
+        rollupOptions: {
+          output: {
+            inlineDynamicImports: false,
           },
-          resolve(import.meta.dirname, 'src', 'renderer', 'pages'),
-        ],
-        exclude: ['**/components/**'],
-      }),
+        },
+      },
 
-      VitePluginVueDevTools(),
+      plugins: [
+        Info(),
 
-      // https://github.com/JohnCampionJr/vite-plugin-vue-layouts
-      Layouts({
-        layoutsDirs: [
-          resolve(import.meta.dirname, 'src', 'renderer', 'layouts'),
-          resolve(import.meta.dirname, '..', '..', 'packages', 'stage-layouts', 'src', 'layouts'),
-        ],
-        pagesDirs: [resolve(import.meta.dirname, 'src', 'renderer', 'pages')],
-      }),
+        {
+          name: 'proj-airi:defines',
+          config(ctx) {
+            const define: Record<string, any> = {
+              'import.meta.env.RUNTIME_ENVIRONMENT': '\'electron\'',
+            }
+            if (ctx.mode === 'development') {
+              define['import.meta.env.URL_MODE'] = '\'server\''
+            }
+            if (ctx.mode === 'production') {
+              define['import.meta.env.URL_MODE'] = '\'file\''
+            }
 
-      UnoCss(),
+            return { define }
+          },
+        },
 
-      // https://github.com/intlify/bundle-tools/tree/main/packages/unplugin-vue-i18n
-      VueI18n({
-        runtimeOnly: true,
-        compositionOnly: true,
-        fullInstall: true,
-      }),
+        Inspect(),
 
-      DownloadLive2DSDK(),
-      Download('https://dist.ayaka.moe/live2d-models/hiyori_free_zh.zip', 'hiyori_free_zh.zip', 'live2d/models', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
-      Download('https://dist.ayaka.moe/live2d-models/hiyori_pro_zh.zip', 'hiyori_pro_zh.zip', 'live2d/models', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
-      Download('https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-A/AvatarSample_A.vrm', 'AvatarSample_A.vrm', 'vrm/models/AvatarSample-A', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
-      Download('https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-B/AvatarSample_B.vrm', 'AvatarSample_B.vrm', 'vrm/models/AvatarSample-B', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
-      verifyLocalVisionAssetsPlugin(),
-    ],
-  },
+        Yaml(),
+
+        VueMacros({
+          plugins: {
+            vue: Vue({
+              include: [/\.vue$/, /\.md$/],
+              ...templateCompilerOptions,
+            }),
+            vueJsx: false,
+          },
+          betterDefine: false,
+        }),
+
+        VueRouter({
+          dts: resolve(import.meta.dirname, 'src/renderer/typed-router.d.ts'),
+          // NOTICE:
+          // unplugin-vue-router defaults `watch` to `!process.env.CI`, which also enables
+          // Chokidar during local production builds. On this monorepo that opens enough file
+          // descriptors to trigger `EMFILE` before renderer build completes. Build mode only
+          // needs a one-time page scan, so we disable route watching outside `serve`.
+          watch: isServe,
+          routesFolder: [
+            {
+              src: resolve(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src', 'pages'),
+              exclude: base => [
+                ...base,
+                '**/settings/account/index.vue',
+                '**/settings/connection/index.vue',
+                '**/settings/data/index.vue',
+                '**/settings/models/index.vue',
+                '**/settings/system/general.vue',
+                '**/settings/modules/mcp.vue',
+                '**/devtools/index.vue',
+                '**/settings/index.vue',
+              ],
+            },
+            resolve(import.meta.dirname, 'src', 'renderer', 'pages'),
+          ],
+          exclude: ['**/components/**'],
+        }),
+
+        VitePluginVueDevTools(),
+
+        // https://github.com/JohnCampionJr/vite-plugin-vue-layouts
+        Layouts({
+          layoutsDirs: [
+            resolve(import.meta.dirname, 'src', 'renderer', 'layouts'),
+            resolve(import.meta.dirname, '..', '..', 'packages', 'stage-layouts', 'src', 'layouts'),
+          ],
+          pagesDirs: [resolve(import.meta.dirname, 'src', 'renderer', 'pages')],
+        }),
+
+        UnoCss(),
+
+        // https://github.com/intlify/bundle-tools/tree/main/packages/unplugin-vue-i18n
+        VueI18n({
+          runtimeOnly: true,
+          compositionOnly: true,
+          fullInstall: true,
+        }),
+
+        DownloadLive2DSDK(),
+        Download('https://dist.ayaka.moe/live2d-models/hiyori_free_zh.zip', 'hiyori_free_zh.zip', 'live2d/models', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
+        Download('https://dist.ayaka.moe/live2d-models/hiyori_pro_zh.zip', 'hiyori_pro_zh.zip', 'live2d/models', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
+        Download('https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-A/AvatarSample_A.vrm', 'AvatarSample_A.vrm', 'vrm/models/AvatarSample-A', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
+        Download('https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-B/AvatarSample_B.vrm', 'AvatarSample_B.vrm', 'vrm/models/AvatarSample-B', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
+        verifyLocalVisionAssetsPlugin(),
+      ],
+    },
+  }
 })

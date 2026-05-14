@@ -42,7 +42,7 @@ else {
 
 export default {
   appId: 'ai.moeru.airi',
-  productName: 'AIRI',
+  productName: 'Rin',
   directories: {
     output: 'dist',
     buildResources: 'build',
@@ -207,10 +207,10 @@ export default {
     },
     extendInfo: [
       {
-        NSMicrophoneUsageDescription: 'AIRI requires microphone access for voice interaction',
+        NSMicrophoneUsageDescription: 'Rin requires microphone access for voice interaction',
       },
       {
-        NSCameraUsageDescription: 'AIRI requires camera access for vision understanding',
+        NSCameraUsageDescription: 'Rin requires camera access for vision interaction',
       },
     ],
     // For self-publishing, testing, and distribution after modified the code without access to
