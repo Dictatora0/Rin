@@ -508,6 +508,7 @@ describe('vision island usability pass', () => {
 
     const text = container.textContent ?? ''
     expect(text).toContain('Rin 暂时没有响应')
+    expect(text.match(/Rin 暂时没有响应/g)?.length ?? 0).toBe(1)
     expect(text).toContain('请让面部出现在画面中。')
 
     unmount()

@@ -602,6 +602,17 @@ const responseExplanation = computed(() => {
     lastStableSubjectPosition: lastStableSubjectPosition.value,
   })
 })
+const responseStateHeadline = computed(() => {
+  return responseExplanation.value.responding ? 'Rin 当前状态正常' : 'Rin 暂时没有响应'
+})
+const showResponseStateHeadline = computed(() => {
+  const summary = responseExplanation.value.summary?.trim() ?? ''
+  if (!summary)
+    return true
+  const normalizedSummary = summary.replace(/[。！!？?，,\s]/g, '')
+  const normalizedHeadline = responseStateHeadline.value.replace(/[。！!？?，,\s]/g, '')
+  return !normalizedSummary.includes(normalizedHeadline)
+})
 const visibleFeedbackHistory = computed(() => {
   return feedbackHistoryExpanded.value
     ? [...visionFeedbackHistory.value].reverse()
@@ -1235,8 +1246,8 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           <div :class="['font-semibold']">
             为什么 Rin 没响应？
           </div>
-          <div :class="['mt-1']">
-            {{ responseExplanation.responding ? 'Rin 当前状态正常' : 'Rin 暂时没有响应' }}
+          <div v-if="showResponseStateHeadline" :class="['mt-1']">
+            {{ responseStateHeadline }}
           </div>
           <div :class="['mt-1']">
             {{ responseExplanation.summary }}

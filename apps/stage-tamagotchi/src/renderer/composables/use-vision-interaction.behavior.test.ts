@@ -55,6 +55,14 @@ const gestureRecognizerRuntimeHarness = vi.hoisted(() => {
     recognizeForVideoMock,
   }
 })
+const faceLandmarkerRuntimeHarness = vi.hoisted(() => {
+  const detectForVideoMock = vi.fn(() => {
+    return queuedFaceResults.shift() ?? createFaceLandmarkerResult([createFaceAt(0.5, 0.5)])
+  })
+  return {
+    detectForVideoMock,
+  }
+})
 
 const {
   openCvStatusRef,
@@ -65,6 +73,7 @@ const {
   evaluateFaceQualityMock,
 } = interactionBehaviorHarness
 const { recognizeForVideoMock } = gestureRecognizerRuntimeHarness
+const { detectForVideoMock } = faceLandmarkerRuntimeHarness
 
 const evaluateFrameMock = vi.fn(() => ({ status: 'no_face' as const }))
 const consumeJustMatchedWelcomeMock = vi.fn(() => false)
@@ -266,9 +275,7 @@ vi.mock('@mediapipe/tasks-vision', () => {
     },
     FaceLandmarker: {
       createFromOptions: vi.fn(async () => ({
-        detectForVideo: vi.fn(() => {
-          return queuedFaceResults.shift() ?? createFaceLandmarkerResult([createFaceAt(0.5, 0.5)])
-        }),
+        detectForVideo: detectForVideoMock,
         close: vi.fn(() => {}),
       })),
     },
@@ -331,6 +338,8 @@ function createMockVideoElement() {
     muted: false,
     playsInline: false,
     readyState: 3,
+    videoWidth: 960,
+    videoHeight: 540,
     paused: false,
     currentTime: 0,
     play: vi.fn(async () => {}),
@@ -397,6 +406,7 @@ function resetInteractionMocks() {
   })
   saveEncryptedProfileMock.mockReset()
   saveEncryptedProfileMock.mockResolvedValue({ ok: true })
+  detectForVideoMock.mockClear()
   recognizeForVideoMock.mockClear()
 }
 
@@ -618,6 +628,41 @@ describe('useVisionInteraction behavior locks', () => {
     expect(interaction.lastGesture.value).toBe('none')
     expect(interaction.gestureState.value).toBe('idle')
     expect(interaction.lastEvent.value).toBeNull()
+
+    await interaction.stop()
+    app.unmount()
+  })
+
+  it('skips frame inference when video dimensions are invalid and resumes once dimensions recover', async () => {
+    const { interaction, videoElement, app } = await setupInteractionHarness({
+      loopIntervalMs: 80,
+    })
+
+    ;(videoElement as any).videoWidth = 0
+    ;(videoElement as any).videoHeight = 0
+
+    queueFrames({
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 1,
+    })
+    await runNextAnimationFrame(200, videoElement, 1)
+
+    expect(detectForVideoMock).toHaveBeenCalledTimes(0)
+    expect(interaction.lastInferenceAt.value).toBeNull()
+
+    ;(videoElement as any).videoWidth = 960
+    ;(videoElement as any).videoHeight = 540
+
+    queueFrames({
+      gesture: 'None',
+      face: [createFaceAt(0.5, 0.5)],
+      count: 1,
+    })
+    await runNextAnimationFrame(320, videoElement, 2)
+
+    expect(detectForVideoMock).toHaveBeenCalledTimes(1)
+    expect(interaction.lastInferenceAt.value).not.toBeNull()
 
     await interaction.stop()
     app.unmount()

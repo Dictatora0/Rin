@@ -2298,6 +2298,13 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
           return
         }
 
+        const videoWidth = Number.isFinite(video.videoWidth) ? video.videoWidth : 0
+        const videoHeight = Number.isFinite(video.videoHeight) ? video.videoHeight : 0
+        if (videoWidth <= 0 || videoHeight <= 0) {
+          rafId = requestAnimationFrame(tick)
+          return
+        }
+
         const activeRuntime = visionRuntime.getMediaPipeRuntime()
         if (!activeRuntime) {
           if (visionRuntime.runtimeStatus.value !== 'warming' && visionRuntime.mediaPipeStatus.value !== 'loading') {
@@ -2334,6 +2341,13 @@ export function useVisionInteraction(options?: VisionInteractionOptions) {
             await video.play()
           }
           catch {}
+        }
+
+        const postPlayVideoWidth = Number.isFinite(video.videoWidth) ? video.videoWidth : 0
+        const postPlayVideoHeight = Number.isFinite(video.videoHeight) ? video.videoHeight : 0
+        if (postPlayVideoWidth <= 0 || postPlayVideoHeight <= 0) {
+          rafId = requestAnimationFrame(tick)
+          return
         }
 
         if (hasFiniteFrameTime)
