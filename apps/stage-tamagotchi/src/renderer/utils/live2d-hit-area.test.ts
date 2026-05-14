@@ -191,6 +191,60 @@ describe('live2d hit area geometry', () => {
     expect(isPointInLive2DFadeTriggerArea(ringPoint, fade.area)).toBe(true)
   })
 
+  it('keeps upper-body fade trigger noticeably wider than interaction hit area', () => {
+    const hit = computeLive2DHitArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'upper-body',
+      userScale: 1,
+      zonePreset: 'normal',
+    })
+    const fade = computeLive2DFadeTriggerArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'upper-body',
+      userScale: 1,
+      zonePreset: 'normal',
+      fadeMarginX: 48,
+      fadeMarginY: 60,
+    })
+
+    expect(fade.area.width).toBeGreaterThan(hit.area.width + 80)
+    expect(fade.area.top).toBeLessThan(hit.area.top)
+  })
+
+  it('expands fade trigger area differently for upper-body and full-body modes', () => {
+    const upperBody = computeLive2DFadeTriggerArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'upper-body',
+      userScale: 1,
+      zonePreset: 'normal',
+      fadeMarginX: 48,
+      fadeMarginY: 60,
+    })
+    const fullBody = computeLive2DFadeTriggerArea({
+      viewportWidth: 450,
+      viewportHeight: 620,
+      modelWidth: 1200,
+      modelHeight: 2100,
+      fitPreference: 'full-body',
+      userScale: 1,
+      zonePreset: 'normal',
+      fadeMarginX: 48,
+      fadeMarginY: 60,
+    })
+
+    expect(upperBody.area.width).toBeGreaterThan(fullBody.area.width)
+    expect(upperBody.area.top).toBeLessThanOrEqual(fullBody.area.top)
+  })
+
   it('returns fade=false outside fade trigger area', () => {
     const fade = computeLive2DFadeTriggerArea({
       viewportWidth: 450,
@@ -202,10 +256,14 @@ describe('live2d hit area geometry', () => {
       zonePreset: 'normal',
     })
 
-    const outsidePoint = {
-      x: Math.min(449, fade.area.right + 8),
-      y: Math.min(619, fade.area.bottom + 8),
-    }
+    const outsidePoint
+      = fade.area.left > 0
+        ? { x: fade.area.left - 1, y: (fade.area.top + fade.area.bottom) / 2 }
+        : fade.area.top > 0
+          ? { x: (fade.area.left + fade.area.right) / 2, y: fade.area.top - 1 }
+          : fade.area.right < 450
+            ? { x: fade.area.right + 1, y: (fade.area.top + fade.area.bottom) / 2 }
+            : { x: (fade.area.left + fade.area.right) / 2, y: fade.area.bottom + 1 }
 
     expect(isPointInLive2DFadeTriggerArea(outsidePoint, fade.area)).toBe(false)
   })

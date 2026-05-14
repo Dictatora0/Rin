@@ -46,6 +46,14 @@ interface HitAreaRatioProfile {
   bottomInsetRatio: number
 }
 
+interface FadeTriggerExpansionProfile {
+  widthRatio: number
+  extraTopRatio: number
+  extraBottomRatio: number
+  minMarginX: number
+  minMarginY: number
+}
+
 const HIT_ZONE_PRESET_PROFILE: Record<Live2DHitZonePreset, HitAreaRatioProfile> = {
   precise: {
     widthRatio: 0.42,
@@ -61,6 +69,44 @@ const HIT_ZONE_PRESET_PROFILE: Record<Live2DHitZonePreset, HitAreaRatioProfile> 
     widthRatio: 0.58,
     topInsetRatio: 0.08,
     bottomInsetRatio: 0.06,
+  },
+}
+
+const FADE_TRIGGER_EXPANSION_PROFILE_BY_MODE: Record<Live2DResolvedFitMode, FadeTriggerExpansionProfile> = {
+  'tall': {
+    widthRatio: 0.16,
+    extraTopRatio: 0.1,
+    extraBottomRatio: 0.08,
+    minMarginX: 54,
+    minMarginY: 58,
+  },
+  'normal': {
+    widthRatio: 0.18,
+    extraTopRatio: 0.12,
+    extraBottomRatio: 0.08,
+    minMarginX: 56,
+    minMarginY: 60,
+  },
+  'small': {
+    widthRatio: 0.14,
+    extraTopRatio: 0.14,
+    extraBottomRatio: 0.08,
+    minMarginX: 52,
+    minMarginY: 56,
+  },
+  'full-body': {
+    widthRatio: 0.14,
+    extraTopRatio: 0.09,
+    extraBottomRatio: 0.11,
+    minMarginX: 50,
+    minMarginY: 54,
+  },
+  'upper-body': {
+    widthRatio: 0.22,
+    extraTopRatio: 0.17,
+    extraBottomRatio: 0.07,
+    minMarginX: 62,
+    minMarginY: 64,
   },
 }
 
@@ -226,15 +272,42 @@ export function isPointInLive2DHitArea(point: { x: number, y: number }, area: Li
 export function computeLive2DFadeTriggerArea(input: ComputeLive2DFadeTriggerAreaInput): Live2DFadeTriggerAreaResult {
   const viewportWidth = toPositiveOrFallback(input.viewportWidth, 1)
   const viewportHeight = toPositiveOrFallback(input.viewportHeight, 1)
-  const marginX = toNonNegativeFiniteOrFallback(input.fadeMarginX, 44)
-  const marginY = toNonNegativeFiniteOrFallback(input.fadeMarginY, 56)
-
   const interaction = computeLive2DHitArea(input)
+  const modelWidth = toPositiveOrFallback(input.modelWidth, 1)
+  const modelHeight = toPositiveOrFallback(input.modelHeight, 1)
+  const userScale = toPositiveOrFallback(input.userScale ?? 1, 1)
+  const xOffsetPx = toFiniteOrFallback(input.xOffsetPx, 0)
+  const yOffsetPx = toFiniteOrFallback(input.yOffsetPx, 0)
+  const fitLayout = computeLive2DFitLayout({
+    viewportWidth,
+    viewportHeight,
+    modelWidth,
+    modelHeight,
+    userScale,
+    xOffsetPx,
+    yOffsetPx,
+    fitPreference: input.fitPreference,
+  })
+  const projectedWidth = Math.max(1, modelWidth * fitLayout.scale)
+  const projectedHeight = Math.max(1, modelHeight * fitLayout.scale)
+  const expansionProfile = FADE_TRIGGER_EXPANSION_PROFILE_BY_MODE[interaction.resolvedFitMode]
+  const marginX = Math.max(
+    toNonNegativeFiniteOrFallback(input.fadeMarginX, expansionProfile.minMarginX),
+    projectedWidth * expansionProfile.widthRatio,
+  )
+  const topMarginY = Math.max(
+    toNonNegativeFiniteOrFallback(input.fadeMarginY, expansionProfile.minMarginY),
+    projectedHeight * expansionProfile.extraTopRatio,
+  )
+  const bottomMarginY = Math.max(
+    toNonNegativeFiniteOrFallback(input.fadeMarginY, expansionProfile.minMarginY),
+    projectedHeight * expansionProfile.extraBottomRatio,
+  )
 
   const expandedLeft = clamp(interaction.area.left - marginX, 0, viewportWidth)
   const expandedRight = clamp(interaction.area.right + marginX, 0, viewportWidth)
-  const expandedTop = clamp(interaction.area.top - marginY, 0, viewportHeight)
-  const expandedBottom = clamp(interaction.area.bottom + marginY, 0, viewportHeight)
+  const expandedTop = clamp(interaction.area.top - topMarginY, 0, viewportHeight)
+  const expandedBottom = clamp(interaction.area.bottom + bottomMarginY, 0, viewportHeight)
 
   return {
     resolvedFitMode: interaction.resolvedFitMode,

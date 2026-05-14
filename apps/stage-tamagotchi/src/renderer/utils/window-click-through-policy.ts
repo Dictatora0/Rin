@@ -12,6 +12,7 @@ export interface WindowClickThroughBlockingStates {
 
 export interface ComputeWindowMouseIgnorePolicyInput {
   isPointerInsideLive2DHitArea: boolean
+  isPointerInsideLive2DFadeTriggerArea: boolean
   isLive2DFadedForReading: boolean
   isInsideProtectedControlElement: boolean
   isPointerInsideControls: boolean
@@ -301,16 +302,16 @@ export function computeWindowMouseIgnorePolicy(input: ComputeWindowMouseIgnorePo
     }
   }
 
-  if (input.isPointerInsideLive2DHitArea) {
-    if (input.isLive2DFadedForReading) {
-      return {
-        shouldIgnoreMouseEvents: true,
-        shouldFadeStage: true,
-        reason: 'live2d-faded-pass-through',
-        blockingStates: { ...input.blockingStates },
-      }
+  if ((input.isPointerInsideLive2DFadeTriggerArea || input.isPointerInsideLive2DHitArea) && input.isLive2DFadedForReading) {
+    return {
+      shouldIgnoreMouseEvents: true,
+      shouldFadeStage: true,
+      reason: 'live2d-faded-pass-through',
+      blockingStates: { ...input.blockingStates },
     }
+  }
 
+  if (input.isPointerInsideLive2DHitArea) {
     return {
       shouldIgnoreMouseEvents: false,
       shouldFadeStage: input.fadeOnHoverEnabled,

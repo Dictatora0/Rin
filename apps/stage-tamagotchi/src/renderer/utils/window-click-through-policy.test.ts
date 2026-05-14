@@ -12,6 +12,7 @@ describe('window click-through policy', () => {
   function createInput(overrides: Partial<Parameters<typeof computeWindowMouseIgnorePolicy>[0]> = {}) {
     return {
       isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: false,
       isLive2DFadedForReading: false,
       isInsideProtectedControlElement: false,
       isPointerInsideControls: false,
@@ -262,10 +263,24 @@ describe('window click-through policy', () => {
     expect(result.reason).toBe('live2d-faded-pass-through')
   })
 
+  /** @example fade trigger area should be enough to enter pass-through once stage has faded */
+  it('passes through when pointer is inside fade trigger area and faded mode is active', () => {
+    const result = computeWindowMouseIgnorePolicy(createInput({
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: true,
+      isLive2DFadedForReading: true,
+    }))
+
+    expect(result.shouldIgnoreMouseEvents).toBe(true)
+    expect(result.shouldFadeStage).toBe(true)
+    expect(result.reason).toBe('live2d-faded-pass-through')
+  })
+
   /** @example anchor should override faded pass-through for reliable recovery entry */
   it('keeps mouse events when pointer is inside anchor even if live2d faded is active', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
-      isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isLive2DFadedForReading: true,
       isPointerInsideControlAnchor: true,
     }))
@@ -277,7 +292,8 @@ describe('window click-through policy', () => {
   /** @example controls panel should override faded pass-through */
   it('keeps mouse events when pointer is inside controls panel even if live2d faded is active', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
-      isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isLive2DFadedForReading: true,
       isPointerInsideControls: true,
     }))
@@ -289,7 +305,8 @@ describe('window click-through policy', () => {
   /** @example study panel should override faded pass-through */
   it('keeps mouse events when pointer is inside study panel even if live2d faded is active', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
-      isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isLive2DFadedForReading: true,
       isPointerInsideStudyPanel: true,
     }))
@@ -301,7 +318,8 @@ describe('window click-through policy', () => {
   /** @example focused form should override faded pass-through */
   it('keeps mouse events with focused form field even if live2d faded is active', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
-      isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isLive2DFadedForReading: true,
       hasFocusedFormField: true,
     }))
@@ -313,7 +331,8 @@ describe('window click-through policy', () => {
   /** @example move mode flag alone should not override faded pass-through without move-hit-area */
   it('keeps pass-through when move mode enabled but pointer is outside move hit area', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
-      isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isLive2DFadedForReading: true,
       blockingStates: {
         stagePaused: false,
@@ -334,7 +353,8 @@ describe('window click-through policy', () => {
   /** @example move hit area should still receive mouse in move mode */
   it('keeps mouse events when pointer is inside move hit area even if live2d faded is active', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
-      isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isLive2DFadedForReading: true,
       isPointerInsideMoveHitArea: true,
     }))
@@ -346,7 +366,8 @@ describe('window click-through policy', () => {
   /** @example vision camera running should not override faded pass-through */
   it('keeps faded pass-through when vision camera is running', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
-      isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isLive2DFadedForReading: true,
       blockingStates: {
         stagePaused: false,
@@ -367,7 +388,8 @@ describe('window click-through policy', () => {
   /** @example study timer running should not override faded pass-through */
   it('keeps faded pass-through when study timer is running', () => {
     const result = computeWindowMouseIgnorePolicy(createInput({
-      isPointerInsideLive2DHitArea: true,
+      isPointerInsideLive2DHitArea: false,
+      isPointerInsideLive2DFadeTriggerArea: true,
       isLive2DFadedForReading: true,
       blockingStates: {
         stagePaused: false,

@@ -305,8 +305,8 @@ const live2dFadeTriggerAreaBounds = computed(() => {
     yOffsetPx: (Number.parseFloat(String(positionInPercentageString.value.y || '0')) / 100) * viewportHeight,
     fitPreference: live2dFitPreference.value ?? 'auto',
     zonePreset: 'normal',
-    fadeMarginX: 42,
-    fadeMarginY: 56,
+    fadeMarginX: 48,
+    fadeMarginY: 60,
   })
 
   return fadeTrigger.area
@@ -558,6 +558,7 @@ function refreshWindowMouseIgnorePolicy(trigger: 'pointer-move' | 'fade-state-ch
 
   const policy = computeWindowMouseIgnorePolicy({
     isPointerInsideLive2DHitArea: live2dCharacterHit.value,
+    isPointerInsideLive2DFadeTriggerArea: isPointerInsideLive2DFadeTriggerArea.value,
     isLive2DFadedForReading: isLive2DFadedForReading.value,
     isInsideProtectedControlElement: isInsideProtectedControlElement.value,
     isPointerInsideControls: isControlsPanelHovering.value,
@@ -1026,7 +1027,8 @@ watch([moveModeEnabled, () => settingsRefs.live2dFitPreference.value], () => {
     <div
       :class="[
         'relative h-full w-full items-end gap-2',
-        'transition-opacity duration-250 ease-in-out',
+        'transition-opacity ease-out',
+        shouldFadeOnCursorWithin ? 'duration-90' : 'duration-180',
       ]"
     >
       <div
@@ -1036,7 +1038,8 @@ watch([moveModeEnabled, () => settingsRefs.live2dFitPreference.value], () => {
           'top-0 left-0 w-full h-full',
           'overflow-hidden',
           'rounded-2xl',
-          'transition-opacity duration-150 ease-in-out',
+          'transition-opacity',
+          shouldFadeOnCursorWithin ? 'duration-75 ease-out' : 'duration-180 ease-in',
         ]"
       >
         <StatusIsland ref="statusIslandRef" class="relative z-60" />
