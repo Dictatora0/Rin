@@ -221,7 +221,7 @@ export default {
     hardenedRuntime: true,
     // notarize: false,
     notarize: true,
-    executableName: 'airi',
+    executableName: 'Rin',
     icon: useIconFormattedMacAppIcon ? 'icon.icon' : 'icon.icns',
   },
   dmg: {
