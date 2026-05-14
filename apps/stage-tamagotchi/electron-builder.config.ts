@@ -2,7 +2,11 @@
 
 import type { Configuration } from 'electron-builder'
 
+import os from 'node:os'
+import path from 'node:path'
+
 import { execSync } from 'node:child_process'
+import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 
 import { isMacOS } from 'std-env'
 
@@ -24,13 +28,96 @@ function hasXcode26OrAbove() {
 }
 
 /**
+ * Checks whether the local Xcode toolchain can compile Rin's `.icon` catalog.
+ *
+ * Use when:
+ * - macOS packaging wants to prefer the new `.icon` asset catalog on Xcode 26+
+ * - The build must fall back to `icon.icns` on machines where `actool` crashes
+ *
+ * Expects:
+ * - The workspace contains `build/icon.icon/icon.json`
+ * - The selected Xcode command line tools provide `xcrun actool`
+ *
+ * Returns:
+ * - `true` only when `actool` can compile the icon catalog with the same flags
+ *   used by electron-builder's macOS icon composer
+ */
+function canCompileMacOSIconCatalog() {
+  if (!isMacOS)
+    return false
+
+  const iconCatalogPath = path.resolve('build', 'icon.icon')
+  const iconCatalogManifestPath = path.join(iconCatalogPath, 'icon.json')
+  if (!existsSync(iconCatalogManifestPath))
+    return false
+
+  const probeRoot = path.join(os.tmpdir(), 'rin-icon-probe-')
+  const tempDir = `${probeRoot}${Date.now()}`
+  const compiledIconPath = path.join(tempDir, 'Icon.icon')
+  const outputPath = path.join(tempDir, 'out')
+
+  try {
+    cpSync(iconCatalogPath, compiledIconPath, { recursive: true })
+    mkdirSync(outputPath, { recursive: true })
+
+    // NOTICE:
+    // electron-builder 26.8.1 feeds `.icon` assets into `actool` with these
+    // exact arguments from app-builder-lib's macOS icon composer. Some Xcode 26
+    // environments still crash on our current icon catalog despite reporting a
+    // supported version. Probe with the same flags so we can fall back to the
+    // stable `icon.icns` path before the real package step fails.
+    execSync([
+      'xcrun',
+      'actool',
+      `"${compiledIconPath}"`,
+      '--compile',
+      `"${outputPath}"`,
+      '--output-format',
+      'human-readable-text',
+      '--notices',
+      '--warnings',
+      '--output-partial-info-plist',
+      `"${path.join(outputPath, 'assetcatalog_generated_info.plist')}"`,
+      '--app-icon',
+      'Icon',
+      '--include-all-app-icons',
+      '--accent-color',
+      'AccentColor',
+      '--enable-on-demand-resources',
+      'NO',
+      '--development-region',
+      'en',
+      '--target-device',
+      'mac',
+      '--minimum-deployment-target',
+      '26.0',
+      '--platform',
+      'macosx',
+    ].join(' '), { stdio: 'ignore' })
+
+    return existsSync(path.join(outputPath, 'Icon.icns'))
+      && existsSync(path.join(outputPath, 'Assets.car'))
+  }
+  catch {
+    return false
+  }
+  finally {
+    rmSync(tempDir, { recursive: true, force: true })
+  }
+}
+
+/**
  * Determine whether to use the .icon format for the macOS app icon based on the
  * Xcode version while building.
  * This is friendly to developers whose macOS and/or Xcode versions are below 26.
  */
-const useIconFormattedMacAppIcon = hasXcode26OrAbove()
-if (!useIconFormattedMacAppIcon) {
+const xcode26OrAbove = hasXcode26OrAbove()
+const useIconFormattedMacAppIcon = xcode26OrAbove && canCompileMacOSIconCatalog()
+if (!xcode26OrAbove) {
   console.warn('[electron-builder/config] Warning: Xcode version is below 26. Using .icns format for macOS app icon.')
+}
+else if (!useIconFormattedMacAppIcon) {
+  console.warn('[electron-builder/config] Warning: Xcode 26+ is available, but actool could not compile build/icon.icon on this machine. Falling back to icon.icns for macOS packaging.')
 }
 else {
   // NOTICE: This success-path message intentionally uses stderr via `console.warn`.
