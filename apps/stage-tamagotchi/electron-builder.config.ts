@@ -221,6 +221,20 @@ export default {
     hardenedRuntime: true,
     // notarize: false,
     notarize: true,
+    // NOTICE:
+    // electron-builder delegates macOS signing to @electron/osx-sign, which walks
+    // every binary-looking file under `Rin.app/Contents`. Electron locale/resource
+    // packs such as `locale.pak`, `*.bin`, and `*.dat` are data files, not Mach-O
+    // executables, but `isBinaryFile(...)` still surfaces them as signing targets.
+    // That keeps build:mac stuck in deep codesign for a very long time and prevents
+    // the pipeline from ever reaching DMG generation.
+    //
+    // We skip only these non-code Electron framework resources here. They remain
+    // sealed by the enclosing app/framework signature, so this narrows the signing
+    // scope without changing the shipped runtime payload.
+    signIgnore: [
+      '/Contents/Frameworks/Electron Framework\\.framework(?:/Versions/(?:A|Current))?/Resources/.*\\.(pak|bin|dat)$',
+    ],
     executableName: 'Rin',
     icon: useIconFormattedMacAppIcon ? 'icon.icon' : 'icon.icns',
   },
