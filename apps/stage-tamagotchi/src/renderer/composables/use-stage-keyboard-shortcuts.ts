@@ -91,6 +91,7 @@ export function useStageKeyboardShortcuts(options: UseStageKeyboardShortcutsOpti
           else
             controlsIslandStore.setControlsPanelExpanded(false)
         }
+        return
 
       default:
     }
