@@ -54,9 +54,24 @@ export function useStudyTaskReminders(options?: UseStudyTaskRemindersOptions) {
         reminderId: dueReminder.reminderId,
       }
       const notifySucceeded = await notifyStudyTaskDueReminder(notificationPayload).catch(() => false)
-      if (!notifySucceeded)
+      if (!notifySucceeded) {
+        studyStore.appendEvent('reminder_delivery_failed', {
+          taskId: dueReminder.taskId,
+          taskTitle: dueReminder.taskTitle,
+          reminderId: dueReminder.reminderId,
+          amount: dueReminder.amount,
+          unit: dueReminder.unit,
+        })
         continue
+      }
       studyStore.markTaskReminderDelivered(dueReminder.taskId, dueReminder.reminderId, new Date(nowMs).toISOString())
+      studyStore.appendEvent('reminder_shown', {
+        taskId: dueReminder.taskId,
+        taskTitle: dueReminder.taskTitle,
+        reminderId: dueReminder.reminderId,
+        amount: dueReminder.amount,
+        unit: dueReminder.unit,
+      })
     }
   }
 

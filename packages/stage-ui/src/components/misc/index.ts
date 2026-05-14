@@ -1,5 +1,6 @@
 export { default as Alert } from './alert.vue'
 export { default as ErrorContainer } from './error-container.vue'
+export { default as LocalPrivacyCard } from './local-privacy-card.vue'
 export { default as ProfileSwitcherPopover } from './profile-switcher-popover.vue'
 export type { Props as ProfileSwitcherPopoverProps } from './profile-switcher-popover.vue'
 export * from './steppers'

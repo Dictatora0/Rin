@@ -156,6 +156,21 @@ vi.mock('@proj-airi/ui', async () => {
   }
 })
 
+vi.mock('@proj-airi/stage-ui/components', async () => {
+  const { defineComponent, h } = await import('vue')
+  return {
+    LocalPrivacyCard: defineComponent({
+      name: 'LocalPrivacyCard',
+      props: {
+        title: { type: String, default: 'Local-first vision and privacy' },
+      },
+      setup(props) {
+        return () => h('section', { 'data-testid': 'local-privacy-card' }, props.title)
+      },
+    }),
+  }
+})
+
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mocks.routerPush }),
 }))
@@ -249,7 +264,7 @@ describe('vision enrollment page information architecture', () => {
 
     const text = container.textContent ?? ''
     expect(text).toContain('人脸录入与门控')
-    expect(text).toContain('本机加密保存')
+    expect(text).toContain('Rin Vision Privacy')
     expect(text).toContain('当前状态')
     expect(text).toContain('四步录入向导')
     expect(text).toContain('步骤 1 / 4：开启摄像头')
@@ -290,6 +305,25 @@ describe('vision enrollment page information architecture', () => {
     expect(text).not.toContain('Retry Runtime')
     expect(text).not.toContain('Reset Runtime')
     expect(text).not.toContain('Vision Diagnostics')
+
+    unmount()
+  })
+
+  it('shows camera permission recovery path and enrollment retry guidance', async () => {
+    mocks.interactionState.cameraPermissionState.value = 'denied'
+    mocks.interactionState.cameraState.value = 'error'
+    mocks.interactionState.localFaceGate.profileStatus.value = 'no_face'
+    mocks.enrollLocalFaceProfile.mockResolvedValue({ ok: false as const, reason: 'low quality' })
+
+    const { container, unmount } = mountPage()
+    await nextTick()
+
+    expect(container.textContent).toContain('macOS 还没有给 Rin 摄像头权限。请到 系统设置 > 隐私与安全性 > 摄像头，为 Rin 打开权限后回到这里重试。')
+
+    await clickButton(container, '继续采样')
+    await nextTick()
+
+    expect(container.textContent).toContain('恢复建议：样本质量不足，请调整光线或姿态后重试。建议保持正脸、补充光线，并在单人入镜时重新采样。')
 
     unmount()
   })

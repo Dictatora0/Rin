@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { LocalPrivacyCard } from '@proj-airi/stage-ui/components'
 import { Button } from '@proj-airi/ui'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -142,6 +143,20 @@ const visionLastError = computed(() => {
   if (cameraDiagnostics.value.lastInferenceErrorMessage)
     return cameraDiagnostics.value.lastInferenceErrorMessage
   return '无'
+})
+const permissionRecoveryText = computed(() => {
+  if (cameraPermissionState.value === 'denied')
+    return 'macOS 还没有给 Rin 摄像头权限。请到 系统设置 > 隐私与安全性 > 摄像头，为 Rin 打开权限后回到这里重试。'
+  if (cameraState.value === 'error')
+    return '摄像头当前不可用，可能正被其他应用占用。关闭其他占用摄像头的应用后再重试。'
+  return '请确保光线充足、画面里只有你一人，并先开启摄像头。'
+})
+const enrollmentRecoveryText = computed(() => {
+  if (enrollmentErrorReason.value)
+    return `恢复建议：${enrollmentErrorReason.value}。建议保持正脸、补充光线，并在单人入镜时重新采样。`
+  if (rejectedSamples.value > 0)
+    return '采样被拒绝时，通常是光线不足、面部过小或角度偏斜。请靠近一点并保持正脸。'
+  return '录入前先设置昵称和口令，再连续完成 5 到 10 个稳定样本。'
 })
 
 watch(videoRef, element => attachVideoElement(element), { immediate: true })
@@ -410,13 +425,7 @@ const fieldInputClasses = [
         </Button>
       </div>
 
-      <section :class="[sectionCardClasses, 'mb-3']">
-        <div :class="['text-xs leading-6 text-neutral-600 dark:text-neutral-300']">
-          <div>人脸特征仅加密保存在本机，不会上传。</div>
-          <div>口令只用于解锁本地档案，不会被持久化保存。</div>
-          <div>你可以随时锁定或删除本地档案。</div>
-        </div>
-      </section>
+      <LocalPrivacyCard mode="detailed" title="Rin Vision Privacy" />
 
       <section :class="[sectionCardClasses, 'mb-3']">
         <div :class="sectionTitleClasses">
@@ -430,6 +439,9 @@ const fieldInputClasses = [
         </div>
         <div v-if="errorMessage" :class="['mt-2 text-xs text-rose-600 dark:text-rose-300']">
           {{ errorMessage }}
+        </div>
+        <div :class="['mt-2 text-xs text-neutral-500 dark:text-neutral-400']">
+          {{ permissionRecoveryText }}
         </div>
       </section>
 
@@ -455,6 +467,9 @@ const fieldInputClasses = [
               <div>摄像头：{{ cameraStateText }}</div>
               <div>模型：{{ modelStatusText }}</div>
               <div>画面质量：{{ qualityStatusText }}</div>
+            </div>
+            <div :class="['mt-2 text-xs text-neutral-500 dark:text-neutral-400']">
+              {{ permissionRecoveryText }}
             </div>
           </section>
 
@@ -525,6 +540,9 @@ const fieldInputClasses = [
             </div>
             <div v-else-if="rejectedSamples > 0" :class="['text-xs text-amber-600 dark:text-amber-300']">
               样本质量不足，请调整光线或姿态后重试。
+            </div>
+            <div :class="['mt-2 text-xs text-neutral-500 dark:text-neutral-400']">
+              {{ enrollmentRecoveryText }}
             </div>
           </section>
 

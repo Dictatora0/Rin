@@ -248,6 +248,21 @@ vi.mock('@proj-airi/ui', async () => {
   }
 })
 
+vi.mock('@proj-airi/stage-ui/components', async () => {
+  const { defineComponent, h } = await import('vue')
+  return {
+    LocalPrivacyCard: defineComponent({
+      name: 'LocalPrivacyCard',
+      props: {
+        title: { type: String, default: 'Local-first vision and privacy' },
+      },
+      setup(props) {
+        return () => h('section', { 'data-testid': 'local-privacy-card' }, props.title)
+      },
+    }),
+  }
+})
+
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mocks.routerPush }),
 }))
@@ -369,6 +384,7 @@ describe('vision island usability pass', () => {
     expect(text).toContain('视觉自检')
     expect(text).toContain('主体位置校准')
     expect(text).toContain('当前基准：默认中心')
+    expect(text).toContain('Rin Vision Privacy')
 
     unmount()
   })
@@ -514,6 +530,49 @@ describe('vision island usability pass', () => {
     unmount()
   })
 
+  it('shows denied permission recovery and retry guidance', async () => {
+    mocks.interactionState.cameraPermissionState.value = 'denied'
+    mocks.interactionState.cameraState.value = 'off'
+
+    const { container, unmount } = mountVisionIsland('novice')
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('macOS 摄像头权限未开启，请先在系统设置中允许。')
+    expect(text).toContain('如果已点过“不允许”，请到 系统设置 > 隐私与安全性 > 摄像头，为 Rin 打开权限后再重试。')
+    expect(text).toContain('摄像头权限尚未开启，先到 macOS 系统设置允许 Rin 使用摄像头。')
+
+    unmount()
+  })
+
+  it('shows runtime failure recovery and self-check affordance', async () => {
+    mocks.interactionState.runtimeStatus.value = 'failed'
+    mocks.interactionState.runtimeLastError.value = 'missing local assets'
+
+    const { container, unmount } = mountVisionIsland('expert')
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('视觉运行环境初始化失败，请重试视觉运行环境。')
+    expect(text).toContain('视觉运行环境加载失败。优先点“重试视觉运行环境”；如果问题持续，再查看自检结果或重新打包资源。')
+    expect(text).toContain('查看自检')
+
+    unmount()
+  })
+
+  it('shows empty recent feedback recovery hint instead of blank state', async () => {
+    mocks.interactionState.isEnabled.value = false
+    mocks.petFeedbackState.visionFeedbackHistory.value = []
+    mocks.petFeedbackState.recentVisionFeedbackHistory.value = []
+
+    const { container, unmount } = mountVisionIsland('novice')
+    await nextTick()
+
+    expect(container.textContent).toContain('先开启摄像头，再移动到画面中间试一次。')
+
+    unmount()
+  })
+
   it('shows multiple_faces recovery guidance with specific suggestion', async () => {
     mocks.interactionState.isEnabled.value = true
     mocks.interactionState.cameraState.value = 'active'
@@ -630,7 +689,7 @@ describe('vision island usability pass', () => {
     mocks.petFeedbackState.recentVisionFeedbackHistory.value = []
     await nextTick()
     text = container.textContent ?? ''
-    expect(text).toContain('暂无反馈记录')
+    expect(text).toContain('先开启摄像头，再移动到画面中间试一次。')
 
     unmount()
   })

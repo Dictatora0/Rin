@@ -112,6 +112,20 @@ const taskDueReminderEnabledModel = computed({
     studyCompanion.setTaskDueReminderEnabled(value)
   },
 })
+const lastReminderFailureEvent = computed(() => {
+  return [...studyCompanion.persisted.studyEvents]
+    .reverse()
+    .find(event => event.type === 'reminder_delivery_failed') ?? null
+})
+const hasHistoryStats = computed(() => {
+  return last30DaysStats.value.some(entry => entry.focusMinutes > 0 || entry.focusSessions > 0 || entry.completedTasks > 0)
+})
+const reminderFailureSummary = computed(() => {
+  const taskTitle = typeof lastReminderFailureEvent.value?.detail?.taskTitle === 'string'
+    ? lastReminderFailureEvent.value.detail.taskTitle
+    : '最近任务'
+  return `${taskTitle} 的截止日期提醒最近未能显示。请检查 macOS 通知权限，并确认 Rin 在提醒时仍保持运行。`
+})
 
 const recentEvents = computed(() => {
   return [...studyCompanion.persisted.studyEvents]
@@ -355,6 +369,12 @@ function handleClearTodayStats() {
       <p :class="['mt-1 text-xs text-neutral-500 dark:text-neutral-400']">
         系统通知由 macOS 显示，需要允许应用通知。提醒仅在 Rin 运行期间检查。
       </p>
+      <p
+        v-if="lastReminderFailureEvent"
+        :class="['mt-1 text-xs text-amber-600 dark:text-amber-300']"
+      >
+        {{ reminderFailureSummary }}
+      </p>
       <label :class="['mt-2 inline-flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-200']">
         <input
           v-model="taskDueReminderEnabledModel"
@@ -393,6 +413,12 @@ function handleClearTodayStats() {
       </div>
       <p class="study-chart-caption">
         详细趋势图、热力图和任务结构请查看下方“学习统计图表”分区。
+      </p>
+      <p
+        v-if="!hasHistoryStats"
+        :class="['mt-2 text-xs text-neutral-500 dark:text-neutral-400']"
+      >
+        还没有历史统计。请先完成至少一轮专注，图表才会出现；演示模式只会缩短计时，不会自动生成历史数据。
       </p>
     </section>
 

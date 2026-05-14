@@ -65,6 +65,17 @@ const pendingTasks = computed(() => sortedPendingTasks.value)
 const hasPendingTask = computed(() => pendingTasks.value.length > 0)
 const last7DaysStats = computed(() => getLast7DaysStats())
 const hasSelectedFocusTask = computed(() => selectedFocusTask.value != null)
+const lastReminderFailureEvent = computed(() => {
+  for (let index = persisted.value.studyEvents.length - 1; index >= 0; index -= 1) {
+    const event = persisted.value.studyEvents[index]
+    if (event?.type === 'reminder_delivery_failed')
+      return event
+  }
+  return null
+})
+const hasHistoryStats = computed(() => {
+  return last7DaysStats.value.some(entry => entry.focusMinutes > 0 || entry.focusSessions > 0 || entry.completedTasks > 0)
+})
 const selectedFocusTaskIdModel = computed({
   get() {
     return persisted.value.selectedFocusTaskId ?? ''
@@ -133,6 +144,22 @@ const demoDurationText = computed(() => {
   const focusSeconds = Math.round(persisted.value.focusDurationMs / 1000)
   const breakSeconds = Math.round(persisted.value.breakDurationMs / 1000)
   return `专注 ${focusSeconds} 秒 / 休息 ${breakSeconds} 秒`
+})
+const noTaskHintText = computed(() => {
+  return demoModeEnabled.value
+    ? '先创建一个任务，再开始专注。演示模式只会缩短计时，不会自动生成任务或历史数据。'
+    : '先创建第一个任务，再开始专注。完成一轮后，统计图表和导出报告才会出现真实数据。'
+})
+const noHistoryHintText = computed(() => {
+  return demoModeEnabled.value
+    ? '还没有历史统计。演示模式只会缩短计时，请先完成至少一轮专注。'
+    : '还没有历史统计。请先完成至少一轮专注，图表才会生成。'
+})
+const reminderFailureHintText = computed(() => {
+  const taskTitle = typeof lastReminderFailureEvent.value?.detail?.taskTitle === 'string'
+    ? lastReminderFailureEvent.value.detail.taskTitle
+    : '当前任务'
+  return `最近一次提醒未能显示：${taskTitle}。请检查 macOS 通知权限，并确保 Rin 保持运行。`
 })
 
 function handleTaskInteractionLock(locked: boolean) {
@@ -298,7 +325,7 @@ onBeforeUnmount(() => {
           v-if="!hasPendingTask"
           :class="['mt-1 text-xs text-neutral-500 dark:text-neutral-400']"
         >
-          还没有可选择的任务
+          {{ noTaskHintText }}
         </p>
         <div
           v-else
@@ -518,12 +545,25 @@ onBeforeUnmount(() => {
           <div class="i-solar:bell-off-bold size-3.5" />
           <span>已静音</span>
         </div>
+        <div v-if="lastReminderFailureEvent" :class="['mt-1 text-amber-600 dark:text-amber-300']">
+          {{ reminderFailureHintText }}
+        </div>
         <div v-if="showNoStudyRecord" :class="['mt-1 text-neutral-400 dark:text-neutral-500']">
-          暂无学习记录。
+          {{ noHistoryHintText }}
         </div>
       </div>
 
       <StudyHistoryChart :entries="last7DaysStats" />
+
+      <section
+        v-if="!hasHistoryStats"
+        :class="[
+          'rounded-lg border border-dashed border-neutral-300/70 px-3 py-2 text-xs',
+          'text-neutral-500 dark:border-neutral-700/70 dark:text-neutral-400',
+        ]"
+      >
+        {{ noHistoryHintText }}
+      </section>
 
       <TaskList @interaction-lock-change="handleTaskInteractionLock" />
     </div>

@@ -308,4 +308,29 @@ describe('study settings page', () => {
 
     unmount()
   })
+
+  it('shows reminder failure recovery hint and empty history guidance when needed', async () => {
+    mocks.store.persisted.studyEvents = [
+      {
+        id: 'evt-reminder-failed',
+        at: Date.now(),
+        type: 'reminder_delivery_failed',
+        detail: {
+          taskTitle: '完成答辩彩排',
+        },
+      },
+    ]
+    mocks.store.getLast7DaysStats = () => createHistoryEntries(7, [])
+    mocks.store.getLast14DaysStats = () => createHistoryEntries(14, [])
+    mocks.store.getLast30DaysStats = () => createHistoryEntries(30, [])
+
+    const { container, unmount } = mountPage()
+    await nextTick()
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('完成答辩彩排 的截止日期提醒最近未能显示。请检查 macOS 通知权限，并确认 Rin 在提醒时仍保持运行。')
+    expect(text).toContain('还没有历史统计。请先完成至少一轮专注，图表才会出现；演示模式只会缩短计时，不会自动生成历史数据。')
+
+    unmount()
+  })
 })

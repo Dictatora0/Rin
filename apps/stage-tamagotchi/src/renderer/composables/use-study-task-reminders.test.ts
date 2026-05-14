@@ -3,6 +3,7 @@
 import { useStudyCompanionStore } from '@proj-airi/stage-ui/stores/modules/study-companion'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 
 import { useStudyTaskReminders } from './use-study-task-reminders'
 
@@ -83,6 +84,7 @@ describe('useStudyTaskReminders', () => {
     const scheduler = useStudyTaskReminders({ intervalMs: 60_000 })
     await scheduler.runOnce()
     await Promise.resolve()
+    await nextTick()
     expect(mocks.notifyInvoke).toHaveBeenCalledTimes(1)
     expect(store.persisted.tasks[0]?.reminderDeliveries).toHaveLength(1)
 
@@ -90,8 +92,41 @@ describe('useStudyTaskReminders', () => {
     store.persisted.tasks[0]!.reminderDeliveries = []
     await scheduler.runOnce()
     await Promise.resolve()
+    await nextTick()
     expect(mocks.notifyInvoke).toHaveBeenCalledTimes(2)
     expect(store.persisted.tasks[0]?.reminderDeliveries).toHaveLength(0)
+    expect(store.persisted.studyEvents.at(-1)?.type).toBe('reminder_delivery_failed')
+    expect(store.persisted.studyEvents.at(-1)?.detail).toMatchObject({
+      taskId: 'task-1',
+      taskTitle: '复习课程',
+      reminderId: 'reminder-1d',
+    })
+  })
+
+  it('markTaskReminderDelivered updates reminder deliveries in store directly', () => {
+    const store = useStudyCompanionStore()
+    store.persisted.tasks = [
+      {
+        id: 'task-1',
+        title: '复习课程',
+        done: false,
+        createdAt: new Date(2026, 4, 6, 10, 0, 0).toISOString(),
+        priority: 'high',
+        dueDate: '2026-05-08',
+        reminders: [{
+          id: 'reminder-1d',
+          amount: 1,
+          unit: 'day',
+          enabled: true,
+          source: 'user-custom',
+          label: '自定义：提前 1 天',
+        }],
+        reminderDeliveries: [],
+      },
+    ]
+
+    expect(store.markTaskReminderDelivered('task-1', 'reminder-1d')).toBe(true)
+    expect(store.persisted.tasks[0]?.reminderDeliveries).toHaveLength(1)
   })
 
   it('does not notify when global due reminder switch is disabled', async () => {

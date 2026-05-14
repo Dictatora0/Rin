@@ -476,6 +476,45 @@ describe('study island completion actions', () => {
     await nextTick()
 
     expect(container.textContent).toContain('还没有足够的历史数据')
+    expect(container.textContent).toContain('请先完成至少一轮专注，图表才会生成')
+
+    unmount()
+  })
+
+  it('shows task empty state guidance and clarifies demo mode limits', async () => {
+    mocks.storeState = createStoreState({
+      demoModeEnabled: true,
+      tasks: [],
+    }, [])
+    mocks.storeState.demoModeEnabled.value = true
+    mocks.storeState.persisted.value.demoModeEnabled = true
+
+    const { container, unmount } = mountStudyIsland()
+    await nextTick()
+
+    expect(container.textContent).toContain('先创建一个任务，再开始专注。演示模式只会缩短计时，不会自动生成任务或历史数据。')
+
+    unmount()
+  })
+
+  it('shows reminder delivery failure recovery hint when notification fails previously', async () => {
+    mocks.storeState = createStoreState({
+      studyEvents: [
+        {
+          id: 'evt-reminder-failed',
+          at: 2000,
+          type: 'reminder_delivery_failed',
+          detail: {
+            taskTitle: '完成课程展示稿',
+          },
+        },
+      ],
+    }, createRecentHistoryEntriesWithData())
+
+    const { container, unmount } = mountStudyIsland()
+    await nextTick()
+
+    expect(container.textContent).toContain('最近一次提醒未能显示：完成课程展示稿。请检查 macOS 通知权限，并确保 Rin 保持运行。')
 
     unmount()
   })

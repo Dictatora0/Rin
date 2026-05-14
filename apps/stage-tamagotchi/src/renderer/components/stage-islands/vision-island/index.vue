@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { VisionInteractionEvent } from '../../../composables/use-vision-interaction'
 
+import { LocalPrivacyCard } from '@proj-airi/stage-ui/components'
 import { Button } from '@proj-airi/ui'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -557,6 +558,33 @@ const recentFeedbackSummary = computed(() => {
   if (lastFeedbackMessage.value.trim())
     return lastFeedbackMessage.value
   return '暂时没有新的反馈'
+})
+const noFeedbackHistoryHint = computed(() => {
+  if (cameraPermissionState.value === 'denied')
+    return '摄像头权限尚未开启，先到 macOS 系统设置允许 Rin 使用摄像头。'
+  if (cameraState.value === 'error')
+    return '摄像头当前不可用，可能被其他应用占用。关闭占用后再重试开启摄像头。'
+  if (runtimeStatus.value === 'failed')
+    return '视觉资源还没准备好，请先运行视觉自检并重试视觉运行环境。'
+  if (!isEnabled.value)
+    return '先开启摄像头，再移动到画面中间试一次。'
+  return '还没有新的视觉反馈。让自己单人入镜、保持正脸并稍微移动位置，Rin 就会开始记录反馈。'
+})
+const cameraRecoveryHint = computed(() => {
+  if (cameraPermissionState.value === 'denied')
+    return '如果已点过“不允许”，请到 系统设置 > 隐私与安全性 > 摄像头，为 Rin 打开权限后再重试。'
+  if (cameraState.value === 'error')
+    return '摄像头初始化失败时，通常是被其他应用占用，或系统刚收回了权限。'
+  if (cameraState.value !== 'active')
+    return '首次开启摄像头时可能需要几秒钟准备时间。'
+  return '摄像头已开启，若 Rin 仍未响应，请继续查看下面的自检和恢复建议。'
+})
+const runtimeRecoveryHint = computed(() => {
+  if (runtimeStatus.value === 'failed')
+    return '视觉运行环境加载失败。优先点“重试视觉运行环境”；如果问题持续，再查看自检结果或重新打包资源。'
+  if (runtimeStatus.value !== 'ready' && runtimeStatus.value !== 'partial_ready')
+    return '视觉运行环境仍在准备中，首次启动会稍慢一些。'
+  return '视觉运行环境已就绪。'
 })
 const selfCheckReport = computed(() => {
   return buildVisionSelfCheckReport({
@@ -1317,6 +1345,8 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
           </div>
         </section>
 
+        <LocalPrivacyCard mode="compact" title="Rin Vision Privacy" />
+
         <section
           :class="[
             'rounded-xl border border-neutral-200/80 bg-neutral-50/85 p-2 text-xs dark:border-neutral-700/70 dark:bg-neutral-900/55',
@@ -1326,7 +1356,7 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             最近反馈
           </div>
           <div v-if="visibleFeedbackHistory.length === 0" :class="['text-neutral-500 dark:text-neutral-400']">
-            暂无反馈记录
+            {{ noFeedbackHistoryHint }}
           </div>
           <div v-else :class="['flex flex-col gap-1']">
             <div
@@ -1383,6 +1413,41 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
             这是基于画面中主体位置的反馈，不是眼球方向测量。
           </div>
         </div>
+
+        <section
+          :class="[
+            'rounded-xl border border-neutral-200/80 bg-neutral-50/85 p-2 text-xs dark:border-neutral-700/70 dark:bg-neutral-900/55',
+          ]"
+        >
+          <div :class="['mb-1 font-600 text-neutral-700 dark:text-neutral-200']">
+            恢复建议
+          </div>
+          <div>{{ cameraRecoveryHint }}</div>
+          <div :class="['mt-1']">
+            {{ runtimeRecoveryHint }}
+          </div>
+          <div
+            v-if="cameraPermissionState === 'denied' || cameraState === 'error' || runtimeStatus === 'failed'"
+            :class="['mt-2 flex flex-wrap gap-2']"
+          >
+            <Button
+              v-if="cameraState !== 'active'"
+              size="sm"
+              variant="ghost"
+              @click="toggleCamera"
+            >
+              Retry
+            </Button>
+            <Button
+              v-if="runtimeStatus === 'failed'"
+              size="sm"
+              variant="ghost"
+              @click="selfCheckExpanded = true"
+            >
+              查看自检
+            </Button>
+          </div>
+        </section>
 
         <div
           v-if="isExpertMode && advancedDiagnosticsExpanded"
@@ -1832,15 +1897,6 @@ function applyPetFeedbackForEvent(event: VisionInteractionEvent) {
 
         <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
           摄像头默认关闭。
-        </div>
-        <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          识别仅在本地运行。
-        </div>
-        <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          人脸门控为可选项，使用本地加密档案。
-        </div>
-        <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          不会上传任何摄像头数据。
         </div>
 
         <video
