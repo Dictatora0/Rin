@@ -11,7 +11,7 @@
 - 基线到最终提交差异规模：`201 files changed, 84,669 insertions, 1,041 deletions`
 - 最后冲刺阶段对比范围：`40dd8794^..207598dd`，共 `15` 个提交
 - 最后冲刺阶段差异规模：`102 files changed, 8,180 insertions, 1,410 deletions`
-- 本次修订时工作区存在与本总结无关的额外改动，因此本次只更新 `docs/rin-development-summary-for-ppt.md`；功能与打包事实仍以已提交状态和本地产物核对结果为准
+- 本次落稿时工作区状态：已清洁，无未提交 diff，因此“当前状态”按 `207598dd` 的已提交状态描述
 
 本次总结采用用户明确指定的基线 `1f95ca69`。这个提交本身只改动了分析文档，但提交信息已经表明它是“拆分功能分支前的基线保存点”，因此适合作为“刚 fork 后、尚未进入本轮 Rin 功能开发前”的实际对照基线。
 
@@ -47,11 +47,11 @@
 
 关键基线落点：
 
-- `apps/stage-tamagotchi/src/renderer/pages/onboarding.vue`
-- `packages/stage-ui/src/components/scenarios/dialogs/onboarding/onboarding.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue`
-- `apps/stage-tamagotchi/src/main/tray/index.ts`
-- `apps/stage-tamagotchi/electron-builder.config.ts`
+- [onboarding.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/onboarding.vue)
+- [onboarding.vue](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/components/scenarios/dialogs/onboarding/onboarding.vue)
+- [controls-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue)
+- [tray/index.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/main/tray/index.ts)
+- [electron-builder.config.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/electron-builder.config.ts)
 
 ### 1.3 基线时的局限
 
@@ -160,8 +160,8 @@
 
 关键落点：
 
-- `packages/stage-ui-live2d/src/utils/live2d-fit-layout.ts`
-- `packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue`
+- [live2d-fit-layout.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui-live2d/src/utils/live2d-fit-layout.ts)
+- [Model.vue](/Users/lifulin/Downloads/Rin/packages/stage-ui-live2d/src/components/scenes/live2d/Model.vue)
 
 技术点：
 
@@ -184,9 +184,9 @@
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/components/stage-move-overlay.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue`
-- `apps/stage-tamagotchi/src/renderer/composables/use-stage-keyboard-shortcuts.ts`
+- [stage-move-overlay.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-move-overlay.vue)
+- [controls-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue)
+- [use-stage-keyboard-shortcuts.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-stage-keyboard-shortcuts.ts)
 
 实现内容：
 
@@ -207,10 +207,10 @@
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/click-through-protected-elements.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/live2d-hit-area.ts`
-- `docs/desktop-interaction-improvements.md`
+- [window-click-through-policy.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.ts)
+- [click-through-protected-elements.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/click-through-protected-elements.ts)
+- [live2d-hit-area.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/live2d-hit-area.ts)
+- [desktop-interaction-improvements.md](/Users/lifulin/Downloads/Rin/docs/desktop-interaction-improvements.md)
 
 实现内容：
 
@@ -235,10 +235,10 @@
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/utils/keyboard-shortcuts.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-stage-keyboard-shortcuts.ts`
-- `apps/stage-tamagotchi/src/main/tray/index.ts`
-- `apps/stage-tamagotchi/src/main/tray/tray-menu.ts`
+- [keyboard-shortcuts.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/keyboard-shortcuts.ts)
+- [use-stage-keyboard-shortcuts.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-stage-keyboard-shortcuts.ts)
+- [tray/index.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/main/tray/index.ts)
+- [tray-menu.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/main/tray/tray-menu.ts)
 
 新增快捷键能力：
 
@@ -259,12 +259,12 @@ Tray 对比：
 
 ### 4.4 关键代码落点
 
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-move-overlay.vue`
-- `apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.ts`
-- `packages/stage-ui-live2d/src/utils/live2d-fit-layout.ts`
-- `apps/stage-tamagotchi/src/main/tray/index.ts`
-- `docs/desktop-interaction-improvements.md`
+- [controls-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue)
+- [stage-move-overlay.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-move-overlay.vue)
+- [window-click-through-policy.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.ts)
+- [live2d-fit-layout.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui-live2d/src/utils/live2d-fit-layout.ts)
+- [tray/index.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/main/tray/index.ts)
+- [desktop-interaction-improvements.md](/Users/lifulin/Downloads/Rin/docs/desktop-interaction-improvements.md)
 
 ### 4.5 HCI 原则对应
 
@@ -281,10 +281,10 @@ Tray 对比：
 
 代表性测试：
 
-- `apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.test.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/click-through-protected-elements.test.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/live2d-hit-area.test.ts`
-- `apps/stage-tamagotchi/src/main/tray/tray-menu.test.ts`
+- [window-click-through-policy.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.test.ts)
+- [click-through-protected-elements.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/click-through-protected-elements.test.ts)
+- [live2d-hit-area.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/live2d-hit-area.test.ts)
+- [tray-menu.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/main/tray/tray-menu.test.ts)
 - Controls Island 目录下共 `7` 个测试文件
 
 ### 4.7 风险与限制
@@ -323,9 +323,9 @@ Tray 对比：
 
 关键落点：
 
-- `packages/stage-ui/src/stores/modules/study-companion.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/TaskList.vue`
+- [study-companion.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/stores/modules/study-companion.ts)
+- [study-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.vue)
+- [TaskList.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/TaskList.vue)
 
 事实能力：
 
@@ -357,8 +357,8 @@ Tray 对比：
 
 关键落点：
 
-- `packages/stage-ui/src/stores/modules/study-companion.ts`
-- `apps/stage-tamagotchi/src/renderer/pages/settings/study/index.vue`
+- [study-companion.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/stores/modules/study-companion.ts)
+- [settings/study/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/settings/study/index.vue)
 
 演示方式：
 
@@ -402,13 +402,13 @@ HCI 对应：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/utils/study-chart-data.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTrendChart.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyHistoryChart.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTaskCompletionChart.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTaskPriorityChart.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyHeatmap.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyFocusQualityCards.vue`
+- [study-chart-data.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/study-chart-data.ts)
+- [StudyTrendChart.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTrendChart.vue)
+- [StudyHistoryChart.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyHistoryChart.vue)
+- [StudyTaskCompletionChart.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTaskCompletionChart.vue)
+- [StudyTaskPriorityChart.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTaskPriorityChart.vue)
+- [StudyHeatmap.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyHeatmap.vue)
+- [StudyFocusQualityCards.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyFocusQualityCards.vue)
 
 事实能力：
 
@@ -467,9 +467,9 @@ HCI 对应：
 
 关键落点：
 
-- `packages/stage-ui/src/stores/modules/study-task-reminders.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-study-task-reminders.ts`
-- `apps/stage-tamagotchi/src/main/services/electron/study-task-reminder-notification.ts`
+- [study-task-reminders.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/stores/modules/study-task-reminders.ts)
+- [use-study-task-reminders.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-study-task-reminders.ts)
+- [study-task-reminder-notification.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/main/services/electron/study-task-reminder-notification.ts)
 
 事实边界：
 
@@ -481,8 +481,8 @@ HCI 对应：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/utils/study-break-suggestions.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/study-status-labels.ts`
+- [study-break-suggestions.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/study-break-suggestions.ts)
+- [study-status-labels.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/study-status-labels.ts)
 
 事实能力：
 
@@ -492,11 +492,11 @@ HCI 对应：
 
 ### 5.5 关键代码落点
 
-- `packages/stage-ui/src/stores/modules/study-companion.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.vue`
-- `apps/stage-tamagotchi/src/renderer/pages/settings/study/index.vue`
-- `apps/stage-tamagotchi/src/renderer/utils/study-chart-data.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/study-break-suggestions.ts`
+- [study-companion.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/stores/modules/study-companion.ts)
+- [study-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.vue)
+- [settings/study/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/settings/study/index.vue)
+- [study-chart-data.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/study-chart-data.ts)
+- [study-break-suggestions.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/study-break-suggestions.ts)
 
 ### 5.6 用户体验提升
 
@@ -522,12 +522,12 @@ HCI 对应：
 
 代表性测试：
 
-- `packages/stage-ui/src/stores/modules/study-companion.test.ts`
-- `packages/stage-ui/src/stores/modules/study-task-reminders.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/TaskList.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTrendChart.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyHeatmap.test.ts`
+- [study-companion.test.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/stores/modules/study-companion.test.ts)
+- [study-task-reminders.test.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/stores/modules/study-task-reminders.test.ts)
+- [index.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.test.ts)
+- [TaskList.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/TaskList.test.ts)
+- [StudyTrendChart.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTrendChart.test.ts)
+- [StudyHeatmap.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyHeatmap.test.ts)
 - Study Island 目录共 `8` 个测试文件
 
 这些测试的价值不只是“组件能渲染”，还包括：
@@ -570,9 +570,9 @@ HCI 对应：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.ts`
-- `docs/vision-interaction-experiment.md`
+- [use-vision-runtime.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.ts)
+- [use-vision-interaction.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.ts)
+- [vision-interaction-experiment.md](/Users/lifulin/Downloads/Rin/docs/vision-interaction-experiment.md)
 
 实现内容：
 
@@ -592,7 +592,7 @@ HCI 对应：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/composables/use-opencv-face-quality.ts`
+- [use-opencv-face-quality.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-opencv-face-quality.ts)
 
 实现思路：
 
@@ -609,7 +609,7 @@ HCI 对应：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/composables/use-local-face-gate.ts`
+- [use-local-face-gate.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-local-face-gate.ts)
 
 事实能力：
 
@@ -627,7 +627,7 @@ HCI 对应：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/composables/use-encrypted-face-profile.ts`
+- [use-encrypted-face-profile.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-encrypted-face-profile.ts)
 
 事实能力：
 
@@ -646,7 +646,7 @@ HCI 对应：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.vue`
+- [vision-enrollment/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.vue)
 
 相对于原本不存在的录入页，这一页是完整新增，同时做了明显的信息架构设计：
 
@@ -674,9 +674,9 @@ HCI 对应：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/vision-self-check.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue`
+- [use-vision-interaction.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.ts)
+- [vision-self-check.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/vision-self-check.ts)
+- [vision-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue)
 
 实现内容：
 
@@ -698,9 +698,9 @@ HCI 对应：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/utils/vision-self-check.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/vision-response-explainer.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue`
+- [vision-self-check.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/vision-self-check.ts)
+- [vision-response-explainer.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/vision-response-explainer.ts)
+- [vision-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue)
 
 实现内容：
 
@@ -717,8 +717,8 @@ HCI 价值：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-pet-feedback.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue`
+- [use-vision-pet-feedback.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-pet-feedback.ts)
+- [vision-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue)
 
 事实能力：
 
@@ -740,19 +740,19 @@ HCI 价值：
 
 对应代码落点：
 
-- `packages/stage-ui/src/components/misc/local-privacy-card.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue`
-- `apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.vue`
+- [local-privacy-card.vue](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/components/misc/local-privacy-card.vue)
+- [vision-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue)
+- [vision-enrollment/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.vue)
 
 ### 6.5 关键代码落点
 
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-local-face-gate.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-encrypted-face-profile.ts`
-- `apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue`
-- `docs/vision-interaction-experiment.md`
+- [use-vision-runtime.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.ts)
+- [use-vision-interaction.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.ts)
+- [use-local-face-gate.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-local-face-gate.ts)
+- [use-encrypted-face-profile.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-encrypted-face-profile.ts)
+- [vision-enrollment/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.vue)
+- [vision-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue)
+- [vision-interaction-experiment.md](/Users/lifulin/Downloads/Rin/docs/vision-interaction-experiment.md)
 
 ### 6.6 用户体验提升
 
@@ -777,13 +777,13 @@ HCI 价值：
 
 代表性测试：
 
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/pet-feedback-path.test.ts`
-- `apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.test.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.behavior.test.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.test.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-local-face-gate.test.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-encrypted-face-profile.test.ts`
+- [index.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.test.ts)
+- [pet-feedback-path.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/pet-feedback-path.test.ts)
+- [index.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.test.ts)
+- [use-vision-interaction.behavior.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.behavior.test.ts)
+- [use-vision-runtime.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.test.ts)
+- [use-local-face-gate.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-local-face-gate.test.ts)
+- [use-encrypted-face-profile.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-encrypted-face-profile.test.ts)
 
 ### 6.9 风险与限制
 
@@ -811,7 +811,7 @@ HCI 价值：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/utils/vision-feedback-messages.ts`
+- [vision-feedback-messages.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/vision-feedback-messages.ts)
 
 事实能力：
 
@@ -834,8 +834,8 @@ HCI 价值：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-pet-feedback.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue`
+- [use-vision-pet-feedback.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-pet-feedback.ts)
+- [vision-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue)
 
 实现内容：
 
@@ -877,8 +877,8 @@ HCI 价值：
 
 代表性测试：
 
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/pet-feedback-path.test.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.behavior.test.ts`
+- [pet-feedback-path.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/pet-feedback-path.test.ts)
+- [use-vision-interaction.behavior.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.behavior.test.ts)
 - 视觉工具与 composables 测试一起覆盖了 feedback path、状态切换和文案选择的关键路径
 
 ### 7.7 风险与限制
@@ -912,9 +912,9 @@ HCI 价值：
 
 关键落点：
 
-- `apps/stage-tamagotchi/src/renderer/pages/onboarding.vue`
-- `packages/stage-ui/src/components/scenarios/dialogs/onboarding/onboarding.vue`
-- `packages/stage-ui/src/components/scenarios/dialogs/onboarding/step-demo-guide.vue`
+- [onboarding.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/onboarding.vue)
+- [onboarding.vue](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/components/scenarios/dialogs/onboarding/onboarding.vue)
+- [step-demo-guide.vue](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/components/scenarios/dialogs/onboarding/step-demo-guide.vue)
 
 当前引导四步：
 
@@ -941,7 +941,7 @@ HCI 价值：
 
 关键落点：
 
-- `packages/stage-ui/src/stores/onboarding.ts`
+- [onboarding.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/stores/onboarding.ts)
 
 事实能力：
 
@@ -958,10 +958,10 @@ HCI 价值：
 
 关键落点：
 
-- `packages/stage-ui/src/components/misc/local-privacy-card.vue`
-- `packages/stage-ui/src/components/scenarios/dialogs/onboarding/step-demo-guide.vue`
-- `apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.vue`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue`
+- [local-privacy-card.vue](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/components/misc/local-privacy-card.vue)
+- [step-demo-guide.vue](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/components/scenarios/dialogs/onboarding/step-demo-guide.vue)
+- [vision-enrollment/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.vue)
+- [vision-island/index.vue](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue)
 
 复用位置：
 
@@ -1020,8 +1020,8 @@ HCI 价值：
 关键证据：
 
 - `c25bb37a i18n: rename user-facing AIRI branding to Rin`
-- `apps/stage-tamagotchi/electron-builder.config.ts`
-- `apps/stage-tamagotchi/src/main/tray/index.ts`
+- [electron-builder.config.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/electron-builder.config.ts)
+- [tray/index.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/main/tray/index.ts)
 - `packages/i18n` 各 locale 文件
 
 已完成的用户可见改动：
@@ -1053,12 +1053,12 @@ HCI 价值：
 
 关键落点：
 
-- `apps/stage-tamagotchi/scripts/preflight-release-check.mjs`
-- `apps/stage-tamagotchi/electron-builder.config.ts`
-- `apps/stage-tamagotchi/electron.vite.config.ts`
-- `apps/stage-tamagotchi/package.json`
-- `engines/stage-tamagotchi-godot/export_presets.cfg`
-- `engines/stage-tamagotchi-godot/project.godot`
+- [preflight-release-check.mjs](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/scripts/preflight-release-check.mjs)
+- [electron-builder.config.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/electron-builder.config.ts)
+- [electron.vite.config.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/electron.vite.config.ts)
+- [package.json](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/package.json)
+- [export_presets.cfg](/Users/lifulin/Downloads/Rin/engines/stage-tamagotchi-godot/export_presets.cfg)
+- [project.godot](/Users/lifulin/Downloads/Rin/engines/stage-tamagotchi-godot/project.godot)
 
 事实能力：
 
@@ -1082,15 +1082,12 @@ HCI 价值：
 - 仓库内的发布预检脚本可通过
 - 相关打包命名和资源检查已经部分收口到 Rin
 - Godot sidecar 的 extraResources 路径和 macOS preset 已有修复
-- 已生成本地 DMG 产物：`apps/stage-tamagotchi/dist/Rin-0.9.0-darwin-arm64.dmg`
-- 已生成本地应用包：`apps/stage-tamagotchi/dist/mac-arm64/Rin.app`
-- 本地 `Info.plist` 中 `CFBundleName` 与 `CFBundleDisplayName` 均为 `Rin`
 
-仍需谨慎表述的是：
+不能确认或不能夸大的是：
 
-- 当前结论仅能证明本地构建产物已经生成
-- 正式签名、公证、跨机器安装与最终分发链路仍需进一步验证
-- 因此更稳妥的答辩表述应是“已生成本地 DMG 产物，但发布级验证尚未完成”
+- 本次会话没有执行完整 `build:mac`
+- 没有验证正式签名、公证、最终 DMG 产物生成
+- 不能声称“DMG 已完全发布”
 
 ### 9.5 工程实现价值
 
@@ -1102,7 +1099,7 @@ HCI 价值：
 ### 9.6 风险与限制
 
 - Godot sidecar 仍然是打包链路中的外部依赖点
-- 本地 DMG 已生成，但正式签名、公证、跨机器安装与发布环境仍需后续验证
+- 正式签名/公证/发布环境仍需后续正式验证
 - Linux/Windows 命名仍保留 AIRI 兼容字段，这在最终发布前是否继续保留，需人工决策
 
 ---
@@ -1126,23 +1123,23 @@ HCI 价值：
 
 ### 10.2 代表性测试文件
 
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/TaskList.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTrendChart.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyHeatmap.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.test.ts`
-- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/pet-feedback-path.test.ts`
-- `apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.test.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.behavior.test.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.test.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-local-face-gate.test.ts`
-- `apps/stage-tamagotchi/src/renderer/composables/use-encrypted-face-profile.test.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.test.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/click-through-protected-elements.test.ts`
-- `apps/stage-tamagotchi/src/renderer/utils/live2d-hit-area.test.ts`
-- `apps/stage-tamagotchi/src/main/tray/tray-menu.test.ts`
-- `packages/stage-ui/src/stores/modules/study-companion.test.ts`
-- `packages/stage-ui/src/stores/modules/study-task-reminders.test.ts`
+- [index.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.test.ts)
+- [TaskList.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/TaskList.test.ts)
+- [StudyTrendChart.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTrendChart.test.ts)
+- [StudyHeatmap.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyHeatmap.test.ts)
+- [index.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.test.ts)
+- [pet-feedback-path.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/pet-feedback-path.test.ts)
+- [index.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.test.ts)
+- [use-vision-interaction.behavior.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.behavior.test.ts)
+- [use-vision-runtime.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.test.ts)
+- [use-local-face-gate.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-local-face-gate.test.ts)
+- [use-encrypted-face-profile.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/composables/use-encrypted-face-profile.test.ts)
+- [window-click-through-policy.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.test.ts)
+- [click-through-protected-elements.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/click-through-protected-elements.test.ts)
+- [live2d-hit-area.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/renderer/utils/live2d-hit-area.test.ts)
+- [tray-menu.test.ts](/Users/lifulin/Downloads/Rin/apps/stage-tamagotchi/src/main/tray/tray-menu.test.ts)
+- [study-companion.test.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/stores/modules/study-companion.test.ts)
+- [study-task-reminders.test.ts](/Users/lifulin/Downloads/Rin/packages/stage-ui/src/stores/modules/study-task-reminders.test.ts)
 
 ### 10.3 这些测试在防什么风险
 
@@ -1158,16 +1155,13 @@ HCI 价值：
 
 - `node apps/stage-tamagotchi/scripts/preflight-release-check.mjs`
 - 结果：`6 checks, 0 fail, 0 warn`
-- 本地 DMG 产物存在：`apps/stage-tamagotchi/dist/Rin-0.9.0-darwin-arm64.dmg`
-- 本地应用包存在：`apps/stage-tamagotchi/dist/mac-arm64/Rin.app`
-- 本地 `Info.plist` 中 `CFBundleName` 与 `CFBundleDisplayName` 均为 `Rin`
 
 ### 10.5 需谨慎表述的点
 
 - 本次没有运行全量 `typecheck`
+- 本次没有运行全量 `build`
 - 不能直接声称“所有测试当前均通过”
-- 虽然本地 DMG 已生成，但这不等同于签名、公证和跨机器安装已经完成验证
-- 如果 PPT 需要写“工程质量保障”，建议表述为“补充了大量测试与预检脚本，预检通过且已生成本地 DMG 产物；签名、公证、跨机器安装和正式发布链路仍需继续验证”
+- 如果 PPT 需要写“工程质量保障”，建议表述为“补充了大量测试与预检脚本，当前预检脚本通过；全量 typecheck/build/发布链路需在正式环境继续验证”
 
 ---
 
@@ -1292,9 +1286,9 @@ HCI 价值：
 ### 第 13 页：品牌统一与发布工程
 
 - 标题：`从 AIRI 工程到 Rin 产品包装`
-- 截图：builder 配置片段、preflight 输出、`Rin-0.9.0-darwin-arm64.dmg` 产物截图
-- 讲解重点：productName、权限文案、artifactName、Godot sidecar、EMFILE 修复、本地 DMG 已生成
-- 支撑：`apps/stage-tamagotchi/electron-builder.config.ts`、`apps/stage-tamagotchi/scripts/preflight-release-check.mjs`
+- 截图：builder 配置片段、preflight 输出
+- 讲解重点：productName、权限文案、artifactName、Godot sidecar、EMFILE 修复
+- 支撑：`electron-builder.config.ts`、`preflight-release-check.mjs`
 
 ### 第 14 页：测试与工程质量
 
@@ -1307,7 +1301,7 @@ HCI 价值：
 
 - 标题：`当前限制与下一步`
 - 截图：可放 TODO 列表或风险图标
-- 讲解重点：视觉环境敏感、门控非认证、本地 DMG 已生成但签名/公证/跨机器安装仍待验证、Godot sidecar 依赖等
+- 讲解重点：视觉环境敏感、门控非认证、打包公证未验证、Godot sidecar 依赖等
 - 支撑：当前代码与验证边界
 
 ---
@@ -1317,7 +1311,7 @@ HCI 价值：
 ### 13.1 已知限制
 
 - Godot sidecar 仍然是打包链路依赖点，正式发布前要继续验证构建目录、extraResources 和平台兼容性
-- 已生成本地 `Rin-0.9.0-darwin-arm64.dmg` 与 `Rin.app`，并确认 `CFBundleName / CFBundleDisplayName` 为 `Rin`；但签名、公证、跨机器安装和正式分发仍需继续验证
+- 本次仅验证了 preflight 通过，未验证正式 `build:mac` 产物、签名、公证和最终 DMG
 - 视觉识别受光照、角度、镜头质量、多人入镜影响
 - Local Face Gate 是本地实验能力，不等同安全认证系统
 - 面部动作信号不是情绪识别
@@ -1327,7 +1321,7 @@ HCI 价值：
 
 ### 13.2 未来工作方向
 
-- 继续梳理签名、公证、跨机器安装和 macOS 发布链路
+- 正式梳理签名、公证和 macOS 发布链路
 - 针对不同光照/角度条件继续优化视觉稳定性
 - 进一步把 tray、shortcut、settings 中的帮助入口整合成完整帮助系统
 - 为 Study 与 Vision 增加更多跨模块联动，例如学习阶段的低打扰视觉反馈策略
