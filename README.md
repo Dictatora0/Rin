@@ -1,531 +1,407 @@
-<picture>
-  <source
-    width="100%"
-    srcset="./docs/content/public/banner-dark-1280x640.avif"
-    media="(prefers-color-scheme: dark)"
-  />
-  <source
-    width="100%"
-    srcset="./docs/content/public/banner-light-1280x640.avif"
-    media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
-  />
-  <img width="250" src="./docs/content/public/banner-light-1280x640.avif" />
-</picture>
+# Rin
 
-<h1 align="center">Project AIRI</h1>
+> 面向学习陪伴与本地视觉互动的低打扰桌面伙伴
 
-<p align="center">Re-creating Neuro-sama, a soul container of AI waifu / virtual characters to bring them into our world.</p>
+Rin 是一个基于 Project AIRI 深度改造的桌面 AI 伙伴项目。它保留了 AIRI 原有的多 Provider / 多模型 AI 底座、语音与工具扩展能力，同时围绕桌面低打扰交互、学习陪伴、本地视觉互动和隐私可信设计进行了系统重构。
 
-<p align="center">
-  [<a href="https://discord.gg/TgQ3Cu2F7A">Join Discord Server</a>] [<a href="https://airi.moeru.ai">Try it</a>] [<a href="https://github.com/moeru-ai/airi/blob/main/docs/README.zh-CN.md">简体中文</a>] [<a href="https://github.com/moeru-ai/airi/blob/main/docs/README.ja-JP.md">日本語</a>] [<a href="https://github.com/moeru-ai/airi/blob/main/docs/README.ru-RU.md">Русский</a>] [<a href="https://github.com/moeru-ai/airi/blob/main/docs/README.vi.md">Tiếng Việt</a>] [<a href="https://github.com/moeru-ai/airi/blob/main/docs/README.fr.md">Français</a>] [<a href="https://github.com/moeru-ai/airi/blob/main/docs/README.ko-KR.md">한국어</a>]
-</p>
+当前项目重点落在 5 条主线：
 
-<p align="center">
-  <a href="https://deepwiki.com/moeru-ai/airi"><img src="https://deepwiki.com/badge.svg"></a>
-  <a href="https://github.com/moeru-ai/airi/blob/main/LICENSE"><img src="https://img.shields.io/github/license/moeru-ai/airi.svg?style=flat&colorA=080f12&colorB=1fa669"></a>
-  <a href="https://discord.gg/TgQ3Cu2F7A"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2FTgQ3Cu2F7A%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&suffix=%20members&logo=discord&logoColor=white&label=%20&color=7389D8&labelColor=6A7EC2"></a>
-  <a href="https://x.com/proj_airi"><img src="https://img.shields.io/badge/%40proj__airi-black?style=flat&logo=x&labelColor=%23101419&color=%232d2e30"></a>
-  <a href="https://t.me/+7M_ZKO3zUHFlOThh"><img src="https://img.shields.io/badge/Telegram-%235AA9E6?logo=telegram&labelColor=FFFFFF"></a>
-  <a href="./docs/wechat.md"><img src="https://img.shields.io/badge/WeChat-%2307C160?logo=wechat&logoColor=%2307C160&labelColor=FFFFFF"></a>
-  <a href="https://qun.qq.com/universal-share/share?ac=1&authKey=9g00d%2BZS7nORzcJugNNddJ7rCghZTIR7fhXabGwch2S%2BG%2BKGIKwlN1N2nIqkh2jg&busi_data=eyJncm91cENvZGUiOiIxMDU4MTU2Njk3IiwidG9rZW4iOiJmcnkra1hWNFIxNytEcG0zcHRUdVJIaldlRDFxN0dzK080QWtvTEdOQjJkNEY2eUFta1g1clNpbkxSMS9FQWFYIiwidWluIjoiMTI2MDkwNzMzNSJ9&data=b1eJrwn3GVOUh7YIxZ7l9vHQo99HPmRxKPpMKlDCmfzx8Y57IXb2EZCMaOC9rVTd2U558qpNjwUYUWlPHxVHvg&svctype=4&tempid=h5_group_info"><img src="https://img.shields.io/badge/QQ-%2312B7F5?logo=qq&labelColor=FFFFFF"></a>
-</p>
+- AI 伙伴底座：LLM、语音、工具与扩展能力
+- 低打扰桌面存在：长期悬浮，但不遮挡主任务
+- 学习陪伴闭环：任务、专注、提醒、统计、导出
+- 本地视觉互动：自检、解释、录入、门控、反馈历史
+- 隐私可信设计：本地优先、边界清晰、保守表述
 
-<p float="left" align="center">
-  <!-- readme-section:release-binary-windows -->
-  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.0/AIRI-0.9.0-windows-x64-setup.exe">
-    <picture>
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.windows.dark.en-US.avif"
-        media="(prefers-color-scheme: dark)"
-      />
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.windows.light.en-US.avif"
-        media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
-      />
-      <img width="33%" src="./docs/content/public/assets/download-buttons/download-buttons.windows.light.en-US.avif" />
-    </picture>
-  </a>
-  <!-- readme-section:release-binary-macos -->
-  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.0/AIRI-0.9.0-darwin-arm64.dmg">
-    <picture>
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.macos.dark.en-US.avif"
-        media="(prefers-color-scheme: dark)"
-      />
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.macos.light.en-US.avif"
-        media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
-      />
-      <img width="33%" src="./docs/content/public/assets/download-buttons/download-buttons.macos.light.en-US.avif" />
-    </picture>
-  </a>
-  <a href="https://github.com/moeru-ai/airi/releases/latest">
-    <picture>
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.linux.dark.en-US.avif"
-        media="(prefers-color-scheme: dark)"
-      />
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.linux.light.en-US.avif"
-        media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
-      />
-      <img width="33%" src="./docs/content/public/assets/download-buttons/download-buttons.linux.light.en-US.avif" />
-    </picture>
-  </a>
-</p>
+本仓库仍保留 AIRI 的 monorepo 工程基础，而 Rin 当前最核心的产品实现主要集中在桌面应用 `apps/stage-tamagotchi`。
 
-<p float="left" align="center">
-  <a href="https://airi.moeru.ai">
-    <picture>
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/QR%20code%20button/section.cards.qrcode.dark.en-US.png"
-        media="(prefers-color-scheme: dark)"
-      />
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/QR%20code%20button/section.cards.qrcode.light.en-US.png"
-        media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
-      />
-      <img width="33%" src="./docs/content/public/assets/QR%20code%20button/section.cards.qrcode.light.en-US.png" />
-    </picture>
-  </a>
-  <a href="https://airi.moeru.ai">
-    <picture>
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.mobile.dark.en-US.avif"
-        media="(prefers-color-scheme: dark)"
-      />
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.mobile.light.en-US.avif"
-        media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
-      />
-      <img width="33%" src="./docs/content/public/assets/download-buttons/download-buttons.mobile.light.en-US.avif" />
-    </picture>
-  </a>
-  <a href="https://airi.moeru.ai">
-    <picture>
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.browser.dark.en-US.png"
-        media="(prefers-color-scheme: dark)"
-      />
-      <source
-        width="33%"
-        srcset="./docs/content/public/assets/download-buttons/download-buttons.browser.light.en-US.png"
-        media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)"
-      />
-      <img width="33%" src="./docs/content/public/assets/download-buttons/download-buttons.browser.light.en-US.png" />
-    </picture>
-  </a>
-</p>
+## 项目定位
 
-<p align="center">
-  <a href="https://www.producthunt.com/products/airi?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-airi" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=993524&theme=neutral&t=1752696535380" alt="AIRI - A&#0032;container&#0032;of&#0032;cyber&#0032;living&#0032;souls&#0044;&#0032;re&#0045;creation&#0032;of&#0032;Neuro&#0045;sama | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
-  <a href="https://trendshift.io/repositories/14636" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14636" alt="moeru-ai%2Fairi | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
+Rin 不是“会动的桌宠截图”，而是一套围绕 HCI 原则改造过的桌面陪伴原型：
 
-> Heavily inspired by [Neuro-sama](https://www.youtube.com/@Neurosama)
+- 对 AI 能力更完整：保留多模型、多语音、多工具扩展的 AIRI 底座
+- 对用户主任务低干扰：角色靠近淡出、点击穿透、控件保护区
+- 对新手可理解：首次启动引导、可见入口、自然语言状态说明
+- 对熟练用户高效率：快捷键、托盘菜单、Move Mode、Fit Mode
+- 对高敏感能力更可信：摄像头用途可见、人脸档案本地加密、反馈可解释
 
-> [!TIP]
-> On Windows, you can also install AIRI with [Scoop](https://scoop.sh/):
->
-> ```powershell
-> scoop bucket add airi https://github.com/moeru-ai/airi
-> scoop install airi/airi
-> ```
+## AI 能力重点
 
-> [!WARNING]
-> **Attention:** We **do not** have any officially minted cryptocurrency or token associated with this project. Please check the information and proceed with caution.
+Rin 当前仓库中仍然保留并可扩展 AIRI 的 AI 主能力栈，主要包括以下几类：
 
-> [!NOTE]
->
-> We've got a whole dedicated organization [@proj-airi](https://github.com/proj-airi) for all the sub-projects born from Project AIRI. Check it out!
->
-> RAG, memory system, embedded database, icons, Live2D utilities, and more!
+| AI 能力 | 当前实现 | 相关代码 |
+| --- | --- | --- |
+| 多 LLM Provider / 多模型接入 | 统一 Provider Store，支持 chat / speech / transcription / embedding 等类型 Provider；已包含 OpenAI、Anthropic、Google Gemini、OpenRouter、Ollama、DeepSeek、Azure OpenAI、OpenAI-compatible 等接入定义 | `packages/stage-ui/src/stores/providers.ts` |
+| 模型与语音配置 | Provider 能力支持列出 models、voices、配置 onboarding 字段与连通性校验 | `packages/stage-ui/src/stores/providers.ts` |
+| 语音识别与语音合成 | 保留 transcription / speech provider 能力，支持麦克风、转写、语音生成链路 | `packages/stage-ui/src/stores/modules/hearing.ts` |
+| VAD 与音频链路 | 内置语音活动检测、音频输入与实时处理相关能力 | `packages/stage-ui/src/workers/vad/`、`apps/stage-web/src/workers/vad/` |
+| 本地 / 混合推理 | 保留 WebGPU 能力探测、本地 Kokoro TTS、OpenCV / MediaPipe 视觉运行时与 OpenAI-compatible 接入路径 | `packages/stage-ui/src/stores/providers.ts`、`apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.ts` |
+| 工具调用与 MCP 扩展 | 桌面端保留 MCP stdio manager、工具列举与调用能力，可作为 AI 工具扩展底座 | `apps/stage-tamagotchi/src/main/services/airi/mcp-servers/index.ts` |
 
-> [!TIP]
-> We have a translation project on [Crowdin](https://crowdin.com/project/proj-airi). If you find any inaccurate translations, feel free to contribute improvements there.
-> <a href="https://crowdin.com/project/proj-airi" target="_blank" rel="nofollow"><img style="width: 140px; height: 40px;" src="https://badges.crowdin.net/badge/light/crowdin-on-dark.png" srcset="https://badges.crowdin.net/badge/light/crowdin-on-dark.png 1x, https://badges.crowdin.net/badge/light/crowdin-on-dark@2x.png 2x" alt="Crowdin | Agile localization for tech companies" width="140" height="40" /></a>
+从仓库结构上看，Rin 不是一个“只剩界面”的桌宠壳，而是一个带有桌面 AI 伙伴底座的应用：一方面保留了 AIRI 原生的 Provider / Model 扩展体系，另一方面把新的学习陪伴、视觉互动与低打扰桌面交互叠加到这一底座之上。
 
-Have you dreamed about having a cyber living being (cyber waifu, digital pet) or digital companion that could play with and talk to you?
+## AI 能力架构图
 
-With the power of modern large language models like [ChatGPT](https://chatgpt.com) and famous [Claude](https://claude.ai), asking a virtual being to roleplay and chat with us is already easy enough for everyone. Platforms like [Character.ai (a.k.a. c.ai)](https://character.ai) and [JanitorAI](https://janitorai.com/) as well as local playgrounds like [SillyTavern](https://github.com/SillyTavern/SillyTavern) are already good-enough solutions for a chat based or visual adventure game like experience.
-
-> But, what about the abilities to play games? And see what you are coding at? Chatting while playing games, watching videos, and is capable of doing many other things.
-
-Perhaps you know [Neuro-sama](https://www.youtube.com/@Neurosama) already. She is currently the best virtual streamer capable of playing games, chatting, and interacting with you and the participants. Some also call this kind of being "digital human." **Sadly, as it's not open sourced, you cannot interact with her after her live streams go offline**.
-
-Therefore, this project, AIRI, offers another possibility here: **let you own your digital life, cyber living, easily, anywhere, anytime**.
-
-## DevLogs We Posted & Recent Updates
-
-- [DevLog @ 2026.03.23](https://airi.moeru.ai/docs/en/blog/DevLog-2026.03.23/) on March 23, 2026
-- [DevLog @ 2026.03.14](https://airi.moeru.ai/docs/en/blog/DevLog-2026.03.14/) on March 14, 2026
-- [DevLog @ 2026.02.16](https://airi.moeru.ai/docs/en/blog/DevLog-2026.02.16/) on February 16, 2026
-- [DevLog @ 2026.01.01](https://airi.moeru.ai/docs/en/blog/DevLog-2026.01.01/) on January 1, 2026
-- [DevLog @ 2025.10.20](https://airi.moeru.ai/docs/en/blog/DevLog-2025.10.20/) on October 20, 2025
-- [DevLog @ 2025.08.05](https://airi.moeru.ai/docs/en/blog/DevLog-2025.08.05/) on August 5, 2025
-- [DevLog @ 2025.08.01](https://airi.moeru.ai/docs/en/blog/DevLog-2025.08.01/) on August 1, 2025
-- [DreamLog 0x1](https://airi.moeru.ai/docs/en/blog/dreamlog-0x1/) on June 16, 2025
-- ...more on [documentation site](https://airi.moeru.ai/docs/en/)
-
-## What's So Special About This Project?
-
-Unlike the other AI driven VTuber open source projects, アイリ was built with support of many Web technologies such as [WebGPU](https://www.w3.org/TR/webgpu/), [WebAudio](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API), [Web Workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers), [WebAssembly](https://webassembly.org/), [WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket), etc. from the first day.
-
-> [!TIP]
-> Worrying about the performance drop since we are using Web related technologies?
->
-> Don't worry, while the Web browser version is meant to give an insight into how much we can push and do inside browsers and webviews, we will never fully rely on this. The desktop version of AIRI is capable of using native [NVIDIA CUDA](https://developer.nvidia.com/cuda-toolkit) and [Apple Metal](https://developer.apple.com/metal/) by default (thanks to HuggingFace & the beloved [candle](https://github.com/huggingface/candle) project), without any complex dependency management. Considering the tradeoff, it is partially powered by Web technologies for graphics, layouts, animations, and the WIP plugin system for everyone to integrate things.
-
-This means that **アイリ is capable of running on modern browsers and devices** and even on mobile devices (already done with PWA support). This brings a lot of possibilities for us (the developers) to build and extend the power of アイリ VTuber to the next level, while still leaving the flexibility for users to enable features that require TCP connections or other non-Web technologies such as connecting to a Discord voice channel or playing Minecraft and Factorio with friends.
-
-> [!NOTE]
->
-> We are still in the early stage of development where we are seeking out talented developers to join us and help us to make アイリ a reality.
->
-> It's ok if you are not familiar with Vue.js, TypeScript, and devtools required for this project, you can join us as an artist, designer, or even help us to launch our first live stream.
->
-> Even if you are a big fan of React, Svelte or even Solid, we welcome you. You can open a sub-directory to add features that you want to see in アイリ, or would like to experiment with.
->
-> Fields (and related projects) that we are looking for:
->
-> - Live2D modeller
-> - VRM modeller
-> - VRChat avatar designer
-> - Computer Vision
-> - Reinforcement Learning
-> - Speech Recognition
-> - Speech Synthesis
-> - ONNX Runtime
-> - Transformers.js
-> - vLLM
-> - WebGPU
-> - Three.js
-> - WebXR ([checkout the another project](https://github.com/moeru-ai/chat) we have under the @moeru-ai organization)
->
-> **If you are interested, why not introduce yourself here? [Would like to join part of us to build AIRI?](https://github.com/moeru-ai/airi/discussions/33)**
-
-## Current Progress
-
-Capable of
-
-- [x] Brain
-  - [x] Play [Minecraft](https://www.minecraft.net)
-  - [x] Play [Factorio](https://www.factorio.com) (WIP, but [PoC and demo available](https://github.com/moeru-ai/airi-factorio))
-  - [x] Play [Kerbal Space Program](https://www.kerbalspaceprogram.com/) (announcement TBD)
-  - [ ] Co-play [Helldivers 2](https://www.playstation.com/en-hk/games/helldivers-2/pc/) (WIP)
-  - [x] Chat in [Telegram](https://telegram.org)
-  - [x] Chat in [Discord](https://discord.com)
-  - [ ] Memory
-    - [x] Pure in-browser database support (DuckDB WASM | `pglite`)
-    - [ ] Memory Alaya (WIP)
-  - [ ] Pure in-browser local (WebGPU) inference
-- [x] Ears
-  - [x] Audio input from browser
-  - [x] Audio input from [Discord](https://discord.com)
-  - [x] Client side speech recognition
-  - [x] Client side talking detection
-- [x] Mouth
-  - [x] [ElevenLabs](https://elevenlabs.io/) voice synthesis
-- [x] Body
-  - [x] VRM support
-    - [x] Control VRM model
-  - [x] VRM model animations
-    - [x] Auto blink
-    - [x] Auto look at
-    - [x] Idle eye movement
-  - [x] Live2D support
-    - [x] Control Live2D model
-  - [x] Live2D model animations
-    - [x] Auto blink
-    - [x] Auto look at
-    - [x] Idle eye movement
-
-## Development
-
-> For detailed instructions to develop this project, follow [CONTRIBUTING.md](./.github/CONTRIBUTING.md)
-
-> [!NOTE]
-> By default, `pnpm dev` will start the development server for the Stage Web (browser version). If you would
-> like to try developing the desktop version, please make sure you read [CONTRIBUTING.md](./.github/CONTRIBUTING.md)
-> to setup the environment correctly.
-
-```shell
-pnpm i
-pnpm dev
-```
-
-### Stage Web (Browser Version at [airi.moeru.ai](https://airi.moeru.ai))
-
-```shell
-pnpm dev
-```
-
-### Stage Tamagotchi (Desktop Version)
-
-```shell
-pnpm dev:tamagotchi
-```
-
-A Nix package for Tamagotchi is included. To run airi with Nix, first make sure to enable flakes, then run:
-
-```shell
-nix run github:moeru-ai/airi
-```
-
-#### NixOS
-
-Electron requires shared libraries that aren't in standard paths on NixOS. Use the FHS shell defined in `flake.nix`:
-
-```shell
-nix develop .#fhs
-pnpm dev:tamagotchi
-```
-
-### Stage Pocket (Mobile Version)
-
-Start the development server for the capacitor:
-
-```shell
-pnpm dev:pocket:ios --target <DEVICE_ID_OR_SIMULATOR_NAME>
-# Or
-CAPACITOR_DEVICE_ID_IOS=<DEVICE_ID_OR_SIMULATOR_NAME> pnpm dev:pocket:ios
-```
-
-You can see the list of available devices and simulators by running `pnpm exec cap run ios --list`.
-
-If you need to connect server channel on pocket in wireless mode, you need to start tamagotchi as root:
-
-```shell
-sudo pnpm dev:tamagotchi
-```
-
-Then enable secure websocket in tamagotchi `settings/connections`.
-
-### Documentation Site
-
-```shell
-pnpm dev:docs
-```
-
-### Publish
-
-Run `bumpp` to update the monorepo version:
-
-```shell
-npx bumpp --no-commit --no-tag
-```
-
-## Support of LLM API Providers (powered by [xsai](https://github.com/moeru-ai/xsai))
-
-- [x] [AIHubMix (recommended)](https://aihubmix.com/?aff=OOiX)
-- [x] [OpenRouter](https://openrouter.ai/)
-- [x] [vLLM](https://github.com/vllm-project/vllm)
-- [x] [SGLang](https://github.com/sgl-project/sglang)
-- [x] [Ollama](https://github.com/ollama/ollama)
-- [x] [302.AI (sponsored)](https://share.302.ai/514k2v)
-- [x] [OpenAI](https://platform.openai.com/docs/guides/gpt/chat-completions-api)
-  - [x] [Azure OpenAI API](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)
-- [x] [Anthropic Claude](https://anthropic.com)
-  - [ ] [AWS Claude](https://docs.anthropic.com/en/api/claude-on-amazon-bedrock) (PR welcome)
-- [x] [DeepSeek](https://www.deepseek.com/)
-- [x] [Qwen](https://help.aliyun.com/document_detail/2400395.html)
-- [x] [Google Gemini](https://developers.generativeai.google)
-- [x] [xAI](https://x.ai/)
-- [x] [Groq](https://wow.groq.com/)
-- [x] [Mistral](https://mistral.ai/)
-- [x] [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
-- [x] [Together.ai](https://www.together.ai/)
-- [x] [Fireworks.ai](https://www.together.ai/)
-- [x] [Novita](https://www.novita.ai/)
-- [x] [Zhipu](https://bigmodel.cn)
-- [x] [SiliconFlow](https://cloud.siliconflow.cn/i/rKXmRobW)
-- [x] [Stepfun](https://platform.stepfun.com/)
-- [x] [Baichuan](https://platform.baichuan-ai.com)
-- [x] [Minimax](https://api.minimax.chat/)
-- [x] [Moonshot AI](https://platform.moonshot.cn/)
-- [x] [ModelScope](https://modelscope.cn/docs/model-service/API-Inference/intro)
-- [x] [Player2](https://player2.game/)
-- [x] [Tencent Cloud](https://cloud.tencent.com/document/product/1729)
-- [ ] [Sparks](https://www.xfyun.cn/doc/spark/Web.html) (PR welcome)
-- [ ] [Volcano Engine](https://www.volcengine.com/experience/ark?utm_term=202502dsinvite&ac=DSASUQY5&rc=2QXCA1VI) (PR welcome)
-
-## Sub-projects Born from This Project
-
-- [Awesome AI VTuber](https://github.com/proj-airi/awesome-ai-vtuber): A curated list of AI VTubers and related projects
-- [`unspeech`](https://github.com/moeru-ai/unspeech): Universal endpoint proxy server for `/audio/transcriptions` and `/audio/speech`, like LiteLLM but for any ASR and TTS
-- [`hfup`](https://github.com/moeru-ai/hfup): tools to help on deploying, bundling to HuggingFace Spaces
-- [`xsai-transformers`](https://github.com/moeru-ai/xsai-transformers): Experimental [🤗 Transformers.js](https://github.com/huggingface/transformers.js) provider for [xsAI](https://github.com/moeru-ai/xsai).
-- [WebAI: Realtime Voice Chat](https://github.com/proj-airi/webai-realtime-voice-chat): Full example of implementing ChatGPT's realtime voice from scratch with VAD + STT + LLM + TTS.
-- [`@proj-airi/drizzle-duckdb-wasm`](https://github.com/moeru-ai/airi/tree/main/packages/drizzle-duckdb-wasm/README.md): Drizzle ORM driver for DuckDB WASM
-- [`@proj-airi/duckdb-wasm`](https://github.com/moeru-ai/airi/tree/main/packages/duckdb-wasm/README.md): Easy to use wrapper for `@duckdb/duckdb-wasm`
-- [AIRI Factorio](https://github.com/moeru-ai/airi-factorio): Allow AIRI to play Factorio.
-- [AIRI DomeKeeper](https://github.com/proj-airi/game-playing-ai-dome-keeper): Allow AIRI to play DomeKeeper.
-- [Factorio RCON API](https://github.com/nekomeowww/factorio-rcon-api): RESTful API wrapper for Factorio headless server console
-- [`autorio`](https://github.com/moeru-ai/airi-factorio/tree/main/packages/autorio): Factorio automation library
-- [`tstl-plugin-reload-factorio-mod`](https://github.com/moeru-ai/airi-factorio/tree/main/packages/tstl-plugin-reload-factorio-mod): Reload Factorio mod when developing
-- [Velin](https://github.com/luoling8192/velin): Use Vue SFC and Markdown to write easy to manage stateful prompts for LLM
-- [`demodel`](https://github.com/moeru-ai/demodel): Easily boost the speed of pulling your models and datasets from various of inference runtimes.
-- [`inventory`](https://github.com/moeru-ai/inventory): Centralized model catalog and default provider configurations backend service
-- [MCP Launcher](https://github.com/moeru-ai/mcp-launcher): Easy to use MCP builder & launcher for all possible MCP servers, just like Ollama for models!
-- [🥺 SAD](https://github.com/moeru-ai/sad): Documentation and notes for self-host and browser running LLMs.
+下面这张图概括了 Rin 当前桌面端的主要 AI 能力流转路径，包括文本、语音、视觉、本地运行时与工具扩展：
 
 ```mermaid
-%%{ init: { 'flowchart': { 'curve': 'catmullRom' } } }%%
+flowchart LR
+  User["User"]
+  TextInput["Text / UI Input"]
+  Mic["Microphone Input"]
+  Camera["Camera Input"]
 
-flowchart TD
-  Core("Core")
-  Unspeech("unspeech")
-  DBDriver("@proj-airi/drizzle-duckdb-wasm")
-  MemoryDriver("[WIP] Memory Alaya")
-  DB1("@proj-airi/duckdb-wasm")
-  SVRT("@proj-airi/server-runtime")
-  Memory("Memory")
-  STT("STT")
-  Stage("Stage")
-  StageUI("@proj-airi/stage-ui")
-  UI("@proj-airi/ui")
+  subgraph Desktop["Rin Desktop App (apps/stage-tamagotchi)"]
+    Stage["Main Stage / Panels"]
 
-  subgraph AIRI
-    DB1 --> DBDriver --> MemoryDriver --> Memory --> Core
-    UI --> StageUI --> Stage --> Core
-    Core --> STT
-    Core --> SVRT
+    subgraph AI["AI Runtime Layer"]
+      Providers["Provider Store\n(chat / speech / transcription / embed)"]
+      Chat["Chat / Model Providers"]
+      Hearing["Hearing Module"]
+      VAD["VAD / Audio Pipeline"]
+      TTS["Speech Providers / TTS"]
+      Vision["Vision Runtime\n(MediaPipe + OpenCV)"]
+      Explain["Self Check / Response Explainer"]
+      Gate["Face Gate / Enrollment"]
+      Tools["MCP Tools / Plugin Tools"]
+    end
+
+    subgraph UX["User-facing Output"]
+      Study["Study Companion"]
+      Live2D["Live2D Character"]
+      VoiceOut["Voice Output"]
+      Feedback["Toast / Bubble / History"]
+      Privacy["Privacy / Onboarding"]
+    end
   end
 
-  subgraph UI_Components
-    UI --> StageUI
-    UITransitions("@proj-airi/ui-transitions") --> StageUI
-    UILoadingScreens("@proj-airi/ui-loading-screens") --> StageUI
-    FontCJK("@proj-airi/font-cjkfonts-allseto") --> StageUI
-    FontXiaolai("@proj-airi/font-xiaolai") --> StageUI
-  end
+  Cloud["Cloud Models / APIs\n(OpenAI / Anthropic / Gemini / OpenRouter / DeepSeek / ... )"]
+  Local["Local Runtime\n(Kokoro / MediaPipe / OpenCV / WebGPU-related capabilities)"]
+  MCP["MCP Servers"]
 
-  subgraph Apps
-    Stage --> StageWeb("@proj-airi/stage-web")
-    Stage --> StageTamagotchi("@proj-airi/stage-tamagotchi")
-    Core --> RealtimeAudio("@proj-airi/realtime-audio")
-    Core --> PromptEngineering("@proj-airi/playground-prompt-engineering")
-  end
+  User --> TextInput --> Stage
+  User --> Mic
+  User --> Camera
 
-  subgraph Server_Components
-    Core --> ServerSDK("@proj-airi/server-sdk")
-    ServerShared("@proj-airi/server-shared") --> SVRT
-    ServerShared --> ServerSDK
-  end
+  Stage --> Providers
+  Stage --> Hearing
+  Mic --> VAD --> Hearing
+  Hearing --> Providers
+  Camera --> Vision
 
-  STT -->|Speaking| Unspeech
-  SVRT -->|Playing Factorio| F_AGENT
-  SVRT -->|Playing Minecraft| MC_AGENT
+  Providers --> Chat
+  Providers --> TTS
+  Providers --> Tools
 
-  subgraph Factorio_Agent
-    F_AGENT("Factorio Agent")
-    F_API("Factorio RCON API")
-    factorio-server("factorio-server")
-    F_MOD1("autorio")
+  Chat --> Cloud
+  TTS --> Cloud
+  Hearing --> Cloud
+  Vision --> Local
+  Providers --> Local
+  Tools --> MCP
 
-    F_AGENT --> F_API -.-> factorio-server
-    F_MOD1 -.-> factorio-server
-  end
-
-  subgraph Minecraft_Agent
-    MC_AGENT("Minecraft Agent")
-    Mineflayer("Mineflayer")
-    minecraft-server("minecraft-server")
-
-    MC_AGENT --> Mineflayer -.-> minecraft-server
-  end
-
-  XSAI("xsAI") --> Core
-  XSAI --> F_AGENT
-  XSAI --> MC_AGENT
-
-  Memory_PGVector("@proj-airi/memory-pgvector") --> Memory
-
-  style Core fill:#f9d4d4,stroke:#333,stroke-width:1px
-  style AIRI fill:#fcf7f7,stroke:#333,stroke-width:1px
-  style UI fill:#d4f9d4,stroke:#333,stroke-width:1px
-  style Stage fill:#d4f9d4,stroke:#333,stroke-width:1px
-  style UI_Components fill:#d4f9d4,stroke:#333,stroke-width:1px
-  style Server_Components fill:#d4e6f9,stroke:#333,stroke-width:1px
-  style Apps fill:#d4d4f9,stroke:#333,stroke-width:1px
-  style Factorio_Agent fill:#f9d4f2,stroke:#333,stroke-width:1px
-  style Minecraft_Agent fill:#f9d4f2,stroke:#333,stroke-width:1px
-
-  style DBDriver fill:#f9f9d4,stroke:#333,stroke-width:1px
-  style MemoryDriver fill:#f9f9d4,stroke:#333,stroke-width:1px
-  style DB1 fill:#f9f9d4,stroke:#333,stroke-width:1px
-  style Memory fill:#f9f9d4,stroke:#333,stroke-width:1px
-  style Memory_PGVector fill:#f9f9d4,stroke:#333,stroke-width:1px
+  Vision --> Explain
+  Vision --> Gate
+  Chat --> Study
+  Chat --> Live2D
+  TTS --> VoiceOut
+  Explain --> Feedback
+  Gate --> Feedback
+  Vision --> Feedback
+  Stage --> Privacy
+  Study --> Feedback
+  Feedback --> User
+  Live2D --> User
+  VoiceOut --> User
+  Privacy --> User
 ```
 
-## Similar Projects
+图中各模块在仓库中的主要落点如下：
 
-### Open sourced ones
+- Provider / Model 底座：`packages/stage-ui/src/stores/providers.ts`
+- 语音输入与转写：`packages/stage-ui/src/stores/modules/hearing.ts`
+- VAD 音频链路：`packages/stage-ui/src/workers/vad/`、`apps/stage-web/src/workers/vad/`
+- 本地视觉运行时：`apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.ts`
+- 视觉交互与门控：`apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.ts`
+- 自检与解释：`apps/stage-tamagotchi/src/renderer/utils/vision-self-check.ts`、`apps/stage-tamagotchi/src/renderer/utils/vision-response-explainer.ts`
+- MCP 工具扩展：`apps/stage-tamagotchi/src/main/services/airi/mcp-servers/index.ts`
 
-- [kimjammer/Neuro: A recreation of Neuro-Sama originally created in 7 days.](https://github.com/kimjammer/Neuro): very well completed implementation.
-- [SugarcaneDefender/z-waif](https://github.com/SugarcaneDefender/z-waif): Great at gaming, autonomous, and prompt engineering
-- [semperai/amica](https://github.com/semperai/amica/): Great at VRM, WebXR
-- [elizaOS/eliza](https://github.com/elizaOS/eliza): Great examples and software engineering on how to integrate agent into various of systems and APIs
-- [ardha27/AI-Waifu-Vtuber](https://github.com/ardha27/AI-Waifu-Vtuber): Great about Twitch API integrations
-- [InsanityLabs/AIVTuber](https://github.com/InsanityLabs/AIVTuber): Nice UI and UX
-- [IRedDragonICY/vixevia](https://github.com/IRedDragonICY/vixevia)
-- [t41372/Open-LLM-VTuber](https://github.com/t41372/Open-LLM-VTuber)
-- [PeterH0323/Streamer-Sales](https://github.com/PeterH0323/Streamer-Sales)
+## 核心功能总览
 
-### Non-open-sourced ones
+| 模块 | 当前能力 | 对用户的价值 |
+| --- | --- | --- |
+| AI 底座与扩展 | 多 Provider / 多模型、语音转写、语音合成、工具调用、MCP 扩展、插件化基础 | 保留桌面 AI 伙伴的可扩展能力，而不是做成单一功能 Demo |
+| 桌面低打扰交互 | Proximity Fade、Click-through、透明命中区、控件保护区、Anchor 兜底入口 | 角色可长期悬浮，但不妨碍网页、PDF、文档的点击和滚动 |
+| 桌面操作体系 | Controls Island、全局快捷键、托盘菜单、Move Mode、Resize、Fit Mode、Shortcut Guide | 新手能找到入口，熟练用户能快速操作 |
+| 学习陪伴 | 今日任务、优先级、截止日期、当前专注任务、Pomodoro、休息建议、完成反馈、到期提醒 | Rin 从“陪着看”变成“陪着做” |
+| 学习统计与导出 | 今日统计、多日历史、7/14/30 天趋势图、热力图、结构图、Markdown/JSON 导出 | 学习过程可复盘、可展示、可沉淀 |
+| 本地视觉互动 | 本地运行时、摄像头控制、视觉自检、“为什么 Rin 没响应”、主体位置校准、反馈历史 | 用户能理解系统为什么响应或不响应 |
+| 人脸录入与门控 | 四步 Enrollment、本地加密档案、Face Gate、锁定/重录/删除 | 提升本地视觉互动的可控性与可信度 |
+| 首次启动与隐私说明 | Rin Demo Guide、LocalPrivacyCard、Study/Vision 快捷入口 | 首次打开即可理解产品能力和隐私边界 |
+| 打包与发布收尾 | Rin 品牌统一、release preflight、macOS DMG 打包链路修复 | 更接近可展示、可交付的桌面应用原型 |
 
-- https://clips.twitch.tv/WanderingCaringDeerDxCat-Qt55xtiGDSoNmDDr https://www.youtube.com/watch?v=8Giv5mupJNE
-- https://clips.twitch.tv/TriangularAthleticBunnySoonerLater-SXpBk1dFso21VcWD
-- https://www.youtube.com/@NOWA_Mirai
+## 功能亮点
 
-## Project Status
+### 1. AI 伙伴底座
 
-![Repobeats analytics image](https://repobeats.axiom.co/api/embed/a1d6fe2c13ea2bb53a5154435a71e2431f70c2ee.svg 'Repobeats analytics image')
+Rin 的桌面产品形态建立在 AIRI 原有 AI 架构之上。当前仓库中，AI 相关底座能力并没有被移除，而是继续作为桌面伙伴能力的基础设施存在。
 
-## Acknowledgements
+- 统一的 Provider Store 管理 chat、speech、transcription、embedding 等 Provider
+- 支持多种云端与本地 / 类本地模型接入方式
+- 支持模型列表、语音列表、配置校验与 onboarding 字段扩展
+- 保留语音输入、语音活动检测、语音转写与语音合成相关链路
+- 保留 MCP 工具扩展与插件化接入能力
 
-- [Reka UI](https://github.com/unovue/reka-ui): for designing the documentation site, the new landing page is based on this, as well as implementing a massive amount of UI components. (shadcn-vue is using Reka UI as the headless, do checkout!)
-- [pixiv/ChatVRM](https://github.com/pixiv/ChatVRM)
-- [josephrocca/ChatVRM-js: A JS conversion/adaptation of parts of the ChatVRM (TypeScript) code for standalone use in OpenCharacters and elsewhere](https://github.com/josephrocca/ChatVRM-js)
-- Design of UI and style was inspired by [Cookard](https://store.steampowered.com/app/2919650/Cookard/), [UNBEATABLE](https://store.steampowered.com/app/2240620/UNBEATABLE/), and [Sensei! I like you so much!](https://store.steampowered.com/app/2957700/_/), and artworks of [Ayame by Mercedes Bazan](https://dribbble.com/shots/22157656-Ayame) with [Wish by Mercedes Bazan](https://dribbble.com/shots/24501019-Wish)
-- [mallorbc/whisper_mic](https://github.com/mallorbc/whisper_mic)
-- [`xsai`](https://github.com/moeru-ai/xsai): Implemented a decent amount of packages to interact with LLMs and models, like [Vercel AI SDK](https://sdk.vercel.ai/) but way small.
+对应实现：
 
-## Supporters
+- `packages/stage-ui/src/stores/providers.ts`
+- `packages/stage-ui/src/stores/modules/hearing.ts`
+- `packages/stage-ui/src/workers/vad/`
+- `apps/stage-tamagotchi/src/main/services/airi/mcp-servers/index.ts`
 
-<p align="center">
-  <strong>Thank you for supporting Project AIRI through OpenCollective, Patreon, and Ko-fi.</strong>
-</p>
+### 2. 低打扰桌面存在
 
-<p align="center">
-  <img src="./docs/content/public/assets/sponsors/sponsors.svg" alt="Project AIRI supporters" />
-</p>
+Rin 的一个核心改造点是让角色真正适合常驻桌面，而不是“视觉上透明、交互上拦路”。
 
-## Special Thanks
+- 支持基于 Live2D hit area 的角色主体估计
+- 支持 fade trigger area，鼠标靠近时更早触发淡出
+- 支持统一的 window click-through policy
+- 支持 Controls、Anchor、Study Panel、Vision Panel、Shortcut Guide、输入框、Resize Handle 等受保护区域
+- 角色淡出后，背后的网页、PDF、文档仍可继续操作
 
-Special thanks to all contributors for their contributions to Project AIRI ❤️
+对应实现可以在这些文件中看到：
 
-<a href="https://github.com/moeru-ai/airi/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=moeru-ai/airi" />
-</a>
+- `apps/stage-tamagotchi/src/renderer/pages/index.vue`
+- `apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.ts`
+- `apps/stage-tamagotchi/src/renderer/utils/live2d-hit-area.ts`
+- `apps/stage-tamagotchi/src/renderer/utils/click-through-protected-elements.ts`
 
-## Star History
+### 3. 多入口桌面操作体系
 
-<a href="https://star-history.com/#moeru-ai/airi&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=moeru-ai/airi&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=moeru-ai/airi&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=moeru-ai/airi&type=Date" />
-  </picture>
-</a>
+Rin 不依赖单一路径操作，而是同时服务新手和熟练用户。
+
+- Controls Island 提供可见按钮和主要入口
+- Shortcut Guide 提供快捷键可视化说明
+- 全局快捷键支持打开 Study、Vision、Shortcut Guide，以及缩放 Rin 和切换 Move Mode
+- Tray 菜单补齐主窗口不方便点击时的高频入口
+- Move Mode、Resize、Fit Mode 支持不同桌面布局快速调整
+
+对应实现：
+
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue`
+- `apps/stage-tamagotchi/src/renderer/composables/use-stage-keyboard-shortcuts.ts`
+- `apps/stage-tamagotchi/src/renderer/utils/keyboard-shortcuts.ts`
+- `apps/stage-tamagotchi/src/main/tray/index.ts`
+- `apps/stage-tamagotchi/src/main/tray/tray-menu.ts`
+
+### 4. 学习陪伴闭环
+
+Rin 新增了完整的 Study Companion 主线，使桌宠不只是停留在屏幕上，而是能够参与用户的真实学习任务。
+
+- 今日任务创建、排序、完成与当前专注任务绑定
+- Pomodoro 专注/休息状态机
+- 自定义专注和休息时长
+- 中断次数统计
+- 专注结束后的下一步动作卡片
+- 到期提醒、静音控制、提醒节流与 toast 反馈
+
+对应实现：
+
+- `packages/stage-ui/src/stores/modules/study-companion.ts`
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.vue`
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/TaskList.vue`
+- `apps/stage-tamagotchi/src/renderer/composables/use-study-reminder-policy.ts`
+- `apps/stage-tamagotchi/src/renderer/composables/use-study-task-reminders.ts`
+
+### 5. 学习统计与导出
+
+为了让学习过程具备“可展示、可复盘、可沉淀”的结果，Rin 在学习模块中加入了统计分析与导出能力。
+
+- 今日专注分钟、专注轮数、中断次数、任务完成数
+- 多日历史统计
+- 7/14/30 天趋势图
+- 学习热力图
+- 任务完成结构图、优先级分布图、专注质量概览卡片
+- Markdown 报告导出与 JSON 快照导出
+
+对应实现：
+
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTrendChart.vue`
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyHeatmap.vue`
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTaskCompletionChart.vue`
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/StudyTaskPriorityChart.vue`
+- `packages/stage-ui/src/stores/modules/study-companion.ts`
+
+### 6. 本地视觉互动
+
+视觉模块的重点不是“看起来很智能”，而是“本地、可解释、低侵入”。
+
+- 本地视觉运行时管理与预热复用
+- 摄像头 start/stop
+- MediaPipe 与 OpenCV 质量评估链路
+- 视觉自检报告
+- “为什么 Rin 没响应？”解释卡片
+- 主体位置校准与反馈历史
+
+对应实现：
+
+- `apps/stage-tamagotchi/src/renderer/composables/use-vision-runtime.ts`
+- `apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.ts`
+- `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue`
+- `apps/stage-tamagotchi/src/renderer/utils/vision-self-check.ts`
+- `apps/stage-tamagotchi/src/renderer/utils/vision-response-explainer.ts`
+
+### 7. 人脸录入、本地门控与可解释反馈
+
+Rin 把视觉链路中的高敏感部分做成了可见、可恢复、可追踪的用户流程。
+
+- 四步人脸录入向导
+- 本地加密档案存储
+- Face Gate 门控匹配状态
+- deterministic feedback template engine
+- dedupe、cooldown、quiet mode
+- toast、bubble、Live2D motion、feedback history 多通道反馈
+
+对应实现：
+
+- `apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.vue`
+- `apps/stage-tamagotchi/src/renderer/composables/use-encrypted-face-profile.ts`
+- `apps/stage-tamagotchi/src/renderer/composables/use-local-face-gate.ts`
+- `apps/stage-tamagotchi/src/renderer/composables/use-vision-pet-feedback.ts`
+- `apps/stage-tamagotchi/src/renderer/utils/vision-feedback-messages.ts`
+
+### 8. 首次启动与隐私可信设计
+
+Rin 将原本偏 provider/model 配置的 onboarding 重构为更适合首次理解和日常使用的引导流程。
+
+- 四步 Rin Demo Guide
+- Open Study / Open Vision / Open Shortcut Guide / Open Settings / Open Study Settings
+- LocalPrivacyCard 在 onboarding、Vision Island、Enrollment 页面复用
+- 摄像头用途、本地处理、人脸档案边界说明前置可见
+
+对应实现：
+
+- `apps/stage-tamagotchi/src/renderer/pages/onboarding.vue`
+- `packages/stage-ui/src/components/scenarios/dialogs/onboarding/onboarding.vue`
+- `packages/stage-ui/src/components/scenarios/dialogs/onboarding/step-demo-guide.vue`
+- `packages/stage-ui/src/components/misc/local-privacy-card.vue`
+
+## HCI 改造重点
+
+Rin 的改造不是围绕“功能堆叠”，而是围绕具体的人机交互原则展开：
+
+- Recognition rather than recall：把 Study、Vision、Shortcut Guide、自检和解释卡做成可见入口
+- Flexibility and efficiency of use：用快捷键、Tray 菜单和多入口支持熟练用户
+- Aesthetic and minimalist design：默认界面收束，高级诊断折叠，角色靠近淡出
+- Error recovery：用“为什么 Rin 没响应？”和恢复建议替代技术状态堆砌
+- Help and documentation：把帮助嵌入 onboarding、Privacy Card 和快捷键指南
+
+## 项目结构
+
+本仓库是 monorepo，但本次 Rin 项目的核心路径主要如下：
+
+```text
+apps/stage-tamagotchi/                  Electron 桌面应用主体
+  src/main/                             主进程、窗口、托盘、系统服务
+  src/renderer/                         渲染层页面、组件、composables、工具函数
+
+packages/stage-ui/                      共享业务组件与核心状态模块
+  src/stores/modules/study-companion.ts 学习陪伴核心 store
+
+packages/stage-ui-live2d/               Live2D 展示与动作能力
+
+docs/                                   项目分析、PPT 脚本、开发总结
+engines/stage-tamagotchi-godot/         Godot sidecar 引擎资源
+```
+
+如果你只想快速理解 Rin 的核心实现，建议优先看：
+
+1. `apps/stage-tamagotchi/src/renderer/pages/index.vue`
+2. `packages/stage-ui/src/stores/modules/study-companion.ts`
+3. `apps/stage-tamagotchi/src/renderer/components/stage-islands/study-island/index.vue`
+4. `apps/stage-tamagotchi/src/renderer/components/stage-islands/vision-island/index.vue`
+5. `apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.ts`
+6. `packages/stage-ui/src/stores/providers.ts`
+7. `apps/stage-tamagotchi/src/main/services/airi/mcp-servers/index.ts`
+
+## 本地运行
+
+### 环境要求
+
+- Node.js
+- pnpm
+- macOS 开发环境优先
+
+### 安装依赖
+
+```bash
+pnpm install
+```
+
+### 启动桌面版 Rin
+
+```bash
+pnpm dev:tamagotchi
+```
+
+### 其他常用命令
+
+```bash
+pnpm -F @proj-airi/stage-tamagotchi typecheck
+pnpm lint:fix
+pnpm test:run
+pnpm -F @proj-airi/stage-tamagotchi build:mac
+pnpm -F @proj-airi/stage-tamagotchi preflight:release
+```
+
+## 测试与工程质量
+
+Rin 的测试重点不是“页面能不能打开”，而是围绕关键交互规则做回归验证。仓库中可以直接看到这些代表性测试：
+
+- `apps/stage-tamagotchi/src/renderer/utils/window-click-through-policy.test.ts`
+- `apps/stage-tamagotchi/src/renderer/utils/live2d-fade-trigger-state.test.ts`
+- `apps/stage-tamagotchi/src/renderer/composables/use-stage-keyboard-shortcuts.test.ts`
+- `apps/stage-tamagotchi/src/renderer/composables/use-vision-interaction.behavior.test.ts`
+- `apps/stage-tamagotchi/src/renderer/utils/vision-feedback-messages.test.ts`
+- `apps/stage-tamagotchi/src/renderer/pages/vision-enrollment/index.test.ts`
+- `packages/stage-ui/src/stores/modules/study-companion.test.ts`
+
+这些测试分别覆盖了低打扰交互、淡出逻辑、快捷键、视觉状态流、反馈模板、人脸录入与学习状态机。
+
+## 打包与发布
+
+当前项目已经包含 macOS 打包与发布收尾所需的核心工程内容：
+
+- `electron-builder --mac` 构建链路
+- `release preflight` 检查
+- Rin 品牌统一
+- DMG 命名模板
+- 摄像头与麦克风权限文案
+- hardened runtime 与 notarize 配置
+
+相关文件：
+
+- `apps/stage-tamagotchi/electron-builder.config.ts`
+- `apps/stage-tamagotchi/scripts/preflight-release-check.mjs`
+- `apps/stage-tamagotchi/package.json`
+
+## 能力边界
+
+为了避免误导，Rin 在 README 中明确保留以下边界：
+
+- Face Gate 不是安全认证系统，它只用于本地互动门控
+- 主体位置校准不是眼球追踪
+- expression signal 不是情绪识别
+- 视觉互动效果会受到光照、角度、镜头质量、遮挡和多人入镜影响
+
+## 致谢
+
+Rin 基于 Project AIRI 的工程基础完成深度重构。感谢原始框架提供的 Electron 桌面容器、Live2D 舞台、Provider / Model 架构、托盘、设置页、多语言和打包基础设施，使 Rin 能够在保留 AI 伙伴底座的同时，把精力集中在低打扰桌面交互、学习陪伴和本地视觉互动的产品化改造上。
+
+---
+
+如果你想进一步查看本项目的设计与实现材料，可以继续阅读：
+
+- `docs/PPT_script.md`
+- `docs/rin-development-summary-for-ppt.md`
+- `docs/vision-interaction-experiment.md`
+- `docs/desktop-interaction-improvements.md`
